@@ -67,16 +67,13 @@ app.use((req, res, next) => {
 ========================= */
 
 if (!fs.existsSync(CONFIG_FILE)) {
-  const defaultConfig = {
-    global: {
-      enabled: false,
-      mode: "youtube"
-    },
-    countries: {
-      TR: "ringtone",
-      DE: "youtube"
-    }
-  };
+ const defaultConfig = {
+  global: {
+    enabled: true,
+    mode: "youtube"
+  },
+  countries: {}
+};
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(defaultConfig, null, 2));
 }
 
