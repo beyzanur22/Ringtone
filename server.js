@@ -51,14 +51,9 @@ app.use((req, res, next) => {
 
   const clientKey = req.headers["x-app-key"];
 
-  if (!clientKey || clientKey !== APP_SECRET) {
-    console.log(" Unauthorized access attempt:", req.ip);
-    return res.status(403).json({
-      error: "Forbidden"
-    });
-  }
+  console.log("GELEN HEADER:", clientKey);
 
-  next();
+  next(); // auth kapattık geçici olarak
 });
 
 
