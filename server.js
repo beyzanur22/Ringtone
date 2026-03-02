@@ -295,6 +295,39 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 5000;
 
+const { exec } = require("child_process");
+
+app.get("/stream", async (req, res) => {
+  try {
+    const { videoId, type } = req.query;
+
+    if (!videoId) {
+      return res.status(400).json({ error: "videoId required" });
+    }
+
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    const command =
+      type === "audio"
+        ? `yt-dlp -f bestaudio -g ${url}`
+        : `yt-dlp -f best -g ${url}`;
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error("yt-dlp error:", error);
+        return res.status(500).json({ error: "Stream resolve failed" });
+      }
+
+      res.json({
+        streamUrl: stdout.trim(),
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Admin backend running on port ${PORT}`);
 });
