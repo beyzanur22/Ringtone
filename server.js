@@ -44,6 +44,10 @@ if (!APP_SECRET) {
   process.exit(1);
 }
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.use((req, res, next) => {
   const clientKey = req.headers["x-app-key"];
 
