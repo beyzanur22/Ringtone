@@ -5,8 +5,6 @@ const cors = require("cors");
 const fs = require("fs");
 
 const app = express();
-app.set('trust proxy', 1);
-
 app.use(cors());
 app.use(express.json());
 
@@ -299,73 +297,36 @@ const PORT = process.env.PORT || 5000;
 
 const { exec } = require("child_process");
 
-// =======================
-// STREAM CACHE
-// =======================
-
-let streamCache = {}
-const STREAM_CACHE_DURATION = 30 * 60 * 1000 // 30 dakika
-
 app.get("/stream", async (req, res) => {
-
   try {
-
-    const { videoId, type } = req.query
+    const { videoId, type } = req.query;
 
     if (!videoId) {
-      return res.status(400).json({ error: "videoId required" })
+      return res.status(400).json({ error: "videoId required" });
     }
 
-    const cacheKey = videoId + "_" + (type || "audio")
-    const now = Date.now()
-
-    // CACHE VAR MI?
-    if (
-      streamCache[cacheKey] &&
-      (now - streamCache[cacheKey].time < STREAM_CACHE_DURATION)
-    ) {
-      console.log("STREAM CACHE →", videoId)
-      return res.json({
-        source: "cache",
-        streamUrl: streamCache[cacheKey].url
-      })
-    }
-
-    console.log("STREAM RESOLVE →", videoId)
-
-    const url = `https://www.youtube.com/watch?v=${videoId}`
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
 
     const command =
-      type === "video"
-        ? `yt-dlp -f best -g ${url}`
-        : `yt-dlp -f bestaudio -g ${url}`
+      type === "audio"
+        ? `yt-dlp -f bestaudio -g ${url}`
+        : `yt-dlp -f best -g ${url}`;
 
-    exec(command, { timeout: 15000 }, (error, stdout, stderr) => {
-
-      if (error || !stdout) {
-        console.error("yt-dlp error:", error)
-        return res.status(500).json({ error: "Stream resolve failed" })
-      }
-
-      const streamUrl = stdout.trim()
-
-      // CACHE’E YAZ
-      streamCache[cacheKey] = {
-        url: streamUrl,
-        time: now
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error("yt-dlp error:", error);
+        return res.status(500).json({ error: "Stream resolve failed" });
       }
 
       res.json({
-        source: "youtube",
-        streamUrl
-      })
-    })
-
+        streamUrl: stdout.trim(),
+      });
+    });
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: "Internal error" })
+    console.error(err);
+    res.status(500).json({ error: "Internal error" });
   }
-})
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Admin backend running on port ${PORT}`);
