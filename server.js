@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
-const ytdlp = require("yt-dlp-exec");
+const { exec } = require("child_process");
 const cors = require("cors");
 const fs = require("fs");
 const axios = require("axios");
@@ -10,31 +10,19 @@ const rateLimit = require("express-rate-limit");
 const app = express();
 app.set("trust proxy", 1);
 
+app.use(cors());
+app.use(express.json());
+
+/* =========================
+   HEALTH
+========================= */
+
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use(cors());
-app.use(express.json());
-
-const CONFIG_FILE = "config.json";
-const DATA_FILE = "blockedChannels.json";
-
 /* =========================
    RATE LIMIT
-========================= */
-
-
-const searchLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 40,
-  message: {
-    error: "Too many search requests. Please wait 1 minute."
-  }
-});
-
-/* =========================
-   APP AUTH
 ========================= */
 
 app.use(rateLimit({
@@ -42,9 +30,17 @@ app.use(rateLimit({
   max: 500
 }));
 
+const searchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40
+});
+
 /* =========================
-   CONFIG & BLOCKED FILES
+   FILES
 ========================= */
+
+const CONFIG_FILE = "config.json";
+const DATA_FILE = "blockedChannels.json";
 
 if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
@@ -57,6 +53,10 @@ if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify([]));
 }
 
+/* =========================
+   CONFIG ENDPOINTS
+========================= */
+
 app.get("/config", (req, res) => {
   const data = fs.readFileSync(CONFIG_FILE);
   res.json(JSON.parse(data));
@@ -66,6 +66,10 @@ app.post("/config", (req, res) => {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(req.body, null, 2));
   res.json({ message: "Config updated successfully" });
 });
+
+/* =========================
+   BLOCKED CHANNELS
+========================= */
 
 app.get("/blocked-channels", (req, res) => {
   const data = fs.readFileSync(DATA_FILE);
@@ -140,9 +144,14 @@ app.get("/top50", async (req, res) => {
     res.json({ source: "youtube", data: top50Cache });
 
   } catch (error) {
+    console.error(error.message);
     res.status(500).json({ error: "YouTube API error" });
   }
 });
+
+/* =========================
+   SEARCH
+========================= */
 
 let searchCache = {};
 const SEARCH_CACHE_DURATION = 60 * 60 * 1000;
@@ -190,42 +199,40 @@ app.get("/search", searchLimiter, async (req, res) => {
     res.json(result);
 
   } catch (error) {
+    console.error(error.message);
     res.status(500).json({ error: "Search failed" });
   }
 });
 
 /* =========================
-   STREAM ENDPOINT (FIXED)
+   STREAM (exec method)
 ========================= */
 
-app.get("/stream", async (req, res) => {
-  try {
-    const { videoId, type } = req.query;
+app.get("/stream", (req, res) => {
+  const { videoId, type } = req.query;
 
-    if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
-    }
+  if (!videoId) {
+    return res.status(400).json({ error: "videoId required" });
+  }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const format = type === "audio" ? "bestaudio" : "best";
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const format = type === "audio" ? "bestaudio" : "best";
 
-    const streamUrl = await ytdlp(url, {
-      format: format,
-      getUrl: true
-    });
-
-    if (!streamUrl) {
+  exec(`yt-dlp -f ${format} -g "${url}"`, (error, stdout, stderr) => {
+    if (error) {
+      console.error("yt-dlp error:", error);
       return res.status(500).json({ error: "Stream resolve failed" });
     }
 
+    const streamUrl = stdout.trim();
+
+    if (!streamUrl) {
+      return res.status(500).json({ error: "Empty stream URL" });
+    }
+
     res.json({ streamUrl });
-
-  } catch (err) {
-    console.error("yt-dlp error:", err.message);
-    res.status(500).json({ error: "Stream resolve failed" });
-  }
+  });
 });
-
 
 /* =========================
    START
