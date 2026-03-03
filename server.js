@@ -328,6 +328,10 @@ app.get("/stream", async (req, res) => {
   }
 });
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Admin backend running on port ${PORT}`);
 });
