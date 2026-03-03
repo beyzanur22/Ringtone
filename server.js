@@ -20,7 +20,7 @@ const rateLimit = require("express-rate-limit")
 
 app.use(rateLimit({
   windowMs: 60 * 1000,
-  max: 120
+  max: 500
 })) 
 
 
@@ -309,23 +309,29 @@ app.get("/stream", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    const command =
-      type === "audio"
-        ? `yt-dlp -f bestaudio -g ${url}`
-        : `yt-dlp -f best -g ${url}`;
+    const format = type === "audio" ? "bestaudio" : "best";
 
-    exec(command, (error, stdout, stderr) => {
+    const command = `yt-dlp -f ${format} -g "${url}"`;
+
+    exec(command, { timeout: 20000 }, (error, stdout, stderr) => {
       if (error) {
-        console.error("yt-dlp error:", error);
+        console.error("yt-dlp error:", error.message);
         return res.status(500).json({ error: "Stream resolve failed" });
       }
 
+      const streamUrl = stdout.trim();
+
+      if (!streamUrl) {
+        return res.status(500).json({ error: "Empty stream URL" });
+      }
+
       res.json({
-        streamUrl: stdout.trim(),
+        streamUrl: streamUrl
       });
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("Stream endpoint error:", err.message);
     res.status(500).json({ error: "Internal error" });
   }
 });
