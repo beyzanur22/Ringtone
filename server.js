@@ -215,10 +215,11 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const format = type === "audio" ? "bestaudio" : "best";
 
-    const streamUrl = await ytdlp(url, {
+    //  Stream URL'yi al
+    const streamUrl = await ytdlp(youtubeUrl, {
       format: format,
       getUrl: true
     });
@@ -227,11 +228,28 @@ app.get("/stream", async (req, res) => {
       return res.status(500).json({ error: "Stream resolve failed" });
     }
 
-    res.json({ streamUrl: streamUrl.toString().trim() });
+    const finalUrl = streamUrl.toString().trim();
+
+    //  Googlevideo stream'ini aç
+    const response = await axios({
+      method: "GET",
+      url: finalUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    //  Header’ları Android’e geçir
+    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Content-Length", response.headers["content-length"] || "");
+
+    //  STREAM PIPE
+    response.data.pipe(res);
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Stream resolve failed" });
+    res.status(500).json({ error: "Streaming failed" });
   }
 });
 
