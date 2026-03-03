@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
-const { exec } = require("child_process");
+const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const axios = require("axios");
@@ -207,31 +207,32 @@ app.get("/search", searchLimiter, async (req, res) => {
 /* =========================
    STREAM (exec method)
 ========================= */
+app.get("/stream", async (req, res) => {
+  try {
+    const { videoId, type } = req.query;
 
-app.get("/stream", (req, res) => {
-  const { videoId, type } = req.query;
+    if (!videoId) {
+      return res.status(400).json({ error: "videoId required" });
+    }
 
-  if (!videoId) {
-    return res.status(400).json({ error: "videoId required" });
-  }
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const format = type === "audio" ? "bestaudio" : "best";
 
-  const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const format = type === "audio" ? "bestaudio" : "best";
+    const streamUrl = await ytdlp(url, {
+      format: format,
+      getUrl: true
+    });
 
-  exec(`yt-dlp -f ${format} -g "${url}"`, (error, stdout, stderr) => {
-    if (error) {
-      console.error("yt-dlp error:", error);
+    if (!streamUrl) {
       return res.status(500).json({ error: "Stream resolve failed" });
     }
 
-    const streamUrl = stdout.trim();
+    res.json({ streamUrl: streamUrl.toString().trim() });
 
-    if (!streamUrl) {
-      return res.status(500).json({ error: "Empty stream URL" });
-    }
-
-    res.json({ streamUrl });
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Stream resolve failed" });
+  }
 });
 
 /* =========================
