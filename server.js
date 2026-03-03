@@ -8,7 +8,11 @@ const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 
 const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 app.use(cors());
 app.use(express.json());
@@ -20,10 +24,6 @@ const DATA_FILE = "blockedChannels.json";
    RATE LIMIT
 ========================= */
 
-app.use(rateLimit({
-  windowMs: 60 * 1000,
-  max: 500
-}));
 
 const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -37,26 +37,10 @@ const searchLimiter = rateLimit({
    APP AUTH
 ========================= */
 
-const APP_SECRET = process.env.APP_SECRET;
-
-if (!APP_SECRET) {
-  console.error("APP_SECRET bulunamadı!");
-  process.exit(1);
-}
-
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-app.use((req, res, next) => {
-  const clientKey = req.headers["x-app-key"];
-
-  if (!clientKey || clientKey !== APP_SECRET) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  next();
-});
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 500
+}));
 
 /* =========================
    CONFIG & BLOCKED FILES
@@ -242,13 +226,6 @@ app.get("/stream", async (req, res) => {
   }
 });
 
-/* =========================
-   HEALTH
-========================= */
-
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
 
 /* =========================
    START
