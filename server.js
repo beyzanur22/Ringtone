@@ -1,10 +1,18 @@
 require("dotenv").config();
 
+const axios = require("axios");
+const http = require("http");
+const https = require("https");
+
+const axiosClient = axios.create({
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true })
+});
+
 const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
-const axios = require("axios");
 const rateLimit = require("express-rate-limit");
 
 const app = express();
@@ -112,19 +120,25 @@ if (!YOUTUBE_API_KEY) {
   process.exit(1);
 }
 
+/* =========================
+   TOP50 CACHE
+========================= */
+
 let top50Cache = null;
 let top50CacheTime = 0;
 const CACHE_DURATION = 60 * 60 * 1000;
 
 app.get("/top50", async (req, res) => {
+
   try {
+
     const now = Date.now();
 
     if (top50Cache && (now - top50CacheTime < CACHE_DURATION)) {
       return res.json({ source: "cache", data: top50Cache });
     }
 
-    const response = await axios.get(
+    const response = await axiosClient.get(
       "https://www.googleapis.com/youtube/v3/videos",
       {
         params: {
@@ -144,20 +158,26 @@ app.get("/top50", async (req, res) => {
     res.json({ source: "youtube", data: top50Cache });
 
   } catch (error) {
+
     console.error(error.message);
     res.status(500).json({ error: "YouTube API error" });
+
   }
+
 });
 
 /* =========================
-   SEARCH
+   SEARCH CACHE
 ========================= */
 
-let searchCache = {};
+let searchCache = new Map();
+const MAX_CACHE = 100;
 const SEARCH_CACHE_DURATION = 60 * 60 * 1000;
 
 app.get("/search", searchLimiter, async (req, res) => {
+
   try {
+
     const query = req.query.q?.toLowerCase().trim();
 
     if (!query) {
@@ -168,14 +188,18 @@ app.get("/search", searchLimiter, async (req, res) => {
     const cacheKey = query + "_" + pageToken;
     const now = Date.now();
 
-    if (
-      searchCache[cacheKey] &&
-      (now - searchCache[cacheKey].time < SEARCH_CACHE_DURATION)
-    ) {
-      return res.json(searchCache[cacheKey].data);
+    if (searchCache.has(cacheKey)) {
+
+      const cached = searchCache.get(cacheKey);
+
+      if (now - cached.time < SEARCH_CACHE_DURATION) {
+        return res.json(cached.data);
+      }
+
+      searchCache.delete(cacheKey);
     }
 
-    const response = await axios.get(
+    const response = await axiosClient.get(
       "https://www.googleapis.com/youtube/v3/search",
       {
         params: {
@@ -194,21 +218,32 @@ app.get("/search", searchLimiter, async (req, res) => {
       data: response.data.items
     };
 
-    searchCache[cacheKey] = { data: result, time: now };
+    searchCache.set(cacheKey, { data: result, time: now });
+
+    if (searchCache.size > MAX_CACHE) {
+      const firstKey = searchCache.keys().next().value;
+      searchCache.delete(firstKey);
+    }
 
     res.json(result);
 
   } catch (error) {
+
     console.error(error.message);
     res.status(500).json({ error: "Search failed" });
+
   }
+
 });
 
 /* =========================
-   STREAM (exec method)
+   STREAM
 ========================= */
+
 app.get("/stream", async (req, res) => {
+
   try {
+
     const { videoId, type } = req.query;
 
     if (!videoId) {
@@ -218,7 +253,6 @@ app.get("/stream", async (req, res) => {
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const format = type === "audio" ? "bestaudio" : "best";
 
-    //  Stream URL'yi al
     const streamUrl = await ytdlp(youtubeUrl, {
       format: format,
       getUrl: true
@@ -230,7 +264,6 @@ app.get("/stream", async (req, res) => {
 
     const finalUrl = streamUrl.toString().trim();
 
-    //  Googlevideo stream'ini aç
     const response = await axios({
       method: "GET",
       url: finalUrl,
@@ -240,17 +273,18 @@ app.get("/stream", async (req, res) => {
       }
     });
 
-    //  Header’ları Android’e geçir
     res.setHeader("Content-Type", response.headers["content-type"]);
     res.setHeader("Content-Length", response.headers["content-length"] || "");
 
-    //  STREAM PIPE
     response.data.pipe(res);
 
   } catch (err) {
+
     console.error(err);
     res.status(500).json({ error: "Streaming failed" });
+
   }
+
 });
 
 /* =========================
@@ -262,3 +296,21 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend running on port ${PORT}`);
 });
+
+/* =========================
+   RAILWAY KEEP ALIVE
+========================= */
+
+setInterval(async () => {
+
+  try {
+
+    await axiosClient.get(
+      "https://ringtone-production.up.railway.app/health"
+    );
+
+    console.log("Server warm");
+
+  } catch {}
+
+}, 240000);
