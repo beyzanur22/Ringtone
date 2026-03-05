@@ -165,7 +165,36 @@ app.get("/top50", async (req, res) => {
   }
 
 });
+async function warmTop50() {
 
+  try {
+
+    const response = await axiosClient.get(
+      "https://www.googleapis.com/youtube/v3/videos",
+      {
+        params: {
+          part: "snippet,contentDetails,statistics",
+          chart: "mostPopular",
+          regionCode: "US",
+          maxResults: 50,
+          videoCategoryId: 10,
+          key: YOUTUBE_API_KEY
+        }
+      }
+    );
+
+    top50Cache = response.data.items;
+    top50CacheTime = Date.now();
+
+    console.log("Top50 cache hazır");
+
+  } catch (e) {
+
+    console.log("Top50 warmup başarısız");
+
+  }
+
+}
 /* =========================
    SEARCH CACHE
 ========================= */
@@ -206,7 +235,7 @@ app.get("/search", searchLimiter, async (req, res) => {
           part: "snippet",
           q: query,
           type: "video",
-          maxResults: 20,
+          maxResults: 15,
           pageToken: pageToken,
           key: YOUTUBE_API_KEY
         }
@@ -264,14 +293,15 @@ app.get("/stream", async (req, res) => {
 
     const finalUrl = streamUrl.toString().trim();
 
-    const response = await axios({
-      method: "GET",
-      url: finalUrl,
-      responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
+  const response = await axiosClient({
+  method: "GET",
+  url: finalUrl,
+  responseType: "stream",
+headers: {
+  "User-Agent": "Mozilla/5.0",
+  "Accept": "*/*"
+}
+});
 
     res.setHeader("Content-Type", response.headers["content-type"]);
     res.setHeader("Content-Length", response.headers["content-length"] || "");
@@ -293,24 +323,10 @@ app.get("/stream", async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, "0.0.0.0", async () => {
+
   console.log(`Backend running on port ${PORT}`);
+
+  await warmTop50();
+
 });
-
-/* =========================
-   RAILWAY KEEP ALIVE
-========================= */
-
-setInterval(async () => {
-
-  try {
-
-    await axiosClient.get(
-      "https://ringtone-production.up.railway.app/health"
-    );
-
-    console.log("Server warm");
-
-  } catch {}
-
-}, 240000);
