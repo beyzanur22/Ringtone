@@ -155,7 +155,6 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
-
 app.get("/stream", async (req, res) => {
 
   try {
@@ -169,22 +168,29 @@ app.get("/stream", async (req, res) => {
     console.log("Streaming video:", videoId);
 
     const yt = await axios.post(
-      "https://youtubei.googleapis.com/youtubei/v1/player",
+      "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyA",
       {
         context: {
           client: {
             clientName: "ANDROID",
-            clientVersion: "17.31.35"
+            clientVersion: "17.31.35",
+            androidSdkVersion: 30
           }
         },
         videoId: videoId
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+        }
       }
     );
 
     const formats = yt.data.streamingData.adaptiveFormats;
 
-    const audio = formats.find(f => 
-      f.mimeType && f.mimeType.includes("audio")
+    const audio = formats.find(f =>
+      f.mimeType && f.mimeType.includes("audio/mp4")
     );
 
     if (!audio || !audio.url) {
