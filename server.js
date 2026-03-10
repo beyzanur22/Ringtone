@@ -97,22 +97,11 @@ app.post("/config", (req, res) => {
 // TOP 50
 
 app.get("/top50", async (req, res) => {
-
-    console.log("TOP50 REQUEST", req.ip);
-
     const now = Date.now();
-
     try {
-
         if (top50Cache && (now - top50CacheTime < CACHE_DURATION)) {
-
-            console.log("TOP50 CACHE RETURN");
-
             return res.json({ source: "cache", data: top50Cache });
         }
-
-        console.log("TOP50 CALLING YOUTUBE API");
-
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
             params: {
                 part: "snippet,contentDetails,statistics",
@@ -123,47 +112,28 @@ app.get("/top50", async (req, res) => {
                 key: YOUTUBE_API_KEY
             }
         });
-
-        console.log("TOP50 YOUTUBE RESPONSE OK");
-
         top50Cache = response.data.items;
         top50CacheTime = now;
-
         res.json({ source: "youtube", data: top50Cache });
-
     } catch (error) {
-
-        console.error("TOP50 ERROR:", error.message);
-
         res.status(500).json({ error: "YouTube API error" });
     }
 });
 
 // SEARCH
+let searchCache = new Map();
 app.get("/search", searchLimiter, async (req, res) => {
-
-    console.log("SEARCH REQUEST", req.query.q);
-
     try {
-
         const query = req.query.q?.toLowerCase().trim();
-
         if (!query) return res.status(400).json({ error: "Query required" });
 
         const pageToken = req.query.pageToken || "";
-
         const cacheKey = query + "_" + pageToken;
-
+        
         if (searchCache.has(cacheKey)) {
-
-            console.log("SEARCH CACHE RETURN");
-
             const cached = searchCache.get(cacheKey);
-
             if (Date.now() - cached.time < (60 * 60 * 1000)) return res.json(cached.data);
         }
-
-        console.log("SEARCH CALLING YOUTUBE API");
 
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
             params: {
@@ -176,18 +146,10 @@ app.get("/search", searchLimiter, async (req, res) => {
             }
         });
 
-        console.log("SEARCH YOUTUBE RESPONSE OK");
-
         const result = { nextPageToken: response.data.nextPageToken, data: response.data.items };
-
         searchCache.set(cacheKey, { data: result, time: Date.now() });
-
         res.json(result);
-
     } catch (error) {
-
-        console.error("SEARCH ERROR:", error.message);
-
         res.status(500).json({ error: "Search failed" });
     }
 });
