@@ -172,25 +172,30 @@ app.get("/stream", async (req, res) => {
       `https://piped.projectsegfau.lt/api/v1/streams/${videoId}`
     );
 
-    let audioUrl = null;
+    let streamUrl = null;
 
-    // 1️⃣ normal audio stream
+    // 1️⃣ audio varsa
     if (piped.data.audioStreams && piped.data.audioStreams.length > 0) {
-      audioUrl = piped.data.audioStreams[0].url;
+      streamUrl = piped.data.audioStreams[0].url;
     }
 
-    // 2️⃣ fallback HLS
-    if (!audioUrl && piped.data.hls) {
-      audioUrl = piped.data.hls;
+    // 2️⃣ video stream fallback
+    if (!streamUrl && piped.data.videoStreams && piped.data.videoStreams.length > 0) {
+      streamUrl = piped.data.videoStreams[0].url;
     }
 
-    if (!audioUrl) {
-      throw new Error("Audio stream bulunamadı");
+    // 3️⃣ HLS fallback
+    if (!streamUrl && piped.data.hls) {
+      streamUrl = piped.data.hls;
+    }
+
+    if (!streamUrl) {
+      throw new Error("Stream bulunamadı");
     }
 
     const stream = await axios({
       method: "GET",
-      url: audioUrl,
+      url: streamUrl,
       responseType: "stream"
     });
 
