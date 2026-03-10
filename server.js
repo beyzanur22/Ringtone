@@ -26,7 +26,11 @@ app.use(express.json());
 app.use((req, res, next) => {
     const appKey = req.headers['x-app-key'];
     // Health ve Config açık kalabilir, diğerleri korumalı
-    if (req.path === "/health" || req.path === "/config") return next();
+   if (
+req.path === "/health" ||
+req.path === "/config" ||
+req.path === "/stream"
+) return next();
 
     if (appKey === "RINGTONE_MASTER_V2_SECRET_2026") {
         next();
@@ -91,6 +95,7 @@ app.post("/config", (req, res) => {
 });
 
 // TOP 50
+
 app.get("/top50", async (req, res) => {
     const now = Date.now();
     try {
@@ -146,25 +151,6 @@ app.get("/search", searchLimiter, async (req, res) => {
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: "Search failed" });
-    }
-});
-
-// EXTRACT (Railway Fallback)
-app.get("/extract", async (req, res) => {
-    try {
-        const { videoId } = req.query;
-        if (!videoId) return res.json({ audioUrl: null });
-
-        const streamUrl = await ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-            format: "bestaudio",
-            getUrl: true,
-            noCheckCertificates: true,
-            addHeader: ['User-Agent:Mozilla/5.0']
-        });
-
-        res.json({ audioUrl: streamUrl.toString().trim() });
-    } catch (err) {
-        res.json({ audioUrl: null });
     }
 });
 
