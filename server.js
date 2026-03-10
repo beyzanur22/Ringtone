@@ -168,7 +168,9 @@ app.get("/stream", async (req, res) => {
       `https://www.youtube.com/watch?v=${videoId}`,
       {
         format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
+        getUrl: true,
+        cookies: "cookies.txt"
+
       }
     );
 
