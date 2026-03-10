@@ -164,18 +164,13 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-console.log("Video ID:", videoId)
-console.log("Cookies path:", __dirname + "/cookies.txt")
-
-   const streamUrl = await ytdlp(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-   format: "bestaudio",
-extractorArgs: "youtube:player_client=android",
-    getUrl: true,
-    cookies: __dirname + "/cookies.txt"
-  }
-);
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
+      }
+    );
 
     console.log("STREAM URL:", streamUrl);
 
@@ -194,7 +189,7 @@ extractorArgs: "youtube:player_client=android",
 
   } catch (err) {
 
-  console.error("STREAM ERROR:", err.stdout || err.stderr || err);
+    console.error("STREAM ERROR:", err);
 
     res.status(500).json({
       error: "Streaming failed",
