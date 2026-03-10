@@ -169,7 +169,7 @@ app.get("/stream", async (req, res) => {
     const streamUrl = await ytdlp(
       `https://www.youtube.com/watch?v=${videoId}`,
       {
-        format: "bestaudio",
+       format: "bestaudio[ext=m4a]/bestaudio/best",
         getUrl: true,
 
         // yt-dlp’yi browser gibi göster
