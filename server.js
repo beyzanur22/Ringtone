@@ -166,13 +166,12 @@ app.get("/stream", async (req, res) => {
 
 console.log("Video ID:", videoId)
 console.log("Cookies path:", __dirname + "/cookies.txt")
-
-   const streamUrl = await ytdlp(
+const streamUrl = await ytdlp(
   `https://www.youtube.com/watch?v=${videoId}`,
   {
-    format: "bestaudio",
+    format: "bestaudio/best",
     getUrl: true,
-    extractorArgs: "youtube:player_client=android"
+    cookies: __dirname + "/cookies.txt"
   }
 );
 
