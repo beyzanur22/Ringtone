@@ -167,27 +167,20 @@ app.get("/stream", async (req, res) => {
     console.log("Streaming video:", videoId);
 
     const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-       format: "bestaudio[ext=m4a]/bestaudio/best",
-        getUrl: true,
+  `https://www.youtube.com/watch?v=${videoId}`,
+  {
+    format: "bestaudio",
+    getUrl: true,
 
-        // yt-dlp’yi browser gibi göster
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
-        ],
+    extractorArgs: "youtube:player_client=android_music",
 
-        // bazen korumayı aşar
-        noCheckCertificates: true,
-        preferFreeFormats: true,
-        noWarnings: true,
+    addHeader: [
+      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ],
 
-        // önemli
-          extractorArgs: "youtube:player_client=android,web",
-         cookies: __dirname + "/cookies.txt"
-      }
-    );
+    cookies: __dirname + "/cookies.txt"
+  }
+);
 
     console.log("STREAM URL:", streamUrl);
 
