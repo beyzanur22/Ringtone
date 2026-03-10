@@ -169,7 +169,7 @@ app.get("/stream", async (req, res) => {
     console.log("Streaming video:", videoId);
 
     const piped = await axios.get(
-      `https://pipedapi.kavin.rocks/api/v1/streams/${videoId}`
+      `https://piped.projectsegfau.lt/api/v1/streams/${videoId}`
     );
 
     let audioUrl = null;
