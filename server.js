@@ -156,7 +156,6 @@ app.get("/search", searchLimiter, async (req, res) => {
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
 app.get("/stream", async (req, res) => {
-
   try {
 
     const { videoId } = req.query;
@@ -168,33 +167,37 @@ app.get("/stream", async (req, res) => {
     console.log("Streaming video:", videoId);
 
     const yt = await axios.post(
-      "https://youtubei.googleapis.com/youtubei/v1/player?key=AIzaSyA",
+      "https://youtubei.googleapis.com/youtubei/v1/player",
       {
+        videoId: videoId,
         context: {
           client: {
             clientName: "ANDROID",
             clientVersion: "17.31.35",
             androidSdkVersion: 30
           }
-        },
-        videoId: videoId
+        }
       },
       {
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+          "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+          "X-Youtube-Client-Name": "3",
+          "X-Youtube-Client-Version": "17.31.35"
         }
       }
     );
 
-    const formats = yt.data.streamingData.adaptiveFormats;
+    const formats = yt.data.streamingData?.adaptiveFormats;
 
-    const audio = formats.find(f =>
-      f.mimeType && f.mimeType.includes("audio/mp4")
-    );
+    if (!formats) {
+      throw new Error("No streaming data");
+    }
+
+    const audio = formats.find(f => f.mimeType?.includes("audio"));
 
     if (!audio || !audio.url) {
-      return res.status(500).json({ error: "Audio stream not found" });
+      throw new Error("Audio stream not found");
     }
 
     console.log("Audio URL found");
@@ -211,14 +214,13 @@ app.get("/stream", async (req, res) => {
 
   } catch (err) {
 
-    console.error("STREAM ERROR:", err.message);
+    console.error("STREAM ERROR:", err.response?.data || err.message);
 
     res.status(500).json({
       error: "Streaming failed"
     });
 
   }
-
 });
 /* =========================
    WARMUP & START
