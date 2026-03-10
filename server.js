@@ -172,7 +172,7 @@ console.log("Cookies path:", __dirname + "/cookies.txt")
   {
     format: "bestaudio[ext=m4a]/bestaudio",
     getUrl: true,
-    cookiesFile: __dirname + "/cookies.txt"
+    cookies: __dirname + "/cookies.txt"
   }
 );
 
