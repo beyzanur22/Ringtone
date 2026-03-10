@@ -159,7 +159,7 @@ app.get("/stream", async (req, res) => {
     try {
         const { videoId } = req.query;
         const streamUrl = await ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-            format: "bestaudio",
+           format: "bestaudio[ext=m4a]/bestaudio",
             getUrl: true
         });
         const response = await axiosClient({
