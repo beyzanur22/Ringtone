@@ -157,52 +157,60 @@ app.get("/search", searchLimiter, async (req, res) => {
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
 app.get("/stream", async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
+
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
     console.log("Streaming video:", videoId);
 
-    const streamUrl = await ytdlp(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-    format: "bestaudio",
-    getUrl: true,
+    const yt = await axios.post(
+      "https://youtubei.googleapis.com/youtubei/v1/player",
+      {
+        context: {
+          client: {
+            clientName: "ANDROID",
+            clientVersion: "17.31.35"
+          }
+        },
+        videoId: videoId
+      }
+    );
 
-    extractorArgs: "youtube:player_client=android_music",
+    const formats = yt.data.streamingData.adaptiveFormats;
 
-    addHeader: [
-      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-    ],
+    const audio = formats.find(f =>
+      f.mimeType && f.mimeType.includes("audio")
+    );
 
-    cookies: __dirname + "/cookies.txt"
-  }
-);
+    if (!audio || !audio.url) {
+      throw new Error("Audio stream bulunamadı");
+    }
 
-    console.log("STREAM URL:", streamUrl);
-
-    const response = await axios({
+    const stream = await axios({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: audio.url,
       responseType: "stream"
     });
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Content-Type", "audio/mp4");
 
-    response.data.pipe(res);
+    stream.data.pipe(res);
 
   } catch (err) {
 
-    console.error("STREAM ERROR:", err.stdout || err.stderr || err);
+    console.error("STREAM ERROR:", err.response?.data || err.message);
 
     res.status(500).json({
       error: "Streaming failed"
     });
 
   }
+
 });
 /* =========================
    WARMUP & START
