@@ -159,62 +159,49 @@ app.get("/stream", async (req, res) => {
   try {
 
     const { videoId } = req.query;
-
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
     console.log("Streaming video:", videoId);
 
-    const yt = await axios.post(
-      "https://youtubei.googleapis.com/youtubei/v1/player",
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
       {
-        videoId: videoId,
-        context: {
-          client: {
-            clientName: "ANDROID",
-            clientVersion: "17.31.35",
-            androidSdkVersion: 30
-          }
-        }
-      },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-          "X-Youtube-Client-Name": "3",
-          "X-Youtube-Client-Version": "17.31.35"
-        }
+        format: "bestaudio",
+        getUrl: true,
+
+        // yt-dlp’yi browser gibi göster
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0"
+        ],
+
+        // bazen korumayı aşar
+        noCheckCertificates: true,
+        preferFreeFormats: true,
+        noWarnings: true,
+
+        // önemli
+        extractorArgs: "youtube:player_client=web"
       }
     );
 
-    const formats = yt.data.streamingData?.adaptiveFormats;
+    console.log("STREAM URL:", streamUrl);
 
-    if (!formats) {
-      throw new Error("No streaming data");
-    }
-
-    const audio = formats.find(f => f.mimeType?.includes("audio"));
-
-    if (!audio || !audio.url) {
-      throw new Error("Audio stream not found");
-    }
-
-    console.log("Audio URL found");
-
-    const stream = await axios({
+    const response = await axios({
       method: "GET",
-      url: audio.url,
+      url: streamUrl.toString().trim(),
       responseType: "stream"
     });
 
-    res.setHeader("Content-Type", "audio/mp4");
+    res.setHeader("Content-Type", response.headers["content-type"]);
 
-    stream.data.pipe(res);
+    response.data.pipe(res);
 
   } catch (err) {
 
-    console.error("STREAM ERROR:", err.response?.data || err.message);
+    console.error("STREAM ERROR:", err.stdout || err.stderr || err);
 
     res.status(500).json({
       error: "Streaming failed"
