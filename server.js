@@ -184,7 +184,8 @@ app.get("/stream", async (req, res) => {
         noWarnings: true,
 
         // önemli
-        extractorArgs: "youtube:player_client=web"
+        extractorArgs: "youtube:player_client=web",
+         cookies: __dirname + "/cookies.txt"
       }
     );
 
