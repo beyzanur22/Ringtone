@@ -4,7 +4,6 @@ const axios = require("axios");
 const http = require("http");
 const https = require("https");
 const express = require("express");
-const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit");
@@ -155,7 +154,10 @@ app.get("/search", searchLimiter, async (req, res) => {
 });
 
 // STREAM (Direct Pipe)
+// STREAM (Android YouTube API)
+
 app.get("/stream", async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -164,42 +166,53 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-console.log("Video ID:", videoId)
-console.log("Cookies path:", __dirname + "/cookies.txt")
-const streamUrl = await ytdlp(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-    format: "bestaudio/best",
-    getUrl: true,
-    cookies: __dirname + "/cookies.txt"
-  }
-);
+    console.log("Streaming video:", videoId);
 
-    console.log("STREAM URL:", streamUrl);
-
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
+    const yt = await axios.post(
+      "https://youtubei.googleapis.com/youtubei/v1/player",
+      {
+        context: {
+          client: {
+            clientName: "ANDROID",
+            clientVersion: "17.31.35"
+          }
+        },
+        videoId: videoId
       }
+    );
+
+    const formats = yt.data.streamingData.adaptiveFormats;
+
+    const audio = formats.find(f => 
+      f.mimeType && f.mimeType.includes("audio")
+    );
+
+    if (!audio || !audio.url) {
+      return res.status(500).json({ error: "Audio stream not found" });
+    }
+
+    console.log("Audio URL found");
+
+    const stream = await axios({
+      method: "GET",
+      url: audio.url,
+      responseType: "stream"
     });
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Content-Type", "audio/mp4");
 
-    response.data.pipe(res);
+    stream.data.pipe(res);
 
   } catch (err) {
 
-  console.error("STREAM ERROR:", err.stdout || err.stderr || err);
+    console.error("STREAM ERROR:", err.message);
 
     res.status(500).json({
-      error: "Streaming failed",
-      message: err.message
+      error: "Streaming failed"
     });
 
   }
+
 });
 /* =========================
    WARMUP & START
