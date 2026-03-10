@@ -168,29 +168,49 @@ app.get("/stream", async (req, res) => {
 
     console.log("Streaming video:", videoId);
 
-    const piped = await axios.get(
-      `https://piped.projectsegfau.lt/api/v1/streams/${videoId}`
-    );
+    const pipedInstances = [
+      "https://piped.projectsegfau.lt",
+      "https://piped.video",
+      "https://pipedapi.kavin.rocks"
+    ];
 
     let streamUrl = null;
 
-    // 1️⃣ audio varsa
-    if (piped.data.audioStreams && piped.data.audioStreams.length > 0) {
-      streamUrl = piped.data.audioStreams[0].url;
-    }
+    for (const instance of pipedInstances) {
 
-    // 2️⃣ video stream fallback
-    if (!streamUrl && piped.data.videoStreams && piped.data.videoStreams.length > 0) {
-      streamUrl = piped.data.videoStreams[0].url;
-    }
+      try {
 
-    // 3️⃣ HLS fallback
-    if (!streamUrl && piped.data.hls) {
-      streamUrl = piped.data.hls;
+        const response = await axios.get(
+          `${instance}/api/v1/streams/${videoId}`
+        );
+
+        const data = response.data;
+
+        if (data.audioStreams && data.audioStreams.length > 0) {
+          streamUrl = data.audioStreams[0].url;
+          break;
+        }
+
+        if (data.videoStreams && data.videoStreams.length > 0) {
+          streamUrl = data.videoStreams[0].url;
+          break;
+        }
+
+        if (data.hls) {
+          streamUrl = data.hls;
+          break;
+        }
+
+      } catch (e) {
+
+        console.log("Instance failed:", instance);
+
+      }
+
     }
 
     if (!streamUrl) {
-      throw new Error("Stream bulunamadı");
+      throw new Error("Hiçbir piped instance stream döndürmedi");
     }
 
     const stream = await axios({
