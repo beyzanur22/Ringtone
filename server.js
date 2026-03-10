@@ -169,21 +169,28 @@ app.get("/stream", async (req, res) => {
     console.log("Streaming video:", videoId);
 
     const piped = await axios.get(
-      `https://piped.video/api/v1/streams/${videoId}`
+      `https://pipedapi.kavin.rocks/api/v1/streams/${videoId}`
     );
 
-    const streams = piped.data.audioStreams;
+    let audioUrl = null;
 
-    if (!streams || streams.length === 0) {
+    // 1️⃣ normal audio stream
+    if (piped.data.audioStreams && piped.data.audioStreams.length > 0) {
+      audioUrl = piped.data.audioStreams[0].url;
+    }
+
+    // 2️⃣ fallback HLS
+    if (!audioUrl && piped.data.hls) {
+      audioUrl = piped.data.hls;
+    }
+
+    if (!audioUrl) {
       throw new Error("Audio stream bulunamadı");
     }
 
-    // en yüksek bitrate seç
-    const bestAudio = streams.sort((a,b) => b.bitrate - a.bitrate)[0];
-
     const stream = await axios({
       method: "GET",
-      url: bestAudio.url,
+      url: audioUrl,
       responseType: "stream"
     });
 
