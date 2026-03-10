@@ -169,7 +169,7 @@ app.get("/stream", async (req, res) => {
       {
         format: "bestaudio[ext=m4a]/bestaudio",
         getUrl: true,
-        cookies: "cookies.txt"
+        cookies: __dirname + "/cookies.txt"
 
       }
     );
