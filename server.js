@@ -170,7 +170,8 @@ console.log("Cookies path:", __dirname + "/cookies.txt")
    const streamUrl = await ytdlp(
   `https://www.youtube.com/watch?v=${videoId}`,
   {
-    format: "bestaudio[ext=m4a]/bestaudio",
+   format: "bestaudio",
+extractorArgs: "youtube:player_client=android",
     getUrl: true,
     cookies: __dirname + "/cookies.txt"
   }
