@@ -157,6 +157,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
 app.get("/stream", async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -171,15 +172,18 @@ app.get("/stream", async (req, res) => {
       `https://piped.video/api/v1/streams/${videoId}`
     );
 
-    const audio = piped.data.audioStreams?.[0]?.url;
+    const streams = piped.data.audioStreams;
 
-    if (!audio) {
+    if (!streams || streams.length === 0) {
       throw new Error("Audio stream bulunamadı");
     }
 
+    // en yüksek bitrate seç
+    const bestAudio = streams.sort((a,b) => b.bitrate - a.bitrate)[0];
+
     const stream = await axios({
       method: "GET",
-      url: audio,
+      url: bestAudio.url,
       responseType: "stream"
     });
 
@@ -196,6 +200,7 @@ app.get("/stream", async (req, res) => {
     });
 
   }
+
 });
 /* =========================
    WARMUP & START
