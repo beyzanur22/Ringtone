@@ -157,7 +157,6 @@ app.get("/search", searchLimiter, async (req, res) => {
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
 app.get("/stream", async (req, res) => {
-
   try {
 
     const { videoId } = req.query;
@@ -168,32 +167,19 @@ app.get("/stream", async (req, res) => {
 
     console.log("Streaming video:", videoId);
 
-    const yt = await axios.post(
-      "https://youtubei.googleapis.com/youtubei/v1/player",
-      {
-        context: {
-          client: {
-            clientName: "ANDROID",
-            clientVersion: "17.31.35"
-          }
-        },
-        videoId: videoId
-      }
+    const piped = await axios.get(
+      `https://piped.video/api/v1/streams/${videoId}`
     );
 
-    const formats = yt.data.streamingData.adaptiveFormats;
+    const audio = piped.data.audioStreams?.[0]?.url;
 
-    const audio = formats.find(f =>
-      f.mimeType && f.mimeType.includes("audio")
-    );
-
-    if (!audio || !audio.url) {
+    if (!audio) {
       throw new Error("Audio stream bulunamadı");
     }
 
     const stream = await axios({
       method: "GET",
-      url: audio.url,
+      url: audio,
       responseType: "stream"
     });
 
@@ -203,14 +189,13 @@ app.get("/stream", async (req, res) => {
 
   } catch (err) {
 
-    console.error("STREAM ERROR:", err.response?.data || err.message);
+    console.error("STREAM ERROR:", err.message);
 
     res.status(500).json({
       error: "Streaming failed"
     });
 
   }
-
 });
 /* =========================
    WARMUP & START
