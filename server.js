@@ -186,7 +186,7 @@ app.get("/stream", async (req, res) => {
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
-    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde .
+    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
 
   } catch (err) {
 
