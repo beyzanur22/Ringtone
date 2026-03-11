@@ -8,20 +8,6 @@ const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit");
-const { createClient } = require("redis");
-
-const redis = createClient({
-  url: process.env.REDIS_URL
-});
-
-redis.on("error", (err) => {
-  console.error("Redis error:", err);
-});
-
-(async () => {
-  await redis.connect();
-  console.log("Redis connected");
-})();
 
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -179,35 +165,15 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-  const cacheKey = `stream:${videoId}`;
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
+      }
+    );
 
-let streamUrl = await redis.get(cacheKey);
-
-if (streamUrl) {
-
-  console.log("CACHE HIT:", videoId);
-
-} else {
-
-  console.log("CACHE MISS:", videoId);
-
-  streamUrl = await ytdlp(
-    `https://www.youtube.com/watch?v=${videoId}`,
-    {
-      format: "bestaudio[ext=m4a]/bestaudio",
-      getUrl: true
-    }
-  );
-
-  streamUrl = streamUrl.toString().trim();
-
-  await redis.set(cacheKey, streamUrl, {
-    EX: 60 * 60 * 4
-  });
-
-}
-
-console.log("STREAM URL:", streamUrl);
+    console.log("STREAM URL:", streamUrl);
 
     const response = await axiosClient({
       method: "GET",
