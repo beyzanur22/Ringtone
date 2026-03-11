@@ -226,3 +226,59 @@ app.listen(PORT, "0.0.0.0", async () => {
     await warmTop50();
 });
 
+//mp3 
+app.get("/download/mp3", async (req, res) => {
+  try {
+
+    const { videoId } = req.query;
+
+    if (!videoId) {
+      return res.status(400).json({ error: "videoId required" });
+    }
+
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
+
+    const stream = ytdlp.execStream(url, {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: 0
+    });
+
+    stream.stdout.pipe(res);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "MP3 download failed" });
+  }
+});
+ 
+//mp4 
+
+app.get("/download/mp4", async (req, res) => {
+  try {
+
+    const { videoId } = req.query;
+
+    if (!videoId) {
+      return res.status(400).json({ error: "videoId required" });
+    }
+
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
+
+    const stream = ytdlp.execStream(url, {
+      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
+    });
+
+    stream.stdout.pipe(res);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "MP4 download failed" });
+  }
+});
