@@ -238,29 +238,26 @@ app.get("/download/mp3", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    const stream = ytdlp.execStream(url, {
-  format: "bestaudio[ext=m4a]/bestaudio",
-  output: "-"
-});
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
 
-res.setHeader("Content-Type", "audio/mp4");
+    const stream = ytdlp.execStream(url, {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: 0
+    });
 
     stream.stdout.pipe(res);
 
   } catch (err) {
-
-    console.error("DOWNLOAD ERROR:", err);
-
-    res.status(500).json({
-      error: "Download failed"
-    });
-
+    console.error(err);
+    res.status(500).json({ error: "MP3 download failed" });
   }
 });
  
 //mp4 
-app.get("/download/mp4", async (req, res) => {
 
+app.get("/download/mp4", async (req, res) => {
   try {
 
     const { videoId } = req.query;
@@ -275,7 +272,7 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
     const stream = ytdlp.execStream(url, {
-      format: "best[ext=mp4]/best"
+      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4"
     });
 
     stream.stdout.pipe(res);
