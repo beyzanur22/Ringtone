@@ -243,7 +243,6 @@ app.get("/stream/video", async (req, res) => {
   }
 
 });
-
 /* =========================
    WARMUP & START
 ========================= */
@@ -286,9 +285,11 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
 
-  const stream = ytdlp.execStream(url, {
-  format: "bestaudio[ext=m4a]/bestaudio"
-});
+    const stream = ytdlp.execStream(url, {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: 0
+    });
 
     stream.stdout.pipe(res);
 
