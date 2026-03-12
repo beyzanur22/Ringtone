@@ -1,18 +1,15 @@
 FROM node:20
 
+# Python ve ffmpeg kur
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg
-
-# python -> python3 alias
-RUN ln -s /usr/bin/python3 /usr/bin/python
+    apt-get install -y python3 python3-pip ffmpeg && \
+    ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY . .
 
 RUN npm install
-
-COPY . .
 
 EXPOSE 5000
 
