@@ -199,6 +199,51 @@ app.get("/stream", async (req, res) => {
 
   }
 });
+
+// VIDEO STREAM (MP4)
+app.get("/stream/video", async (req, res) => {
+
+  try {
+
+    const { videoId } = req.query;
+
+    if (!videoId) {
+      return res.status(400).json({ error: "videoId required" });
+    }
+
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "best[ext=mp4]/best",
+        getUrl: true
+      }
+    );
+
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    res.setHeader("Content-Type", response.headers["content-type"]);
+
+    response.data.pipe(res);
+
+  } catch (err) {
+
+    console.error("VIDEO STREAM ERROR:", err);
+
+    res.status(500).json({
+      error: "Video streaming failed"
+    });
+
+  }
+
+});
+
 /* =========================
    WARMUP & START
 ========================= */
@@ -241,11 +286,9 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
 
-    const stream = ytdlp.execStream(url, {
-      extractAudio: true,
-      audioFormat: "mp3",
-      audioQuality: 0
-    });
+  const stream = ytdlp.execStream(url, {
+  format: "bestaudio[ext=m4a]/bestaudio"
+});
 
     stream.stdout.pipe(res);
 
