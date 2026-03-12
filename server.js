@@ -273,6 +273,7 @@ app.listen(PORT, "0.0.0.0", async () => {
 
 //mp3 
 app.get("/download/mp3", async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -283,24 +284,31 @@ app.get("/download/mp3", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
+    const audioUrl = await ytdlp(url, {
+      format: "bestaudio",
+      getUrl: true
+    });
 
-  const stream = ytdlp.execStream(url, {
-  format: "bestaudio[ext=m4a]/bestaudio"
-});
-
-    stream.stdout.pipe(res);
+    res.json({
+      url: audioUrl.toString().trim()
+    });
 
   } catch (err) {
+
     console.error(err);
-    res.status(500).json({ error: "MP3 download failed" });
+
+    res.status(500).json({
+      error: "MP3 fetch failed"
+    });
+
   }
+
 });
- 
+
 //mp4 
 
 app.get("/download/mp4", async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -311,17 +319,23 @@ app.get("/download/mp4", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
-
-    const stream = ytdlp.execStream(url, {
-     format: "best[ext=mp4]/best"
+    const videoUrl = await ytdlp(url, {
+      format: "best[ext=mp4]",
+      getUrl: true
     });
 
-    stream.stdout.pipe(res);
+    res.json({
+      url: videoUrl.toString().trim()
+    });
 
   } catch (err) {
+
     console.error(err);
-    res.status(500).json({ error: "MP4 download failed" });
+
+    res.status(500).json({
+      error: "MP4 fetch failed"
+    });
+
   }
+
 });
