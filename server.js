@@ -7,7 +7,7 @@ const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
-const rateLimit = require("express-rate-limit");
+const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -61,11 +61,11 @@ if (!fs.existsSync(DATA_FILE)) {
    RATE LIMITS
 ========================= */
 app.use(rateLimit({
-    windowMs: 60 * 1000,
+    windowMs: 60 * 1000, //bot saldırı azaltma
     max: 120
 }));
 
-const searchLimiter = rateLimit({
+const searchLimiter = rateLimit({ //spam search engellemek için.
     windowMs: 60 * 1000,
     max: 20
 });
@@ -250,17 +250,54 @@ app.get("/stream/video", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "best[ext=mp4]/best",
-        getUrl: true
+    const cacheKey = "video_" + videoId;
+
+    let streamUrl;
+
+    // CACHE VAR MI
+    if (streamCache.has(cacheKey)) {
+
+      const cached = streamCache.get(cacheKey);
+
+      if (Date.now() < cached.expire) {
+
+        streamUrl = cached.url;
+
+        console.log("VIDEO CACHE HIT:", videoId);
+
+      } else {
+
+        streamCache.delete(cacheKey);
+
       }
-    );
+
+    }
+
+    // CACHE YOKSA YT-DLP ÇALIŞTIR
+    if (!streamUrl) {
+
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {
+          format: "best[ext=mp4]/best",
+          getUrl: true
+        }
+      );
+
+      streamUrl = streamUrl.toString().trim();
+
+      streamCache.set(cacheKey, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+
+      console.log("VIDEO CACHE SAVE:", videoId);
+
+    }
 
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: streamUrl,
       responseType: "stream",
       headers: {
         "User-Agent": "Mozilla/5.0"
