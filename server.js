@@ -289,7 +289,12 @@ const stream = ytdlp.exec(
   url,
   {
     format: "bestaudio[ext=m4a]/bestaudio",
-    output: "-"
+    output: "-",
+    addHeader: [
+      "User-Agent:Mozilla/5.0",
+      "Accept-Language:en-US,en;q=0.9"
+    ],
+    extractorArgs: "youtube:player_client=android"
   },
   { stdio: ["ignore", "pipe", "pipe"] }
 );
@@ -327,7 +332,12 @@ const stream = ytdlp.exec(
   url,
   {
     format: "best[ext=mp4]/best",
-    output: "-"
+    output: "-",
+    addHeader: [
+      "User-Agent:Mozilla/5.0",
+      "Accept-Language:en-US,en;q=0.9"
+    ],
+    extractorArgs: "youtube:player_client=android"
   },
   { stdio: ["ignore", "pipe", "pipe"] }
 );
