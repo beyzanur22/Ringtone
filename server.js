@@ -285,9 +285,14 @@ app.get("/download/mp3", async (req, res) => {
  res.setHeader("Content-Type", "audio/mp4");
 res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-const stream = ytdlp.execStream(url, {
-  format: "bestaudio[ext=m4a]/bestaudio"
-});
+const stream = ytdlp.exec(
+  url,
+  {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    output: "-"
+  },
+  { stdio: ["ignore", "pipe", "pipe"] }
+);
 
 stream.stderr.on("data", (data) => {
   console.error("YTDLP ERROR:", data.toString());
@@ -318,9 +323,14 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-    const stream = ytdlp.execStream(url, {
-     format: "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best"
-    });
+   const stream = ytdlp.exec(
+  url,
+  {
+    format: "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best",
+    output: "-"
+  },
+  { stdio: ["ignore", "pipe", "pipe"] }
+);
 
 stream.stderr.on("data", (data) => {
   console.error("YTDLP ERROR:", data.toString());
