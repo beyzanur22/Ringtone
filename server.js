@@ -161,7 +161,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
-app.get("/stream", streamLimiter, async (req, res) => { //streamLimiter : DDoS  azaltır , server CPU korunur .
+app.get("/stream", async (req, res) => {
   try {
 
     const { videoId } = req.query;
@@ -258,15 +258,14 @@ app.get("/stream/video", async (req, res) => {
       }
     );
 
- const response = await axiosClient({
-  method: "GET",
-  url: streamUrl,
-  responseType: "stream",
-  timeout: 15000, //server donmaz , android beklemes 
-  headers: {
-    "User-Agent": "Mozilla/5.0"
-  }
-});
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
