@@ -290,11 +290,10 @@ const stream = ytdlp.exec(
   {
     format: "bestaudio[ext=m4a]/bestaudio",
     output: "-",
+    extractorArgs: "youtube:player_client=android",
     addHeader: [
-      "User-Agent:Mozilla/5.0",
-      "Accept-Language:en-US,en;q=0.9"
-    ],
-    extractorArgs: "youtube:player_client=android"
+      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
   },
   { stdio: ["ignore", "pipe", "pipe"] }
 );
@@ -333,15 +332,13 @@ const stream = ytdlp.exec(
   {
     format: "best[ext=mp4]/best",
     output: "-",
+    extractorArgs: "youtube:player_client=android",
     addHeader: [
-      "User-Agent:Mozilla/5.0",
-      "Accept-Language:en-US,en;q=0.9"
-    ],
-    extractorArgs: "youtube:player_client=android"
+      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
   },
   { stdio: ["ignore", "pipe", "pipe"] }
 );
-
 stream.stderr.on("data", (data) => {
   console.error("YTDLP ERROR:", data.toString());
 });
