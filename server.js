@@ -62,12 +62,12 @@ if (!fs.existsSync(DATA_FILE)) {
 ========================= */
 app.use(rateLimit({
     windowMs: 60 * 1000,
-    max: 500
+    max: 120
 }));
 
 const searchLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 40
+    max: 20
 });
 
 /* =========================
@@ -77,6 +77,11 @@ const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 let top50Cache = null;
 let top50CacheTime = 0;
 const CACHE_DURATION = 60 * 60 * 1000;
+/* =========================
+   STREAM CACHE
+========================= */
+const streamCache = new Map();
+const STREAM_CACHE_DURATION = 3 * 60 * 60 * 1000; // 3 saat
 
 /* =========================
    ENDPOINTS
@@ -165,19 +170,53 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
-      }
-    );
+    let streamUrl;
 
-    console.log("STREAM URL:", streamUrl);
+    // CACHE VAR MI
+    if (streamCache.has(videoId)) {
+
+      const cached = streamCache.get(videoId);
+
+      if (Date.now() < cached.expire) {
+
+        streamUrl = cached.url;
+
+        console.log("STREAM CACHE HIT:", videoId);
+
+      } else {
+
+        streamCache.delete(videoId);
+
+      }
+
+    }
+
+    // CACHE YOKSA YT-DLP ÇALIŞTIR
+    if (!streamUrl) {
+
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {
+          format: "bestaudio[ext=m4a]/bestaudio",
+          getUrl: true
+        }
+      );
+
+      streamUrl = streamUrl.toString().trim();
+
+      // CACHE'E KOY
+      streamCache.set(videoId, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+
+      console.log("STREAM CACHE SAVE:", videoId);
+
+    }
 
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: streamUrl,
       responseType: "stream",
       headers: {
         "User-Agent": "Mozilla/5.0"
@@ -186,7 +225,7 @@ app.get("/stream", async (req, res) => {
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
-    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
+    response.data.pipe(res);
 
   } catch (err) {
 
