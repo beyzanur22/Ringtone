@@ -6,7 +6,7 @@ RUN apt-get update && \
     ln -s /usr/bin/python3 /usr/bin/python
 
 # yt-dlp sabitle
-RUN pip3 install yt-dlp==2025.02.19
+RUN pip3 install --break-system-packages yt-dlp==2025.02.19
 
 WORKDIR /app
 
