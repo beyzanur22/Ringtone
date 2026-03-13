@@ -70,11 +70,6 @@ const searchLimiter = rateLimit({
     max: 20
 });
 
-const streamLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 60
-}); 
-
 /* =========================
    YOUTUBE API SETUP
 ========================= */
@@ -166,12 +161,10 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
-app.get("/stream", streamLimiter, async (req, res) => { //streamLimiter : DDoS  azaltır , server CPU korunur . 
+app.get("/stream", streamLimiter, async (req, res) => { //streamLimiter : DDoS  azaltır , server CPU korunur .
   try {
 
     const { videoId } = req.query;
-
-    console.log(`[STREAM] ${videoId} from ${req.ip}`); // hangi video çok oynatılıyor görmek için. 
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
@@ -225,7 +218,6 @@ app.get("/stream", streamLimiter, async (req, res) => { //streamLimiter : DDoS  
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      timeout: 15000,
       headers: {
         "User-Agent": "Mozilla/5.0"
       }
@@ -374,18 +366,3 @@ app.get("/download/mp4", async (req, res) => {
     res.status(500).json({ error: "MP4 download failed" });
   }
 });
-
-// stream cashe temizleme : 
-setInterval(() => {
-
-  const now = Date.now();
-
-  for (const [videoId, data] of streamCache.entries()) {
-
-    if (now > data.expire) {
-      streamCache.delete(videoId);
-    }
-
-  }
-
-}, 30 * 60 * 1000);  //RAM dolmaz. 
