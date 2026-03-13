@@ -271,84 +271,82 @@ app.listen(PORT, "0.0.0.0", async () => {
 });
 
 //mp3 
+
 app.get("/download/mp3", async (req, res) => {
+
   try {
 
-    const { videoId } = req.query;
+    const { videoId } = req.query
 
     if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
+      return res.status(400).json({ error: "videoId required" })
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
+      }
+    )
 
- res.setHeader("Content-Type", "audio/mp4");
-res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    })
 
-const stream = ytdlp.exec(
-  url,
-  {
-    format: "bestaudio[ext=m4a]/bestaudio",
-    output: "-",
-    extractorArgs: "youtube:player_client=android",
-    addHeader: [
-      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-    ]
-  },
-  { stdio: ["ignore", "pipe", "pipe"] }
-);
+    res.setHeader("Content-Type", "audio/mp4")
+    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a")
 
-stream.stderr.on("data", (data) => {
-  console.error("YTDLP ERROR:", data.toString());
-});
-req.on("close", () => {
-  stream.kill("SIGKILL");
-});
-    stream.stdout.pipe(res);
+    response.data.pipe(res)
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "MP3 download failed" });
+    console.error(err)
+    res.status(500).json({ error: "MP3 download failed" })
   }
-});
+
+})
  
 //mp4 
 app.get("/download/mp4", async (req, res) => {
+
   try {
 
-    const { videoId } = req.query;
+    const { videoId } = req.query
 
     if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
+      return res.status(400).json({ error: "videoId required" })
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "best[ext=mp4]/best",
+        getUrl: true
+      }
+    )
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    })
 
-const stream = ytdlp.exec(
-  url,
-  {
-    format: "best[ext=mp4]/best",
-    output: "-",
-    extractorArgs: "youtube:player_client=android",
-    addHeader: [
-      "User-Agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-    ]
-  },
-  { stdio: ["ignore", "pipe", "pipe"] }
-);
-stream.stderr.on("data", (data) => {
-  console.error("YTDLP ERROR:", data.toString());
-});
-req.on("close", () => {
-  stream.kill("SIGKILL");
-});
-    stream.stdout.pipe(res);
+    res.setHeader("Content-Type", "video/mp4")
+    res.setHeader("Content-Disposition", "attachment; filename=video.mp4")
+
+    response.data.pipe(res)
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "MP4 download failed" });
+    console.error(err)
+    res.status(500).json({ error: "MP4 download failed" })
   }
-});
+
+})
