@@ -156,15 +156,13 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM (Android YouTube API)
+
 app.get("/stream", async (req, res) => {
   try {
-
     const { videoId } = req.query;
-
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-
     const streamUrl = await ytdlp(
       `https://www.youtube.com/watch?v=${videoId}`,
       {
@@ -172,9 +170,7 @@ app.get("/stream", async (req, res) => {
         getUrl: true
       }
     );
-
     console.log("STREAM URL:", streamUrl);
-
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
@@ -183,22 +179,17 @@ app.get("/stream", async (req, res) => {
         "User-Agent": "Mozilla/5.0"
       }
     });
-
     res.setHeader("Content-Type", response.headers["content-type"]);
-
     response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
-
   } catch (err) {
-
     console.error("STREAM ERROR:", err);
-
     res.status(500).json({
       error: "Streaming failed",
       message: err.message
     });
-
   }
 });
+
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
