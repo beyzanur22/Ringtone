@@ -323,10 +323,10 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-   const stream = ytdlp.exec(
+const stream = ytdlp.exec(
   url,
   {
-    format: "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best",
+    format: "best[ext=mp4]/best",
     output: "-"
   },
   { stdio: ["ignore", "pipe", "pipe"] }
