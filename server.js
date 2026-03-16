@@ -69,6 +69,11 @@ const searchLimiter = rateLimit({ //spam search engellemek için.
     windowMs: 60 * 1000,
     max: 20
 });
+const downloadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10
+}); // downloadlimit
+
 
 /* =========================
    YOUTUBE API SETUP
@@ -82,6 +87,8 @@ const CACHE_DURATION = 60 * 60 * 1000;
 ========================= */
 const streamCache = new Map();
 const STREAM_CACHE_DURATION = 3 * 60 * 60 * 1000; // 3 saat
+const MAX_CACHE_SIZE = 500; // stream cache limit
+
 
 /* =========================
    ENDPOINTS
@@ -153,6 +160,10 @@ app.get("/search", searchLimiter, async (req, res) => {
 
         const result = { nextPageToken: response.data.nextPageToken, data: response.data.items };
         searchCache.set(cacheKey, { data: result, time: Date.now() });
+        if (searchCache.size > 200) {
+  const firstKey = searchCache.keys().next().value;
+  searchCache.delete(firstKey);
+} //search cashe limit 
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: "Search failed" });
@@ -194,13 +205,19 @@ app.get("/stream", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "bestaudio[ext=m4a]/bestaudio",
-          getUrl: true
-        }
-      );
+    streamUrl = await ytdlp(
+  `https://www.youtube.com/watch?v=${videoId}`,
+  {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:Mozilla/5.0"
+    ],
+    extractorArgs: "youtube:player_client=android",
+    noCheckCertificates: true
+  }
+);
 
       streamUrl = streamUrl.toString().trim();
 
@@ -218,12 +235,16 @@ app.get("/stream", async (req, res) => {
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
+     headers: {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+  "Accept": "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Referer": "https://www.youtube.com/"
+}
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Accept-Ranges", "bytes"); 
 
     response.data.pipe(res);
 
@@ -290,6 +311,10 @@ app.get("/stream/video", async (req, res) => {
         url: streamUrl,
         expire: Date.now() + STREAM_CACHE_DURATION
       });
+      if (streamCache.size > MAX_CACHE_SIZE) {
+      const firstKey = streamCache.keys().next().value;
+      streamCache.delete(firstKey);
+}
 
       console.log("VIDEO CACHE SAVE:", videoId);
 
@@ -346,8 +371,10 @@ app.listen(PORT, "0.0.0.0", async () => {
     await warmTop50();
 });
 
-//mp3 
-app.get("/download/mp3", async (req, res) => {
+//mp3 indirme kısmı güncel. 
+// AUDIO DOWNLOAD (M4A)
+app.get("/download/audio", downloadLimiter, async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -358,26 +385,47 @@ app.get("/download/mp3", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
-
-    const stream = ytdlp.execStream(url, {
-      extractAudio: true,
-      audioFormat: "mp3",
-      audioQuality: 0
+    let audioUrl = await ytdlp(url, {
+      format: "bestaudio[ext=m4a]/bestaudio",
+      getUrl: true
     });
 
-    stream.stdout.pipe(res);
+    audioUrl = audioUrl.toString().trim();
+
+    const response = await axiosClient({
+      method: "GET",
+      url: audioUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*",
+        "Referer": "https://www.youtube.com/"
+      }
+    });
+
+    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Content-Length", response.headers["content-length"]);
+    res.setHeader("Accept-Ranges", "bytes");
+
+    response.data.pipe(res);
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "MP3 download failed" });
+
+    console.error("AUDIO DOWNLOAD ERROR:", err);
+
+    res.status(500).json({
+      error: "Audio download failed"
+    });
+
   }
+
 });
  
 //mp4 
 
-app.get("/download/mp4", async (req, res) => {
+// VIDEO DOWNLOAD
+app.get("/download/mp4", downloadLimiter, async (req, res) => {
+
   try {
 
     const { videoId } = req.query;
@@ -388,17 +436,37 @@ app.get("/download/mp4", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
-
-    const stream = ytdlp.execStream(url, {
-     format: "best[ext=mp4]/best"
+    let videoUrl = await ytdlp(url, {
+      format: "best[ext=mp4]/best",
+      getUrl: true
     });
 
-    stream.stdout.pipe(res);
+    videoUrl = videoUrl.toString().trim();
+
+    const response = await axiosClient({
+      method: "GET",
+      url: videoUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Referer": "https://www.youtube.com/"
+      }
+    });
+
+    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.setHeader("Content-Length", response.headers["content-length"]);
+    res.setHeader("Accept-Ranges", "bytes");
+
+    response.data.pipe(res);
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "MP4 download failed" });
+
+    console.error("MP4 DOWNLOAD ERROR:", err);
+
+    res.status(500).json({
+      error: "MP4 download failed"
+    });
+
   }
+
 });
