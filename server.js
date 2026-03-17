@@ -363,9 +363,14 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-   const streamUrl = await ytdlp(url, {
+const streamUrl = await ytdlp(url, {
   format: "bestaudio[ext=m4a]/bestaudio",
-  getUrl: true
+  getUrl: true,
+  extractorArgs: "youtube:player_client=android", // EKLE
+  addHeader: [
+    "referer:youtube.com",
+    "user-agent:Mozilla/5.0"
+  ]
 });
 const response = await axios({
   method: "GET",
@@ -398,9 +403,14 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-   const streamUrl = await ytdlp(url, {
+ const streamUrl = await ytdlp(url, {
   format: "best[ext=mp4]/best",
-  getUrl: true
+  getUrl: true,
+  extractorArgs: "youtube:player_client=android", // EKLE
+  addHeader: [
+    "referer:youtube.com",
+    "user-agent:Mozilla/5.0"
+  ]
 });
 
 const response = await axios({
