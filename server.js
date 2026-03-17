@@ -29,7 +29,8 @@ app.use((req, res, next) => {
    if (
 req.path === "/health" ||
 req.path === "/config" ||
-req.path.startsWith("/stream")
+req.path.startsWith("/stream") ||
+req.path.startsWith("/download")
 ) return next();
 
     if (appKey === "RINGTONE_MASTER_V2_SECRET_2026") {
