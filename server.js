@@ -9,6 +9,13 @@ const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
+const PQueue = require("p-queue").default;
+
+const queue = new PQueue({
+  concurrency: 2,      // aynı anda max 2 işlem
+  interval: 1000,      // 1 saniyede
+  intervalCap: 3       // max 3 request
+});
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
     httpsAgent: new https.Agent({ keepAlive: true })
@@ -63,7 +70,7 @@ if (!fs.existsSync(DATA_FILE)) {
 ========================= */
 app.use(rateLimit({
     windowMs: 60 * 1000, //bot saldırı azaltma
-    max: 120
+    max: 40
 }));
 
 const searchLimiter = rateLimit({ //spam search engellemek için.
@@ -82,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 3 * 60 * 60 * 1000; // 3 saat
+const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
 
 /* =========================
    ENDPOINTS
@@ -363,28 +370,34 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-const streamUrl = await ytdlp(url, {
-  format: "bestaudio[ext=m4a]/bestaudio",
-  getUrl: true,
-  extractorArgs: "youtube:player_client=android", // EKLE
-  addHeader: [
-    "referer:youtube.com",
-    "user-agent:Mozilla/5.0"
-  ]
-});
-const response = await axios({
-  method: "GET",
-  url: streamUrl.toString().trim(),
-  responseType: "stream",
-  headers: { "User-Agent": "Mozilla/5.0" }
-});
+    const streamUrl = await queue.add(() =>
+      ytdlp(url, {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true,
+        extractorArgs: "youtube:player_client=android",
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0"
+        ]
+      })
+    );
 
-response.data.pipe(res);
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Invalid stream url" });
+    }
 
-  
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+
+    response.data.pipe(res);
 
   } catch (err) {
-    console.error(err);
+    console.error("MP3 ERROR:", err.message);
     res.status(500).json({ error: "Audio download failed" });
   }
 });
@@ -403,28 +416,34 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
- const streamUrl = await ytdlp(url, {
-  format: "best[ext=mp4]/best",
-  getUrl: true,
-  extractorArgs: "youtube:player_client=android", 
-  addHeader: [
-    "referer:youtube.com",
-    "user-agent:Mozilla/5.0"
-  ]
-});
+    const streamUrl = await queue.add(() =>
+      ytdlp(url, {
+        format: "best[ext=mp4]/best",
+        getUrl: true,
+        extractorArgs: "youtube:player_client=android",
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0"
+        ]
+      })
+    );
 
-const response = await axios({
-  method: "GET",
-  url: streamUrl.toString().trim(),
-  responseType: "stream",
-  headers: { "User-Agent": "Mozilla/5.0" }
-});
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Invalid stream url" });
+    }
 
-response.data.pipe(res);
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
 
+    response.data.pipe(res);
 
   } catch (err) {
-    console.error(err);
+    console.error("MP4 ERROR:", err.message);
     res.status(500).json({ error: "MP4 download failed" });
   }
 });
