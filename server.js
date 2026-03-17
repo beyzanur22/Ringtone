@@ -365,8 +365,7 @@ app.get("/download/mp3", async (req, res) => {
 
 const streamUrl = await ytdlp(url, {
   format: "bestaudio[ext=m4a]/bestaudio",
-  getUrl: true,
-  extractorArgs: "youtube:player_client=android", // EKLE
+  getUrl: true, // EKLE
   addHeader: [
     "referer:youtube.com",
     "user-agent:Mozilla/5.0"
@@ -406,7 +405,7 @@ app.get("/download/mp4", async (req, res) => {
  const streamUrl = await ytdlp(url, {
   format: "best[ext=mp4]/best",
   getUrl: true,
-  extractorArgs: "youtube:player_client=android", // EKLE
+  extractorArgs: "youtube:player_client=android", 
   addHeader: [
     "referer:youtube.com",
     "user-agent:Mozilla/5.0"
