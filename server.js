@@ -411,7 +411,6 @@ const response = await axios({
 
 response.data.pipe(res);
 
-    stream.stdout.pipe(res);
 
   } catch (err) {
     console.error(err);
