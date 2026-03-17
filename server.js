@@ -15,7 +15,7 @@ const axiosClient = axios.create({
 });
 
 const app = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", 1); 
 
 app.use(cors());
 app.use(express.json());
@@ -351,7 +351,6 @@ app.listen(PORT, "0.0.0.0", async () => {
 //mp3 
 app.get("/download/mp3", async (req, res) => {
   try {
-
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -360,27 +359,24 @@ app.get("/download/mp3", async (req, res) => {
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.mp3");
+    res.setHeader("Content-Type", "audio/mp4");
+    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
     const stream = ytdlp.execStream(url, {
-      extractAudio: true,
-      audioFormat: "mp3",
-      audioQuality: 0
+      format: "bestaudio[ext=m4a]/bestaudio"
     });
 
     stream.stdout.pipe(res);
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "MP3 download failed" });
+    res.status(500).json({ error: "Audio download failed" });
   }
 });
  
 //mp4 
 app.get("/download/mp4", async (req, res) => {
   try {
-
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -393,7 +389,7 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
     const stream = ytdlp.execStream(url, {
-     format: "best[ext=mp4]/best"
+      format: "best[ext=mp4]/best"
     });
 
     stream.stdout.pipe(res);
