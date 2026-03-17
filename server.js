@@ -362,11 +362,20 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-    const stream = ytdlp.execStream(url, {
-      format: "bestaudio[ext=m4a]/bestaudio"
-    });
+   const streamUrl = await ytdlp(url, {
+  format: "bestaudio[ext=m4a]/bestaudio",
+  getUrl: true
+});
+const response = await axios({
+  method: "GET",
+  url: streamUrl.toString().trim(),
+  responseType: "stream",
+  headers: { "User-Agent": "Mozilla/5.0" }
+});
 
-    stream.stdout.pipe(res);
+response.data.pipe(res);
+
+  
 
   } catch (err) {
     console.error(err);
@@ -388,9 +397,19 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-    const stream = ytdlp.execStream(url, {
-      format: "best[ext=mp4]/best"
-    });
+   const streamUrl = await ytdlp(url, {
+  format: "best[ext=mp4]/best",
+  getUrl: true
+});
+
+const response = await axios({
+  method: "GET",
+  url: streamUrl.toString().trim(),
+  responseType: "stream",
+  headers: { "User-Agent": "Mozilla/5.0" }
+});
+
+response.data.pipe(res);
 
     stream.stdout.pipe(res);
 
