@@ -195,17 +195,20 @@ app.get("/stream", async (req, res) => {
 
     // YOKSA YT-DLP (QUEUE İLE!)
     if (!streamUrl) {
-      streamUrl = await queue.add(() =>
-        ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-          format: "bestaudio[ext=m4a]/bestaudio",
-          getUrl: true,
-          extractorArgs: "youtube:player_client=android",
-          addHeader: [
-            "referer:https://www.youtube.com/",
-            "user-agent:Mozilla/5.0"
-          ]
-        })
-      );
+     streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "bestaudio/best",
+    getUrl: true,
+
+    addHeader: [
+      "referer:https://www.youtube.com/",
+      "user-agent:Mozilla/5.0"
+    ],
+
+    cookies: "./cookies.txt",
+    youtubeSkipDashManifest: true
+  })
+);
 
       streamUrl = streamUrl.toString().trim();
 
