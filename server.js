@@ -12,9 +12,9 @@ const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur .
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 2,      // aynı anda max 2 işlem
+  concurrency: 1,      // aynı anda max 1 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 3       // max 3 request
+  intervalCap: 2       // max 2 request
 });
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
