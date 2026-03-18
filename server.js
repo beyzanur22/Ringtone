@@ -10,6 +10,11 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 const Redis = require("ioredis");
 const redis = new Redis(process.env.REDIS_URL);
+const DOWNLOAD_DIR = "./downloads";
+
+if (!fs.existsSync(DOWNLOAD_DIR)) {
+  fs.mkdirSync(DOWNLOAD_DIR);
+}
 
 const PQueue = require("p-queue").default;
 
@@ -358,15 +363,27 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const filePath = `${DOWNLOAD_DIR}/${videoId}.m4a`;
+
+    //  1. DOSYA VAR MI?
+    if (fs.existsSync(filePath)) {
+      console.log("FILE CACHE HIT:", videoId);
+
+      res.setHeader("Content-Type", "audio/mp4");
+      res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
+
+      return fs.createReadStream(filePath).pipe(res);
+    }
+
+    console.log("DOWNLOAD CACHE MISS:", videoId);
+
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
-
-    const streamUrl = await queue.add(() =>
+    //  2. YT-DLP İLE DOSYAYA İNDİR
+    await queue.add(() =>
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true,
+        output: filePath,
         extractorArgs: "youtube:player_client=android",
         addHeader: [
           "referer:youtube.com",
@@ -375,19 +392,13 @@ app.get("/download/mp3", async (req, res) => {
       })
     );
 
-    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
-      return res.status(500).json({ error: "Invalid stream url" });
-    }
+    console.log("FILE SAVED:", videoId);
 
-    const response = await axios({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
+    //  3. CLIENT’A GÖNDER
+    res.setHeader("Content-Type", "audio/mp4");
+    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-    response.data.pipe(res);
+    fs.createReadStream(filePath).pipe(res);
 
   } catch (err) {
     console.error("MP3 ERROR:", err.message);
