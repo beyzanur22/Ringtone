@@ -12,9 +12,9 @@ const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur .
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 1,      // aynı anda max 2 işlem
+  concurrency: 2,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 1       // max 3 request
+  intervalCap: 3       // max 3 request
 });
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -89,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 24 *  60 * 1000; // 10 dk
+const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
 
 /* =========================
    ENDPOINTS
@@ -169,55 +169,57 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM 
-
 app.get("/stream", async (req, res) => {
   try {
+
     const { videoId } = req.query;
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const cacheKey = "audio_" + videoId;
     let streamUrl;
 
-    // CACHE
-    if (streamCache.has(cacheKey)) {
-      const cached = streamCache.get(cacheKey);
+    // CACHE VAR MI
+    if (streamCache.has(videoId)) {
+
+      const cached = streamCache.get(videoId);
 
       if (Date.now() < cached.expire) {
+
         streamUrl = cached.url;
-        console.log("AUDIO CACHE HIT:", videoId);
+
+        console.log("STREAM CACHE HIT:", videoId);
+
       } else {
-        streamCache.delete(cacheKey);
+
+        streamCache.delete(videoId);
+
       }
+
     }
 
-    // YOKSA YT-DLP (QUEUE İLE!)
+    // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
-     streamUrl = await queue.add(() =>
-  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: "bestaudio/best",
-    getUrl: true,
 
-    addHeader: [
-      "referer:https://www.youtube.com/",
-      "user-agent:Mozilla/5.0"
-    ],
-
-    cookies: "./cookies.txt",
-    youtubeSkipDashManifest: true
-  })
-);
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {                                                                
+          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
+          getUrl: true                                                                   
+        }
+      );
 
       streamUrl = streamUrl.toString().trim();
 
-      streamCache.set(cacheKey, {
+      // CACHE'E KOY
+      streamCache.set(videoId, {
         url: streamUrl,
         expire: Date.now() + STREAM_CACHE_DURATION
       });
 
-      console.log("AUDIO CACHE SAVE:", videoId);
+      console.log("STREAM CACHE SAVE:", videoId);
+
     }
 
     const response = await axiosClient({
@@ -230,14 +232,18 @@ app.get("/stream", async (req, res) => {
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
+
     response.data.pipe(res);
 
   } catch (err) {
-    console.error("STREAM ERROR:", err.message);
+
+    console.error("STREAM ERROR:", err);
 
     res.status(500).json({
-      error: "Streaming failed"
+      error: "Streaming failed",
+      message: err.message
     });
+
   }
 });
 
