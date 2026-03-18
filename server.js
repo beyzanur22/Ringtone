@@ -202,15 +202,32 @@ app.get("/stream", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {                                                                
-          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
-          getUrl: true                                                                   
-        }
-      );
+     try {
 
-      streamUrl = streamUrl.toString().trim();
+  streamUrl = await ytdlp(
+    `https://www.youtube.com/watch?v=${videoId}`,
+    {
+      format: "bestaudio[ext=m4a]/bestaudio",
+      getUrl: true,
+      extractorArgs: "youtube:player_client=android",
+      addHeader: [
+        "referer:youtube.com",
+        "user-agent:com.google.android.youtube/17.31.35"
+      ]
+    }
+  );
+
+  streamUrl = streamUrl.toString().trim();
+
+} catch (e) {
+
+  console.log("YT-DLP BLOCKED:", videoId);
+
+  return res.status(500).json({
+    error: "YTDLP_BLOCKED"
+  });
+
+}
 
       // CACHE'E KOY
       streamCache.set(videoId, {
