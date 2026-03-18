@@ -24,13 +24,9 @@ const queue = new PQueue({
   interval: 1000,      // 1 saniyede
   intervalCap: 2       // max 3 request
 });
-const HttpsProxyAgent = require("https-proxy-agent");
-
-const agent = PROXY ? new HttpsProxyAgent(PROXY) : null;
-
 const axiosClient = axios.create({
-  httpAgent: agent || new http.Agent({ keepAlive: true }),
-  httpsAgent: agent || new https.Agent({ keepAlive: true, rejectUnauthorized: false }),
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true }),
   timeout: 20000
 });
 
@@ -211,7 +207,7 @@ streamUrl = await queue.add(() =>
   ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
     format: "bestaudio[ext=m4a]/bestaudio",
     getUrl: true,
-    proxy: PROXY,
+    ...(PROXY && { proxy: PROXY }),
     socketTimeout: 15000,
     nocheckcertificate: true,
     extractorArgs: "youtube:player_client=android",
@@ -225,7 +221,7 @@ streamUrl = await queue.add(() =>
       streamUrl = streamUrl.toString().trim();
 
       // 🔹 REDIS'E KAYDET (6 saat)
-      await redis.set(cacheKey, streamUrl, "EX", 3600);
+      await redis.set(cacheKey, streamUrl, "EX", 300);
 
       console.log("STREAM CACHE SAVE:", videoId);
     }
@@ -273,7 +269,7 @@ app.get("/stream/video", async (req, res) => {
       ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
         format: "best[ext=mp4]/best",
         getUrl: true,
-        proxy: PROXY,
+        ...(PROXY && { proxy: PROXY }),
         socketTimeout: 15000,
         nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
@@ -365,7 +361,7 @@ app.get("/download/mp3", async (req, res) => {
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
         output: filePath,
-        proxy: PROXY,
+       ...(PROXY && { proxy: PROXY }),
         socketTimeout: 15000,
         nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
@@ -408,7 +404,7 @@ app.get("/download/mp4", async (req, res) => {
       ytdlp(url, {
         format: "best[ext=mp4]/best",
         getUrl: true,
-        proxy: PROXY,
+       ...(PROXY && { proxy: PROXY }),
         socketTimeout: 15000,
         nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
