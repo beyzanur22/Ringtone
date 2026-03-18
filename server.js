@@ -238,13 +238,17 @@ try {
 
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "bestaudio[ext=m4a]/bestaudio",
-          getUrl: true
-        }
-      );
+streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
+    extractorArgs: "youtube:player_client=android,player_skip=webpage",
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
+  })
+);
 
       streamUrl = streamUrl.toString().trim();
 
@@ -309,13 +313,17 @@ try {
 
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "best[ext=mp4]/best",
-          getUrl: true
-        }
-      );
+   streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "best[ext=mp4]/best",
+    getUrl: true,
+    extractorArgs: "youtube:player_client=android,player_skip=webpage",
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
+  })
+);
 
       streamUrl = streamUrl.toString().trim();
 
@@ -509,17 +517,17 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-    const streamUrl = await queue.add(() =>
-      ytdlp(url, {
-        format: "best[ext=mp4]/best",
-        getUrl: true,
-        extractorArgs: "youtube:player_client=android",
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
-        ]
-      })
-    );
+let streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "best[ext=mp4]/best",
+    getUrl: true,
+    extractorArgs: "youtube:player_client=android,player_skip=webpage",
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
+  })
+);
 
     const cleanUrl = streamUrl.toString().trim();
 
