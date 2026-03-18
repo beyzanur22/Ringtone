@@ -189,9 +189,8 @@ app.get("/stream", async (req, res) => {
     if (!streamUrl) {
       streamUrl = await queue.add(() =>
         ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-          format: "bestaudio[ext=m4a]/bestaudio",
+          format: "bestaudio",
           getUrl: true,
-          extractorArgs: "youtube:player_client=android",
           addHeader: [
             "referer:https://www.youtube.com/",
             "user-agent:Mozilla/5.0"
