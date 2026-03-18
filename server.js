@@ -10,21 +10,11 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
 const PQueue = require("p-queue").default;
-const proxies = [
-  "http://jtsuuwtv:rk9mmw64wz5r@45.39.73.169:5584",
-  "http://jtsuuwtv:rk9mmw64wz5r@82.26.238.125:6432",
-  "http://jtsuuwtv:rk9mmw64wz5r@82.22.223.45:6396",
-  "http://jtsuuwtv:rk9mmw64wz5r@82.24.224.6:5362",
-  "http://jtsuuwtv:rk9mmw64wz5r@92.112.82.222:5457"
-];
-const { HttpsProxyAgent } = require("https-proxy-agent");
-function getProxy() {
-  return proxies[Math.floor(Math.random() * proxies.length)];
-}
+
 const queue = new PQueue({
-  concurrency: 1,      // aynı anda max 2 işlem
+  concurrency: 2,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 1       // max 3 request
+  intervalCap: 3       // max 3 request
 });
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -80,7 +70,7 @@ if (!fs.existsSync(DATA_FILE)) {
 ========================= */
 app.use(rateLimit({
     windowMs: 60 * 1000, //bot saldırı azaltma
-    max: 20
+    max: 40
 }));
 
 const searchLimiter = rateLimit({ //spam search engellemek için.
@@ -99,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat
+const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
 
 /* =========================
    ENDPOINTS
@@ -182,8 +172,6 @@ app.get("/search", searchLimiter, async (req, res) => {
 app.get("/stream", async (req, res) => {
   try {
 
-   const proxy = getProxy();
-    
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -214,43 +202,16 @@ app.get("/stream", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-     try {
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {                                                                
+          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
+          getUrl: true                                                                   
+        }
+      );
 
-streamUrl = await ytdlp(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-    format: "bestaudio[ext=m4a]/bestaudio",
-    getUrl: true,
-    socketTimeout: 15000,
+      streamUrl = streamUrl.toString().trim();
 
-    proxy: proxy, // 🔥 EKLE
-
-    extractorArgs: "youtube:player_client=web",
-
-    addHeader: [
-      "referer:https://www.youtube.com/",
-      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    ]
-  }
-);
-
-  streamUrl = streamUrl.toString().trim();
-
-} catch (e) {
-
-  console.log("YT-DLP BLOCKED:", videoId);
-
-  return res.status(500).json({
-    error: "YTDLP_BLOCKED"
-  });
-
-}
-// CACHE ŞİŞMESİN
-if (streamCache.size > 5000) {
-  streamCache.clear();
-  console.log("CACHE RESET");
-}
-       
       // CACHE'E KOY
       streamCache.set(videoId, {
         url: streamUrl,
@@ -261,20 +222,15 @@ if (streamCache.size > 5000) {
 
     }
 
-const agent = new HttpsProxyAgent(proxy);
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
 
-const response = await axios({
-  method: "GET",
-  url: streamUrl,
-  responseType: "stream",
-  httpAgent: agent,
-  httpsAgent: agent,
-  headers: {
-    "User-Agent": "Mozilla/5.0",
-    "referer": "https://www.youtube.com/"
-  }
-});
-console.log("PROXY:", proxy);
     res.setHeader("Content-Type", response.headers["content-type"]);
 
     response.data.pipe(res);
@@ -295,7 +251,6 @@ console.log("PROXY:", proxy);
 app.get("/stream/video", async (req, res) => {
 
   try {
-const proxy = getProxy();
 
     const { videoId } = req.query;
 
@@ -329,30 +284,16 @@ const proxy = getProxy();
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-streamUrl = await ytdlp(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-    format: "best[ext=mp4]/best",
-    getUrl: true,
-    socketTimeout: 15000,
-
-    proxy: proxy, // 🔥 EKLE
-
-    extractorArgs: "youtube:player_client=web",
-
-    addHeader: [
-      "referer:https://www.youtube.com/",
-      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-    ]
-  }
-);
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {
+          format: "best[ext=mp4]/best",
+          getUrl: true
+        }
+      );
 
       streamUrl = streamUrl.toString().trim();
 
-      if (streamCache.size > 5000) {
-      streamCache.clear();
-      console.log("CACHE RESET");
-    }
       streamCache.set(cacheKey, {
         url: streamUrl,
         expire: Date.now() + STREAM_CACHE_DURATION
@@ -362,20 +303,14 @@ streamUrl = await ytdlp(
 
     }
 
-const agent = new HttpsProxyAgent(proxy);
-
-const response = await axios({
-  method: "GET",
-  url: streamUrl,
-  responseType: "stream",
-  httpAgent: agent,
-  httpsAgent: agent,
-  headers: {
-    "User-Agent": "Mozilla/5.0",
-    "referer": "https://www.youtube.com/"
-  }
-});
-console.log("VIDEO PROXY:", proxy);
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
@@ -425,7 +360,6 @@ app.listen(PORT, "0.0.0.0", async () => {
 app.get("/download/mp3", async (req, res) => {
   try {
     const { videoId } = req.query;
-    const proxy = getProxy();
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
@@ -436,40 +370,30 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-  const streamUrl = await queue.add(() => {
-  console.log("MP3 YTDLP PROXY:", proxy);
-
-  return ytdlp(url, {
-    format: "bestaudio[ext=m4a]/bestaudio",
-    getUrl: true,
-
-    proxy: proxy, // 🔥 EKLE
-
-    extractorArgs: "youtube:player_client=web",
-    addHeader: [
-      "referer:https://www.youtube.com/",
-      "user-agent:Mozilla/5.0"
-    ]
-  });
-});
+    const streamUrl = await queue.add(() =>
+      ytdlp(url, {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true,
+        extractorArgs: "youtube:player_client=android",
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0"
+        ]
+      })
+    );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-const agent = new HttpsProxyAgent(proxy);
-const response = await axios({
-  method: "GET",
-  url: streamUrl.toString().trim(),
-  responseType: "stream",
-  timeout: 20000,
-  httpAgent: agent,
-  httpsAgent: agent,
-  headers: {
-    "User-Agent": "Mozilla/5.0",
-    "referer": "https://www.youtube.com/"
-  }
-});
-console.log("MP3 PROXY:", proxy);
+
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+
     response.data.pipe(res);
 
   } catch (err) {
@@ -482,7 +406,6 @@ console.log("MP3 PROXY:", proxy);
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
-    const proxy = getProxy();
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
@@ -493,40 +416,30 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-const streamUrl = await queue.add(() => {
-  console.log("MP4 YTDLP PROXY:", proxy);
-
-  return ytdlp(url, {
-    format: "best[ext=mp4]/best",
-    getUrl: true,
-
-    proxy: proxy, // 🔥 EKLE
-
-    extractorArgs: "youtube:player_client=web",
-    addHeader: [
-      "referer:https://www.youtube.com/",
-      "user-agent:Mozilla/5.0"
-    ]
-  });
-});
+    const streamUrl = await queue.add(() =>
+      ytdlp(url, {
+        format: "best[ext=mp4]/best",
+        getUrl: true,
+        extractorArgs: "youtube:player_client=android",
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:Mozilla/5.0"
+        ]
+      })
+    );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-const agent = new HttpsProxyAgent(proxy);
- const response = await axios({
-  method: "GET",
-  url: streamUrl.toString().trim(),
-  responseType: "stream",
-  timeout: 20000,
-  httpAgent: agent,
-  httpsAgent: agent,
-  headers: {
-    "User-Agent": "Mozilla/5.0",
-    "referer": "https://www.youtube.com/"
-  }
-});
-console.log("MP4 PROXY:", proxy);
+
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+
     response.data.pipe(res);
 
   } catch (err) {
