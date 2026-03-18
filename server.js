@@ -227,16 +227,45 @@ streamUrl = await queue.add(() =>
     }
 
     // 🔥 SENİN ORİJİNAL PIPE (AYNI)
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-     headers: {
-  "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-  "Referer": "https://www.youtube.com/",
-  "Origin": "https://www.youtube.com"
+   let response;
+
+try {
+  response = await axiosClient({
+    method: "GET",
+    url: streamUrl,
+    responseType: "stream",
+    headers: {
+      "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+      "Referer": "https://www.youtube.com/",
+      "Origin": "https://www.youtube.com"
+    }
+  });
+} catch (e) {
+  console.log("STREAM FAIL → retry yt-dlp");
+
+  // yeniden çek
+  streamUrl = await queue.add(() =>
+    ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+      format: "bestaudio[ext=m4a]/bestaudio",
+      getUrl: true,
+      ...(PROXY && { proxy: PROXY }),
+      extractorArgs: "youtube:player_client=android"
+    })
+  );
+
+  streamUrl = streamUrl.toString().trim();
+
+response = await axiosClient({
+  method: "GET",
+  url: streamUrl,
+  responseType: "stream",
+  headers: {
+    "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+    "Referer": "https://www.youtube.com/",
+    "Origin": "https://www.youtube.com"
+  }
+});
 }
-    });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
