@@ -11,6 +11,7 @@ const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur .
 const Redis = require("ioredis");
 const redis = new Redis(process.env.REDIS_URL);
 const DOWNLOAD_DIR = "./downloads";
+const PROXY = process.env.PROXY_URL || null;
 
 if (!fs.existsSync(DOWNLOAD_DIR)) {
   fs.mkdirSync(DOWNLOAD_DIR);
@@ -19,13 +20,18 @@ if (!fs.existsSync(DOWNLOAD_DIR)) {
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 2,      // aynı anda max 2 işlem
+  concurrency: 1,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 3       // max 3 request
+  intervalCap: 2       // max 3 request
 });
+const HttpsProxyAgent = require("https-proxy-agent");
+
+const agent = PROXY ? new HttpsProxyAgent(PROXY) : null;
+
 const axiosClient = axios.create({
-    httpAgent: new http.Agent({ keepAlive: true }),
-    httpsAgent: new https.Agent({ keepAlive: true })
+  httpAgent: agent || new http.Agent({ keepAlive: true }),
+  httpsAgent: agent || new https.Agent({ keepAlive: true, rejectUnauthorized: false }),
+  timeout: 20000
 });
 
 const app = express();
@@ -201,18 +207,25 @@ app.get("/stream", async (req, res) => {
 
       console.log("CACHE MISS:", videoId);
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "bestaudio[ext=m4a]/bestaudio",
-          getUrl: true
-        }
-      );
+streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
+    proxy: PROXY,
+    socketTimeout: 15000,
+    nocheckcertificate: true,
+    extractorArgs: "youtube:player_client=android",
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+    ]
+  })
+);
 
       streamUrl = streamUrl.toString().trim();
 
       // 🔹 REDIS'E KAYDET (6 saat)
-      await redis.set(cacheKey, streamUrl, "EX", 21600);
+      await redis.set(cacheKey, streamUrl, "EX", 3600);
 
       console.log("STREAM CACHE SAVE:", videoId);
     }
@@ -222,9 +235,11 @@ app.get("/stream", async (req, res) => {
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
+     headers: {
+  "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+  "Referer": "https://www.youtube.com/",
+  "Origin": "https://www.youtube.com"
+}
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
@@ -245,87 +260,53 @@ app.get("/stream", async (req, res) => {
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
-
   try {
-
     const { videoId } = req.query;
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const cacheKey = "video_" + videoId;
+    console.log("VIDEO STREAM:", videoId);
 
-    let streamUrl;
+    const streamUrl = await queue.add(() =>
+      ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+        format: "best[ext=mp4]/best",
+        getUrl: true,
+        proxy: PROXY,
+        socketTimeout: 15000,
+        nocheckcertificate: true,
+        extractorArgs: "youtube:player_client=android",
+        addHeader: [
+          "referer:youtube.com",
+          "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+        ]
+      })
+    );
 
-    // CACHE VAR MI
-    if (streamCache.has(cacheKey)) {
-
-      const cached = streamCache.get(cacheKey);
-
-      if (Date.now() < cached.expire) {
-
-        streamUrl = cached.url;
-
-        console.log("VIDEO CACHE HIT:", videoId);
-
-      } else {
-
-        streamCache.delete(cacheKey);
-
-      }
-
-    }
-
-    // CACHE YOKSA YT-DLP ÇALIŞTIR
-    if (!streamUrl) {
-
-     ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-  format: "bestaudio[ext=m4a]/bestaudio",
-  getUrl: true,
-  extractorArgs: "youtube:player_client=android",
-  addHeader: [
-    "referer:youtube.com",
-    "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-  ]
-})
-
-      streamUrl = streamUrl.toString().trim();
-
-      streamCache.set(cacheKey, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
-      });
-
-      console.log("VIDEO CACHE SAVE:", videoId);
-
-    }
+    const finalUrl = streamUrl.toString().trim();
 
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl,
+      url: finalUrl,
       responseType: "stream",
       headers: {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+        "Referer": "https://www.youtube.com/",
+        "Origin": "https://www.youtube.com"
       }
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
-
     response.data.pipe(res);
 
   } catch (err) {
-
     console.error("VIDEO STREAM ERROR:", err);
-
     res.status(500).json({
       error: "Video streaming failed"
     });
-
   }
-
 });
-
 /* =========================
    WARMUP & START
 ========================= */
@@ -384,10 +365,13 @@ app.get("/download/mp3", async (req, res) => {
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
         output: filePath,
+        proxy: PROXY,
+        socketTimeout: 15000,
+        nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
         addHeader: [
           "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
+         "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
         ]
       })
     );
@@ -424,10 +408,13 @@ app.get("/download/mp4", async (req, res) => {
       ytdlp(url, {
         format: "best[ext=mp4]/best",
         getUrl: true,
+        proxy: PROXY,
+        socketTimeout: 15000,
+        nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
         addHeader: [
           "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
+          "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
         ]
       })
     );
@@ -436,12 +423,15 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const response = await axios({
+    const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
+     headers: {
+    "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
+    "Referer": "https://www.youtube.com/",
+    "Origin": "https://www.youtube.com" }
     });
 
     response.data.pipe(res);
