@@ -182,6 +182,8 @@ app.get("/search", searchLimiter, async (req, res) => {
 app.get("/stream", async (req, res) => {
   try {
 
+   const proxy = getProxy();
+    
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -219,8 +221,10 @@ streamUrl = await ytdlp(
   {
     format: "bestaudio[ext=m4a]/bestaudio",
     getUrl: true,
-socketTimeout: 15000,
-    // 🔥 DEĞİŞTİ
+    socketTimeout: 15000,
+
+    proxy: proxy, // 🔥 EKLE
+
     extractorArgs: "youtube:player_client=web",
 
     addHeader: [
@@ -257,7 +261,6 @@ if (streamCache.size > 5000) {
 
     }
 
-  const proxy = getProxy();
 const agent = new HttpsProxyAgent(proxy);
 
 const response = await axios({
@@ -292,6 +295,7 @@ console.log("PROXY:", proxy);
 app.get("/stream/video", async (req, res) => {
 
   try {
+const proxy = getProxy();
 
     const { videoId } = req.query;
 
@@ -325,12 +329,14 @@ app.get("/stream/video", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-     streamUrl = await ytdlp(
+streamUrl = await ytdlp(
   `https://www.youtube.com/watch?v=${videoId}`,
   {
     format: "best[ext=mp4]/best",
     getUrl: true,
     socketTimeout: 15000,
+
+    proxy: proxy, // 🔥 EKLE
 
     extractorArgs: "youtube:player_client=web",
 
@@ -356,7 +362,6 @@ app.get("/stream/video", async (req, res) => {
 
     }
 
-   const proxy = getProxy();
 const agent = new HttpsProxyAgent(proxy);
 
 const response = await axios({
@@ -420,6 +425,7 @@ app.listen(PORT, "0.0.0.0", async () => {
 app.get("/download/mp3", async (req, res) => {
   try {
     const { videoId } = req.query;
+    const proxy = getProxy();
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
@@ -430,22 +436,26 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-    const streamUrl = await queue.add(() =>
-      ytdlp(url, {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true,
-       extractorArgs: "youtube:player_client=web",
-        addHeader: [
-          "referer:https://www.youtube.com/",
-          "user-agent:Mozilla/5.0"
-        ]
-      })
-    );
+  const streamUrl = await queue.add(() => {
+  console.log("MP3 YTDLP PROXY:", proxy);
+
+  return ytdlp(url, {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
+
+    proxy: proxy, // 🔥 EKLE
+
+    extractorArgs: "youtube:player_client=web",
+    addHeader: [
+      "referer:https://www.youtube.com/",
+      "user-agent:Mozilla/5.0"
+    ]
+  });
+});
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-const proxy = getProxy();
 const agent = new HttpsProxyAgent(proxy);
 const response = await axios({
   method: "GET",
@@ -472,6 +482,7 @@ console.log("MP3 PROXY:", proxy);
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
+    const proxy = getProxy();
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
@@ -482,22 +493,26 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-    const streamUrl = await queue.add(() =>
-      ytdlp(url, {
-        format: "best[ext=mp4]/best",
-        getUrl: true,
-       extractorArgs: "youtube:player_client=web",
-        addHeader: [
-        "referer:https://www.youtube.com/",
-          "user-agent:Mozilla/5.0"
-        ]
-      })
-    );
+const streamUrl = await queue.add(() => {
+  console.log("MP4 YTDLP PROXY:", proxy);
+
+  return ytdlp(url, {
+    format: "best[ext=mp4]/best",
+    getUrl: true,
+
+    proxy: proxy, // 🔥 EKLE
+
+    extractorArgs: "youtube:player_client=web",
+    addHeader: [
+      "referer:https://www.youtube.com/",
+      "user-agent:Mozilla/5.0"
+    ]
+  });
+});
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-const proxy = getProxy();
 const agent = new HttpsProxyAgent(proxy);
  const response = await axios({
   method: "GET",
