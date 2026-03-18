@@ -8,6 +8,8 @@ const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
+const Redis = require("ioredis");
+const redis = new Redis(process.env.REDIS_URL);
 
 const PQueue = require("p-queue").default;
 
@@ -88,8 +90,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
 /* =========================
    STREAM CACHE
 ========================= */
-const streamCache = new Map();
-const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
+
 
 /* =========================
    ENDPOINTS
@@ -180,48 +181,38 @@ app.get("/stream", async (req, res) => {
 
     let streamUrl;
 
-    // CACHE VAR MI
-    if (streamCache.has(videoId)) {
+    const cacheKey = `stream:${videoId}`;
 
-      const cached = streamCache.get(videoId);
+    // 🔹 REDIS CACHE VAR MI
+    const cached = await redis.get(cacheKey);
 
-      if (Date.now() < cached.expire) {
-
-        streamUrl = cached.url;
-
-        console.log("STREAM CACHE HIT:", videoId);
-
-      } else {
-
-        streamCache.delete(videoId);
-
-      }
-
+    if (cached) {
+      streamUrl = cached;
+      console.log("REDIS CACHE HIT:", videoId);
     }
 
-    // CACHE YOKSA YT-DLP ÇALIŞTIR
+    // 🔹 CACHE YOKSA YT-DLP
     if (!streamUrl) {
+
+      console.log("CACHE MISS:", videoId);
 
       streamUrl = await ytdlp(
         `https://www.youtube.com/watch?v=${videoId}`,
-        {                                                                
-          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
-          getUrl: true                                                                   
+        {
+          format: "bestaudio[ext=m4a]/bestaudio",
+          getUrl: true
         }
       );
 
       streamUrl = streamUrl.toString().trim();
 
-      // CACHE'E KOY
-      streamCache.set(videoId, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
-      });
+      // 🔹 REDIS'E KAYDET (6 saat)
+      await redis.set(cacheKey, streamUrl, "EX", 21600);
 
       console.log("STREAM CACHE SAVE:", videoId);
-
     }
 
+    // 🔥 SENİN ORİJİNAL PIPE (AYNI)
     const response = await axiosClient({
       method: "GET",
       url: streamUrl,
