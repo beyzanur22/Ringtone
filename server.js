@@ -89,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
+const STREAM_CACHE_DURATION = 10 *  60 * 1000; // 10 dk
 
 /* =========================
    ENDPOINTS
@@ -169,40 +169,68 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM 
-
 app.get("/stream", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
-      }
-    );
-    console.log("STREAM URL:", streamUrl);
-    const response = await axiosClient({
+
+    let streamUrl;
+
+    // CACHE
+    const cached = streamCache.get(videoId);
+    if (cached && Date.now() < cached.expire) {
+      streamUrl = cached.url;
+      console.log("CACHE HIT:", videoId);
+    }
+
+    // YOKSA çek
+    if (!streamUrl) {
+      streamUrl = await queue.add(() =>
+        ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+          format: "bestaudio[ext=m4a]/bestaudio",
+          getUrl: true,
+          extractorArgs: "youtube:player_client=android",
+          addHeader: [
+            "referer:https://www.youtube.com/",
+            "user-agent:Mozilla/5.0"
+          ],
+          cookies: "./cookies.txt"
+        })
+      );
+
+      streamUrl = streamUrl.toString().trim();
+
+      // CACHE SAVE
+      streamCache.set(videoId, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+
+      console.log("CACHE SAVE:", videoId);
+    }
+
+    // STREAM
+    const response = await axios({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
+
     res.setHeader("Content-Type", response.headers["content-type"]);
-    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
+    response.data.pipe(res);
+
   } catch (err) {
-    console.error("STREAM ERROR:", err);
-    res.status(500).json({
-      error: "Streaming failed",
-      message: err.message
-    });
+    console.error("STREAM ERROR:", err.message);
+
+    // ❗ cache kırık olabilir → sil
+    streamCache.delete(req.query.videoId);
+
+    res.status(500).json({ error: "Streaming failed" });
   }
 });
-
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
