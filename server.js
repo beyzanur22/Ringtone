@@ -12,9 +12,9 @@ const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur .
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 2,      // aynı anda max 2 işlem
+  concurrency: 1,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 3       // max 3 request
+  intervalCap: 1       // max 3 request
 });
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -70,7 +70,7 @@ if (!fs.existsSync(DATA_FILE)) {
 ========================= */
 app.use(rateLimit({
     windowMs: 60 * 1000, //bot saldırı azaltma
-    max: 40
+    max: 20
 }));
 
 const searchLimiter = rateLimit({ //spam search engellemek için.
@@ -89,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
+const STREAM_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat
 
 /* =========================
    ENDPOINTS
@@ -204,18 +204,21 @@ app.get("/stream", async (req, res) => {
 
      try {
 
-  streamUrl = await ytdlp(
-    `https://www.youtube.com/watch?v=${videoId}`,
-    {
-      format: "bestaudio[ext=m4a]/bestaudio",
-      getUrl: true,
-      extractorArgs: "youtube:player_client=android",
-      addHeader: [
-        "referer:youtube.com",
-        "user-agent:com.google.android.youtube/17.31.35"
-      ]
-    }
-  );
+streamUrl = await ytdlp(
+  `https://www.youtube.com/watch?v=${videoId}`,
+  {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
+socketTimeout: 15000,
+    // 🔥 DEĞİŞTİ
+    extractorArgs: "youtube:player_client=web",
+
+    addHeader: [
+      "referer:https://www.youtube.com/",
+      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    ]
+  }
+);
 
   streamUrl = streamUrl.toString().trim();
 
@@ -228,7 +231,12 @@ app.get("/stream", async (req, res) => {
   });
 
 }
-
+// CACHE ŞİŞMESİN
+if (streamCache.size > 5000) {
+  streamCache.clear();
+  console.log("CACHE RESET");
+}
+       
       // CACHE'E KOY
       streamCache.set(videoId, {
         url: streamUrl,
@@ -243,9 +251,10 @@ app.get("/stream", async (req, res) => {
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
+     headers: {
+  "User-Agent": "Mozilla/5.0",
+  "referer": "https://www.youtube.com/"
+}
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
@@ -301,16 +310,28 @@ app.get("/stream/video", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "best[ext=mp4]/best",
-          getUrl: true
-        }
-      );
+     streamUrl = await ytdlp(
+  `https://www.youtube.com/watch?v=${videoId}`,
+  {
+    format: "best[ext=mp4]/best",
+    getUrl: true,
+    socketTimeout: 15000,
+
+    extractorArgs: "youtube:player_client=web",
+
+    addHeader: [
+      "referer:https://www.youtube.com/",
+      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    ]
+  }
+);
 
       streamUrl = streamUrl.toString().trim();
 
+      if (streamCache.size > 5000) {
+      streamCache.clear();
+      console.log("CACHE RESET");
+    }
       streamCache.set(cacheKey, {
         url: streamUrl,
         expire: Date.now() + STREAM_CACHE_DURATION
@@ -391,9 +412,9 @@ app.get("/download/mp3", async (req, res) => {
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
         getUrl: true,
-        extractorArgs: "youtube:player_client=android",
+       extractorArgs: "youtube:player_client=web",
         addHeader: [
-          "referer:youtube.com",
+          "referer:https://www.youtube.com/",
           "user-agent:Mozilla/5.0"
         ]
       })
@@ -408,7 +429,10 @@ app.get("/download/mp3", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
+  headers: {
+  "User-Agent": "Mozilla/5.0",
+  "referer": "https://www.youtube.com/"
+}
     });
 
     response.data.pipe(res);
@@ -437,9 +461,9 @@ app.get("/download/mp4", async (req, res) => {
       ytdlp(url, {
         format: "best[ext=mp4]/best",
         getUrl: true,
-        extractorArgs: "youtube:player_client=android",
+       extractorArgs: "youtube:player_client=web",
         addHeader: [
-          "referer:youtube.com",
+        "referer:https://www.youtube.com/",
           "user-agent:Mozilla/5.0"
         ]
       })
@@ -454,7 +478,10 @@ app.get("/download/mp4", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: {
+  "User-Agent": "Mozilla/5.0",
+  "referer": "https://www.youtube.com/"
+}
     });
 
     response.data.pipe(res);
