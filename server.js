@@ -8,11 +8,6 @@ const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
-const CACHE_DIR = "./cache";
-
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR);
-}
 
 const PQueue = require("p-queue").default;
 
@@ -174,59 +169,37 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM 
+
 app.get("/stream", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-
-    const filePath = `${CACHE_DIR}/${videoId}.m4a`;
-
-    // ✅ 1. DOSYA VARSA → DİREKT VER
-    if (fs.existsSync(filePath)) {
-      console.log("FILE CACHE HIT:", videoId);
-      return res.sendFile(require("path").resolve(filePath));
-    }
-
-    console.log("CACHE MISS → downloading:", videoId);
-
-    // ✅ 2. yt-dlp ile URL al
     const streamUrl = await ytdlp(
       `https://www.youtube.com/watch?v=${videoId}`,
       {
-        format: "bestaudio",
-        getUrl: true,
-        cookies: "./cookies.txt"
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
       }
     );
-
-    const url = streamUrl.toString().trim();
-
-    // ✅ 3. stream al
-    const response = await axios({
+    console.log("STREAM URL:", streamUrl);
+    const response = await axiosClient({
       method: "GET",
-      url,
+      url: streamUrl.toString().trim(),
       responseType: "stream",
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
     });
-
-    // ✅ 4. DOSYAYA YAZ
-    const writer = fs.createWriteStream(filePath);
-
-    response.data.pipe(writer);
-
-    // aynı anda kullanıcıya da gönder
     res.setHeader("Content-Type", response.headers["content-type"]);
-    response.data.pipe(res);
-
-    writer.on("finish", () => {
-      console.log("CACHE SAVED:", videoId);
-    });
-
+    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
   } catch (err) {
-    console.error("STREAM ERROR:", err.message);
-    res.status(500).json({ error: "Streaming failed" });
+    console.error("STREAM ERROR:", err);
+    res.status(500).json({
+      error: "Streaming failed",
+      message: err.message
+    });
   }
 });
 
