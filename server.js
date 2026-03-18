@@ -169,65 +169,37 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM 
+
 app.get("/stream", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-
-    let streamUrl;
-
-    // CACHE
-    const cached = streamCache.get(videoId);
-    if (cached && Date.now() < cached.expire) {
-      streamUrl = cached.url;
-      console.log("CACHE HIT:", videoId);
-    }
-
-    // YOKSA çek
-    if (!streamUrl) {
-      streamUrl = await queue.add(() =>
-        ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-          format: "bestaudio",
-          getUrl: true,
-          addHeader: [
-            "referer:https://www.youtube.com/",
-            "user-agent:Mozilla/5.0"
-          ],
-          cookies: "./cookies.txt"
-        })
-      );
-
-      streamUrl = streamUrl.toString().trim();
-
-      // CACHE SAVE
-      streamCache.set(videoId, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
-      });
-
-      console.log("CACHE SAVE:", videoId);
-    }
-
-    // STREAM
-    const response = await axios({
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
+      }
+    );
+    console.log("STREAM URL:", streamUrl);
+    const response = await axiosClient({
       method: "GET",
-      url: streamUrl,
+      url: streamUrl.toString().trim(),
       responseType: "stream",
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
     });
-
     res.setHeader("Content-Type", response.headers["content-type"]);
-    response.data.pipe(res);
-
+    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
   } catch (err) {
-    console.error("STREAM ERROR:", err.message);
-
-    // ❗ cache kırık olabilir → sil
-    streamCache.delete(req.query.videoId);
-
-    res.status(500).json({ error: "Streaming failed" });
+    console.error("STREAM ERROR:", err);
+    res.status(500).json({
+      error: "Streaming failed",
+      message: err.message
+    });
   }
 });
 
