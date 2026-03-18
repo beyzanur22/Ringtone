@@ -173,32 +173,67 @@ app.get("/search", searchLimiter, async (req, res) => {
 app.get("/stream", async (req, res) => {
   try {
     const { videoId } = req.query;
+
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
+
+    const cacheKey = "audio_" + videoId;
+    let streamUrl;
+
+    // CACHE
+    if (streamCache.has(cacheKey)) {
+      const cached = streamCache.get(cacheKey);
+
+      if (Date.now() < cached.expire) {
+        streamUrl = cached.url;
+        console.log("AUDIO CACHE HIT:", videoId);
+      } else {
+        streamCache.delete(cacheKey);
       }
-    );
-    console.log("STREAM URL:", streamUrl);
+    }
+
+    // YOKSA YT-DLP (QUEUE İLE!)
+    if (!streamUrl) {
+      streamUrl = await queue.add(() =>
+        ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+          format: "bestaudio[ext=m4a]/bestaudio",
+          getUrl: true,
+          extractorArgs: "youtube:player_client=android",
+          addHeader: [
+            "referer:https://www.youtube.com/",
+            "user-agent:Mozilla/5.0"
+          ]
+        })
+      );
+
+      streamUrl = streamUrl.toString().trim();
+
+      streamCache.set(cacheKey, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+
+      console.log("AUDIO CACHE SAVE:", videoId);
+    }
+
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: streamUrl,
       responseType: "stream",
       headers: {
         "User-Agent": "Mozilla/5.0"
       }
     });
+
     res.setHeader("Content-Type", response.headers["content-type"]);
-    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
+    response.data.pipe(res);
+
   } catch (err) {
-    console.error("STREAM ERROR:", err);
+    console.error("STREAM ERROR:", err.message);
+
     res.status(500).json({
-      error: "Streaming failed",
-      message: err.message
+      error: "Streaming failed"
     });
   }
 });
