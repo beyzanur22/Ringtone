@@ -275,13 +275,15 @@ app.get("/stream/video", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "best[ext=mp4]/best",
-          getUrl: true
-        }
-      );
+     ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+  format: "bestaudio[ext=m4a]/bestaudio",
+  getUrl: true,
+  extractorArgs: "youtube:player_client=android",
+  addHeader: [
+    "referer:youtube.com",
+    "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+  ]
+})
 
       streamUrl = streamUrl.toString().trim();
 
