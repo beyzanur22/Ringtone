@@ -8,26 +8,17 @@ const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
-const Redis = require("ioredis");
-const redis = new Redis(process.env.REDIS_URL);
-const DOWNLOAD_DIR = "./downloads";
-const PROXY = process.env.PROXY_URL || null;
-
-if (!fs.existsSync(DOWNLOAD_DIR)) {
-  fs.mkdirSync(DOWNLOAD_DIR);
-}
 
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 1,      // aynı anda max 2 işlem
+  concurrency: 2,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 2       // max 3 request
+  intervalCap: 3       // max 3 request
 });
 const axiosClient = axios.create({
-  httpAgent: new http.Agent({ keepAlive: true }),
-  httpsAgent: new https.Agent({ keepAlive: true }),
-  timeout: 20000
+    httpAgent: new http.Agent({ keepAlive: true }),
+    httpsAgent: new https.Agent({ keepAlive: true })
 });
 
 const app = express();
@@ -97,7 +88,8 @@ const CACHE_DURATION = 60 * 60 * 1000;
 /* =========================
    STREAM CACHE
 ========================= */
-
+const streamCache = new Map();
+const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
 
 /* =========================
    ENDPOINTS
@@ -188,84 +180,56 @@ app.get("/stream", async (req, res) => {
 
     let streamUrl;
 
-    const cacheKey = `stream:${videoId}`;
+    // CACHE VAR MI
+    if (streamCache.has(videoId)) {
 
-    // 🔹 REDIS CACHE VAR MI
-    const cached = await redis.get(cacheKey);
+      const cached = streamCache.get(videoId);
 
-    if (cached) {
-      streamUrl = cached;
-      console.log("REDIS CACHE HIT:", videoId);
+      if (Date.now() < cached.expire) {
+
+        streamUrl = cached.url;
+
+        console.log("STREAM CACHE HIT:", videoId);
+
+      } else {
+
+        streamCache.delete(videoId);
+
+      }
+
     }
 
-    // 🔹 CACHE YOKSA YT-DLP
+    // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-      console.log("CACHE MISS:", videoId);
-
-streamUrl = await queue.add(() =>
-  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: "bestaudio[ext=m4a]/bestaudio",
-    getUrl: true,
-    ...(PROXY && { proxy: PROXY }),
-    socketTimeout: 15000,
-    nocheckcertificate: true,
-    extractorArgs: "youtube:player_client=android",
-    addHeader: [
-      "referer:youtube.com",
-      "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-    ]
-  })
-);
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {                                                                
+          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
+          getUrl: true                                                                   
+        }
+      );
 
       streamUrl = streamUrl.toString().trim();
 
-      // 🔹 REDIS'E KAYDET (6 saat)
-      await redis.set(cacheKey, streamUrl, "EX", 300);
+      // CACHE'E KOY
+      streamCache.set(videoId, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
 
       console.log("STREAM CACHE SAVE:", videoId);
+
     }
 
-    // 🔥 SENİN ORİJİNAL PIPE (AYNI)
-   let response;
-
-try {
-  response = await axiosClient({
-    method: "GET",
-    url: streamUrl,
-    responseType: "stream",
-    headers: {
-      "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-      "Referer": "https://www.youtube.com/",
-      "Origin": "https://www.youtube.com"
-    }
-  });
-} catch (e) {
-  console.log("STREAM FAIL → retry yt-dlp");
-
-  // yeniden çek
-  streamUrl = await queue.add(() =>
-    ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-      format: "bestaudio[ext=m4a]/bestaudio",
-      getUrl: true,
-      ...(PROXY && { proxy: PROXY }),
-      extractorArgs: "youtube:player_client=android"
-    })
-  );
-
-  streamUrl = streamUrl.toString().trim();
-
-response = await axiosClient({
-  method: "GET",
-  url: streamUrl,
-  responseType: "stream",
-  headers: {
-    "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-    "Referer": "https://www.youtube.com/",
-    "Origin": "https://www.youtube.com"
-  }
-});
-}
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: {
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
@@ -285,53 +249,85 @@ response = await axiosClient({
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
+
   try {
+
     const { videoId } = req.query;
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    console.log("VIDEO STREAM:", videoId);
+    const cacheKey = "video_" + videoId;
 
-    const streamUrl = await queue.add(() =>
-      ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-        format: "best[ext=mp4]/best",
-        getUrl: true,
-        ...(PROXY && { proxy: PROXY }),
-        socketTimeout: 15000,
-        nocheckcertificate: true,
-        extractorArgs: "youtube:player_client=android",
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
-        ]
-      })
-    );
+    let streamUrl;
 
-    const finalUrl = streamUrl.toString().trim();
+    // CACHE VAR MI
+    if (streamCache.has(cacheKey)) {
+
+      const cached = streamCache.get(cacheKey);
+
+      if (Date.now() < cached.expire) {
+
+        streamUrl = cached.url;
+
+        console.log("VIDEO CACHE HIT:", videoId);
+
+      } else {
+
+        streamCache.delete(cacheKey);
+
+      }
+
+    }
+
+    // CACHE YOKSA YT-DLP ÇALIŞTIR
+    if (!streamUrl) {
+
+      streamUrl = await ytdlp(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        {
+          format: "best[ext=mp4]/best",
+          getUrl: true
+        }
+      );
+
+      streamUrl = streamUrl.toString().trim();
+
+      streamCache.set(cacheKey, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+
+      console.log("VIDEO CACHE SAVE:", videoId);
+
+    }
 
     const response = await axiosClient({
       method: "GET",
-      url: finalUrl,
+      url: streamUrl,
       responseType: "stream",
       headers: {
-        "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-        "Referer": "https://www.youtube.com/",
-        "Origin": "https://www.youtube.com"
+        "User-Agent": "Mozilla/5.0"
       }
     });
 
     res.setHeader("Content-Type", response.headers["content-type"]);
+
     response.data.pipe(res);
 
   } catch (err) {
+
     console.error("VIDEO STREAM ERROR:", err);
+
     res.status(500).json({
       error: "Video streaming failed"
     });
+
   }
+
 });
+
 /* =========================
    WARMUP & START
 ========================= */
@@ -369,45 +365,36 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const filePath = `${DOWNLOAD_DIR}/${videoId}.m4a`;
-
-    //  1. DOSYA VAR MI?
-    if (fs.existsSync(filePath)) {
-      console.log("FILE CACHE HIT:", videoId);
-
-      res.setHeader("Content-Type", "audio/mp4");
-      res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
-
-      return fs.createReadStream(filePath).pipe(res);
-    }
-
-    console.log("DOWNLOAD CACHE MISS:", videoId);
-
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    //  2. YT-DLP İLE DOSYAYA İNDİR
-    await queue.add(() =>
+    res.setHeader("Content-Type", "audio/mp4");
+    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
+
+    const streamUrl = await queue.add(() =>
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
-        output: filePath,
-       ...(PROXY && { proxy: PROXY }),
-        socketTimeout: 15000,
-        nocheckcertificate: true,
+        getUrl: true,
         extractorArgs: "youtube:player_client=android",
         addHeader: [
           "referer:youtube.com",
-         "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+          "user-agent:Mozilla/5.0"
         ]
       })
     );
 
-    console.log("FILE SAVED:", videoId);
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Invalid stream url" });
+    }
 
-    //  3. CLIENT’A GÖNDER
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
 
-    fs.createReadStream(filePath).pipe(res);
+    response.data.pipe(res);
 
   } catch (err) {
     console.error("MP3 ERROR:", err.message);
@@ -433,13 +420,10 @@ app.get("/download/mp4", async (req, res) => {
       ytdlp(url, {
         format: "best[ext=mp4]/best",
         getUrl: true,
-       ...(PROXY && { proxy: PROXY }),
-        socketTimeout: 15000,
-        nocheckcertificate: true,
         extractorArgs: "youtube:player_client=android",
         addHeader: [
           "referer:youtube.com",
-          "user-agent:com.google.android.youtube/17.31.35 (Linux; U; Android 11)"
+          "user-agent:Mozilla/5.0"
         ]
       })
     );
@@ -448,15 +432,12 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const response = await axiosClient({
+    const response = await axios({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-     headers: {
-    "User-Agent": "com.google.android.youtube/17.31.35 (Linux; U; Android 11)",
-    "Referer": "https://www.youtube.com/",
-    "Origin": "https://www.youtube.com" }
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
     response.data.pipe(res);
