@@ -12,9 +12,9 @@ const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur .
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
-  concurrency: 2,      // aynı anda max 2 işlem
+  concurrency: 1,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 3       // max 3 request
+  intervalCap: 1       // max 3 request
 });
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
@@ -89,7 +89,7 @@ const CACHE_DURATION = 60 * 60 * 1000;
    STREAM CACHE
 ========================= */
 const streamCache = new Map();
-const STREAM_CACHE_DURATION = 10 *  60 * 1000; // 10 dk
+const STREAM_CACHE_DURATION = 24 *  60 * 1000; // 10 dk
 
 /* =========================
    ENDPOINTS
@@ -176,13 +176,22 @@ app.get("/stream", async (req, res) => {
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
-      }
-    );
+    const streamUrl = await queue.add(() =>
+  ytdlp(
+    `https://www.youtube.com/watch?v=${videoId}`,
+    {
+      format: "bestaudio[ext=m4a]/bestaudio",
+      getUrl: true,
+
+      extractorArgs: "youtube:player_client=android",
+
+      addHeader: [
+        "referer:https://www.youtube.com/",
+        "user-agent:Mozilla/5.0"
+      ]
+    }
+  )
+);
     console.log("STREAM URL:", streamUrl);
     const response = await axiosClient({
       method: "GET",
@@ -202,6 +211,7 @@ app.get("/stream", async (req, res) => {
     });
   }
 });
+
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
