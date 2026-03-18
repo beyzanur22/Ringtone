@@ -10,7 +10,17 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
 const PQueue = require("p-queue").default;
-
+const proxies = [
+  "http://jtsuuwtv:rk9mmw64wz5r@45.39.73.169:5584",
+  "http://jtsuuwtv:rk9mmw64wz5r@82.26.238.125:6432",
+  "http://jtsuuwtv:rk9mmw64wz5r@82.22.223.45:6396",
+  "http://jtsuuwtv:rk9mmw64wz5r@82.24.224.6:5362",
+  "http://jtsuuwtv:rk9mmw64wz5r@92.112.82.222:5457"
+];
+const { HttpsProxyAgent } = require("https-proxy-agent");
+function getProxy() {
+  return proxies[Math.floor(Math.random() * proxies.length)];
+}
 const queue = new PQueue({
   concurrency: 1,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
@@ -247,16 +257,21 @@ if (streamCache.size > 5000) {
 
     }
 
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-     headers: {
-  "User-Agent": "Mozilla/5.0",
-  "referer": "https://www.youtube.com/"
-}
-    });
+  const proxy = getProxy();
+const agent = new HttpsProxyAgent(proxy);
 
+const response = await axios({
+  method: "GET",
+  url: streamUrl,
+  responseType: "stream",
+  httpAgent: agent,
+  httpsAgent: agent,
+  headers: {
+    "User-Agent": "Mozilla/5.0",
+    "referer": "https://www.youtube.com/"
+  }
+});
+console.log("PROXY:", proxy);
     res.setHeader("Content-Type", response.headers["content-type"]);
 
     response.data.pipe(res);
@@ -341,14 +356,21 @@ app.get("/stream/video", async (req, res) => {
 
     }
 
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      headers: {
-        "User-Agent": "Mozilla/5.0"
-      }
-    });
+   const proxy = getProxy();
+const agent = new HttpsProxyAgent(proxy);
+
+const response = await axios({
+  method: "GET",
+  url: streamUrl,
+  responseType: "stream",
+  httpAgent: agent,
+  httpsAgent: agent,
+  headers: {
+    "User-Agent": "Mozilla/5.0",
+    "referer": "https://www.youtube.com/"
+  }
+});
+console.log("VIDEO PROXY:", proxy);
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
@@ -423,18 +445,21 @@ app.get("/download/mp3", async (req, res) => {
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-
-    const response = await axios({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 20000,
+const proxy = getProxy();
+const agent = new HttpsProxyAgent(proxy);
+const response = await axios({
+  method: "GET",
+  url: streamUrl.toString().trim(),
+  responseType: "stream",
+  timeout: 20000,
+  httpAgent: agent,
+  httpsAgent: agent,
   headers: {
-  "User-Agent": "Mozilla/5.0",
-  "referer": "https://www.youtube.com/"
-}
-    });
-
+    "User-Agent": "Mozilla/5.0",
+    "referer": "https://www.youtube.com/"
+  }
+});
+console.log("MP3 PROXY:", proxy);
     response.data.pipe(res);
 
   } catch (err) {
@@ -472,18 +497,21 @@ app.get("/download/mp4", async (req, res) => {
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Invalid stream url" });
     }
-
-    const response = await axios({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 20000,
-      headers: {
-  "User-Agent": "Mozilla/5.0",
-  "referer": "https://www.youtube.com/"
-}
-    });
-
+const proxy = getProxy();
+const agent = new HttpsProxyAgent(proxy);
+ const response = await axios({
+  method: "GET",
+  url: streamUrl.toString().trim(),
+  responseType: "stream",
+  timeout: 20000,
+  httpAgent: agent,
+  httpsAgent: agent,
+  headers: {
+    "User-Agent": "Mozilla/5.0",
+    "referer": "https://www.youtube.com/"
+  }
+});
+console.log("MP4 PROXY:", proxy);
     response.data.pipe(res);
 
   } catch (err) {
