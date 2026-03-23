@@ -1,58 +1,74 @@
-dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
-Backend running on port 8080
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] NqLe3mk__kg: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: [youtube] NqLe3mk__kg: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: Only images are available for download. use --list-formats to see them
-ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] Başarılı: client=default
-AUDIO CACHE SAVE: NqLe3mk__kg
-[yt-dlp] client=web başarısız: ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] NqLe3mk__kg: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: [youtube] NqLe3mk__kg: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: Only images are available for download. use --list-formats to see them
-ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-AUDIO CACHE HIT: NqLe3mk__kg
-[yt-dlp] Başarılı: client=default
-AUDIO CACHE SAVE: NqLe3mk__kg
+[yt-dlp] Deneniyor: client=android, format=best[ext=mp4]/best
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:38:25.506Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=ios, format=best[ext=mp4]/best
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=default, format=best[ext=mp4]/best
+[yt-dlp] Deneniyor: client=android, format=best[ext=mp4]/best
+[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-23T16:45:58.201Z] - [STREAM_VIDEO] - VideoID: b4iVv91Z6lY - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+VIDEO STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:38:31.962Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=ios, format=best[ext=mp4]/best
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=default, format=best[ext=mp4]/best
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-23T16:46:05.426Z] - [STREAM_VIDEO] - VideoID: b4iVv91Z6lY - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+[yt-dlp] Deneniyor: client=android, format=best[ext=mp4]/best
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:38:39.388Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=ios, format=best[ext=mp4]/best
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=default, format=best[ext=mp4]/best
+[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-23T16:46:14.743Z] - [STREAM_VIDEO] - VideoID: b4iVv91Z6lY - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+VIDEO STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:38:49.050Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
-[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:38:55.555Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
-[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-[2026-03-23T16:39:03.930Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO CACHE SAVE: NqLe3mk__kg
-VIDEO STREAM ERROR: Request failed with status code 403
-[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
-[yt-dlp] Başarılı: client=web
-VIDEO CACHE SAVE: NqLe3mk__kg
-[2026-03-23T16:39:12.271Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
-VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] Deneniyor: client=default, format=best[ext=mp4]/best
+VIDEO STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
+[2026-03-23T16:46:25.344Z] - [STREAM_VIDEO] - VideoID: b4iVv91Z6lY - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=b4iVv91Z6lY --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+ERROR: [youtube] b4iVv91Z6lY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
