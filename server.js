@@ -213,90 +213,8 @@ const searchLimiter = rateLimit({ //spam search engellemek için.
 ========================= */
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
-const STREAM_CACHE_DURATION = 3 * 60 * 60; // 3 saat (YouTube URL'leri ~6 saatte expire olur, güvenli margin)
-const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600");
-
-/* =========================
-   PROXY STREAM HELPER (403 retry)
-========================= */
-async function proxyStream(cacheKey, videoId, format, ua, res, contentType) {
-  let streamUrl = await cacheGet(cacheKey);
-  let fromCache = !!streamUrl;
-
-  if (fromCache) {
-    console.log(`CACHE HIT [${format}]:`, videoId);
-  } else {
-    streamUrl = await queue.add(async () => {
-      await randomJitter();
-      return resolveStreamUrl(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        format,
-        ua
-      );
-    });
-    await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
-    console.log(`CACHE SAVE [${format}]:`, videoId);
-  }
-
-  try {
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      timeout: 120000,
-      headers: { "User-Agent": ua }
-    });
-    if (contentType) {
-      res.setHeader("Content-Type", contentType);
-    } else {
-      res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
-    }
-    if (response.headers["content-length"]) {
-      res.setHeader("Content-Length", response.headers["content-length"]);
-    }
-    response.data.pipe(res);
-  } catch (proxyErr) {
-    // 403 = URL süresi dolmuş, cache temizle ve tekrar dene
-    if (fromCache && proxyErr.response && proxyErr.response.status === 403) {
-      console.warn(`403 RETRY [${format}]:`, videoId, "- cache temizleniyor");
-      // Cache'den sil
-      try {
-        if (redis) await redis.del(cacheKey);
-        else memoryCache.delete(cacheKey);
-      } catch(e) { memoryCache.delete(cacheKey); }
-
-      // Yeni URL al
-      const newUrl = await queue.add(async () => {
-        await randomJitter();
-        return resolveStreamUrl(
-          `https://www.youtube.com/watch?v=${videoId}`,
-          format,
-          ua
-        );
-      });
-      await cacheSet(cacheKey, newUrl, STREAM_CACHE_DURATION);
-
-      const retryResp = await axiosClient({
-        method: "GET",
-        url: newUrl,
-        responseType: "stream",
-        timeout: 120000,
-        headers: { "User-Agent": ua }
-      });
-      if (contentType) {
-        res.setHeader("Content-Type", contentType);
-      } else {
-        res.setHeader("Content-Type", retryResp.headers["content-type"] || "application/octet-stream");
-      }
-      if (retryResp.headers["content-length"]) {
-        res.setHeader("Content-Length", retryResp.headers["content-length"]);
-      }
-      retryResp.data.pipe(res);
-    } else {
-      throw proxyErr;
-    }
-  }
-}
+const STREAM_CACHE_DURATION = 6 * 60 * 60; // 6 saat (saniye cinsinden)
+const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
 /* =========================
    BLOCKED CHANNELS
@@ -410,13 +328,41 @@ app.get("/stream", async (req, res) => {
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
+
+    const cacheKey = `stream:audio:${videoId}`;
+    let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
-    await proxyStream(`stream:audio:${videoId}`, videoId, "bestaudio", ua, res);
+
+    if (streamUrl) {
+      console.log("AUDIO CACHE HIT:", videoId);
+    } else {
+      // Queue ile sıralı çalıştır
+      streamUrl = await queue.add(async () => {
+        await randomJitter();
+        return resolveStreamUrl(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          "bestaudio",
+          ua
+        );
+      });
+      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
+      console.log("AUDIO CACHE SAVE:", videoId);
+    }
+
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: { "User-Agent": ua }
+    });
+    res.setHeader("Content-Type", response.headers["content-type"]);
+    response.data.pipe(res);
   } catch (err) {
     console.error("STREAM ERROR:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Streaming failed", message: err.message });
-    }
+    res.status(500).json({
+      error: "Streaming failed",
+      message: err.message
+    });
   }
 });
 
@@ -428,13 +374,38 @@ app.get("/stream/video", async (req, res) => {
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
+
+    const cacheKey = `stream:video:${videoId}`;
+    let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
-    await proxyStream(`stream:video:${videoId}`, videoId, "best[ext=mp4]/best", ua, res);
+
+    if (streamUrl) {
+      console.log("VIDEO CACHE HIT:", videoId);
+    } else {
+      // Queue ile sıralı çalıştır
+      streamUrl = await queue.add(async () => {
+        await randomJitter();
+        return resolveStreamUrl(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          "best[ext=mp4]/best",
+          ua
+        );
+      });
+      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
+      console.log("VIDEO CACHE SAVE:", videoId);
+    }
+
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: { "User-Agent": ua }
+    });
+    res.setHeader("Content-Type", response.headers["content-type"]);
+    response.data.pipe(res);
   } catch (err) {
     console.error("VIDEO STREAM ERROR:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Video streaming failed" });
-    }
+    res.status(500).json({ error: "Video streaming failed" });
   }
 });
 
@@ -471,18 +442,39 @@ app.listen(PORT, "0.0.0.0", async () => {
 app.get("/download/mp3", async (req, res) => {
   try {
     const { videoId } = req.query;
+
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
+
     const ua = getRandomUA();
-    await proxyStream(`stream:audio:${videoId}`, videoId, "bestaudio", ua, res, "audio/mp4");
+    await randomJitter();
+    const streamUrl = await queue.add(() =>
+      resolveStreamUrl(url, "bestaudio", ua)
+    );
+
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Invalid stream url" });
+    }
+
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": ua }
+    });
+
+    response.data.pipe(res);
+
   } catch (err) {
     console.error("MP3 ERROR:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Audio download failed" });
-    }
+    res.status(500).json({ error: "Audio download failed" });
   }
 });
  
@@ -490,17 +482,38 @@ app.get("/download/mp3", async (req, res) => {
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
+
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+    res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
+
     const ua = getRandomUA();
-    await proxyStream(`stream:video:${videoId}`, videoId, "best[ext=mp4]/best", ua, res, "video/mp4");
+    await randomJitter();
+    const streamUrl = await queue.add(() =>
+      resolveStreamUrl(url, "best[ext=mp4]/best", ua)
+    );
+
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Invalid stream url" });
+    }
+
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: { "User-Agent": ua }
+    });
+
+    response.data.pipe(res);
+
   } catch (err) {
     console.error("MP4 ERROR:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "MP4 download failed" });
-    }
+    res.status(500).json({ error: "MP4 download failed" });
   }
 });
