@@ -7,32 +7,15 @@ const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
-const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
+const rateLimit = require("express-rate-limit");    // botu azaltır. CPU korunur.
 
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
   concurrency: 2,      // aynı anda max 2 işlem
-  interval: 1000,      // 1 saniyede
+  interval: 1000,      // 1 saniyede 
   intervalCap: 3       // max 3 request
 });
-
-// Bots & Jitter
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
-];
-function getRandomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-const randomJitter = async () => {
-    // 500ms ile 1500ms arası rastgele gecikme ekler
-    const ms = Math.floor(Math.random() * 1000) + 500;
-    await new Promise(resolve => setTimeout(resolve, ms));
-};
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
     httpsAgent: new https.Agent({ keepAlive: true })
@@ -50,6 +33,7 @@ app.use(express.json());
 app.use((req, res, next) => {
     const appKey = req.headers['x-app-key'];
     // Health ve Config açık kalabilir, diğerleri korumalı
+
    if (
 req.path === "/health" ||
 req.path === "/config" ||
@@ -57,8 +41,7 @@ req.path.startsWith("/stream") ||
 req.path.startsWith("/download")
 ) return next();
 
-    const expectedKey = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
-    if (appKey === expectedKey) {
+    if (appKey === "RINGTONE_MASTER_V2_SECRET_2026") {
         next();
     } else {
         console.warn(`Yetkisiz erişim denemesi: ${req.ip}`);
@@ -190,23 +173,15 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 app.get("/stream", async (req, res) => {
   try {
-    await randomJitter();
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const ua = getRandomUA();
     const streamUrl = await ytdlp(
       `https://www.youtube.com/watch?v=${videoId}`,
       {
         format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true,
-        extractorArgs: "youtube:player_client=android",
-        cookies: "cookies.txt",
-        addHeader: [
-          "referer:youtube.com",
-          `user-agent:${ua}`
-        ]
+        getUrl: true
       }
     );
     console.log("STREAM URL:", streamUrl);
@@ -215,7 +190,7 @@ app.get("/stream", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       headers: {
-        "User-Agent": ua
+        "User-Agent": "Mozilla/5.0"
       }
     });
     res.setHeader("Content-Type", response.headers["content-type"]);
@@ -234,6 +209,7 @@ app.get("/stream", async (req, res) => {
 app.get("/stream/video", async (req, res) => {
 
   try {
+
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -241,8 +217,8 @@ app.get("/stream/video", async (req, res) => {
     }
 
     const cacheKey = "video_" + videoId;
+
     let streamUrl;
-    const ua = getRandomUA();
 
     // CACHE VAR MI
     if (streamCache.has(cacheKey)) {
@@ -265,18 +241,12 @@ app.get("/stream/video", async (req, res) => {
 
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
-      await randomJitter();
+
       streamUrl = await ytdlp(
         `https://www.youtube.com/watch?v=${videoId}`,
         {
           format: "best[ext=mp4]/best",
-          getUrl: true,
-          extractorArgs: "youtube:player_client=android",
-          cookies: "cookies.txt",
-          addHeader: [
-            "referer:youtube.com",
-            `user-agent:${ua}`
-          ]
+          getUrl: true
         }
       );
 
@@ -296,7 +266,7 @@ app.get("/stream/video", async (req, res) => {
       url: streamUrl,
       responseType: "stream",
       headers: {
-        "User-Agent": ua
+        "User-Agent": "Mozilla/5.0"
       }
     });
 
@@ -358,17 +328,14 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
-    const ua = getRandomUA();
-    await randomJitter();
     const streamUrl = await queue.add(() =>
       ytdlp(url, {
         format: "bestaudio[ext=m4a]/bestaudio",
         getUrl: true,
         extractorArgs: "youtube:player_client=android",
-        cookies: "cookies.txt",
         addHeader: [
           "referer:youtube.com",
-          `user-agent:${ua}`
+          "user-agent:Mozilla/5.0"
         ]
       })
     );
@@ -382,7 +349,7 @@ app.get("/download/mp3", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": ua }
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
     response.data.pipe(res);
@@ -407,17 +374,14 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
-    const ua = getRandomUA();
-    await randomJitter();
     const streamUrl = await queue.add(() =>
       ytdlp(url, {
         format: "best[ext=mp4]/best",
         getUrl: true,
         extractorArgs: "youtube:player_client=android",
-        cookies: "cookies.txt",
         addHeader: [
           "referer:youtube.com",
-          `user-agent:${ua}`
+          "user-agent:Mozilla/5.0"
         ]
       })
     );
@@ -431,7 +395,7 @@ app.get("/download/mp4", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": ua }
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
     response.data.pipe(res);
