@@ -10,6 +10,8 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
 const PQueue = require("p-queue").default;
+const { HttpsProxyAgent } = require("https-proxy-agent");
+
 function parseProxy(proxyUrl) {
   const url = new URL(proxyUrl);
   return {
@@ -346,17 +348,19 @@ app.get("/stream", async (req, res) => {
 
     }
 
-    const parsedProxy = parseProxy(proxy);
+   const agent = new HttpsProxyAgent(proxy);
 
-    const response = await axios({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        proxy: parsedProxy,
-        headers: {
-        "User-Agent": "Mozilla/5.0"
-    }
-    });
+const response = await axios({
+  method: "GET",
+  url: streamUrl,
+  responseType: "stream",
+  httpsAgent: agent,
+  httpAgent: agent,
+  proxy: false,
+  headers: {
+    "User-Agent": "Mozilla/5.0"
+  }
+});
 
     res.setHeader("Content-Type", response.headers["content-type"]);
 
@@ -431,13 +435,15 @@ const proxy = getRandomProxy();
 
     }
 
-  const parsedProxy = parseProxy(proxy);
+ const agent = new HttpsProxyAgent(proxy);
 
 const response = await axios({
   method: "GET",
   url: streamUrl,
   responseType: "stream",
-  proxy: parsedProxy,
+  httpsAgent: agent,
+  httpAgent: agent,
+  proxy: false,
   headers: {
     "User-Agent": "Mozilla/5.0"
   }
@@ -519,15 +525,18 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const parsedProxy = parseProxy(proxy);
-    const response = await axios({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 20000,
-      proxy: parsedProxy,
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
+    const agent = new HttpsProxyAgent(proxy);
+
+const response = await axios({
+  method: "GET",
+  url: streamUrl.toString().trim(),
+  responseType: "stream",
+  timeout: 20000,
+  httpsAgent: agent,
+  httpAgent: agent,
+  proxy: false,
+  headers: { "User-Agent": "Mozilla/5.0" }
+});
 
     response.data.pipe(res);
 
@@ -570,13 +579,15 @@ const streamUrl = await queue.add(() =>
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-   const parsedProxy = parseProxy(proxy);
+const agent = new HttpsProxyAgent(proxy);
 
 const response = await axios({
   method: "GET",
   url: streamUrl,
   responseType: "stream",
-  proxy: parsedProxy,
+  httpsAgent: agent,
+  httpAgent: agent,
+  proxy: false,
   headers: {
     "User-Agent": "Mozilla/5.0"
   }
