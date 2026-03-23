@@ -327,14 +327,13 @@ app.get("/stream", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
      
-      streamUrl = await ytdlpWithRetry(
+      streamUrl = await ytdlp(
         `https://www.youtube.com/watch?v=${videoId}`,
         {                                                                
           format: "bestaudio[ext=m4a]/bestaudio",                                                                
           getUrl: true,
-                                                                        
-        },
-        proxy
+          proxy: proxy                                                                 
+        }
       );
 
       streamUrl = streamUrl.toString().trim();
@@ -416,14 +415,14 @@ const proxy = getRandomProxy();
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-streamUrl = await ytdlpWithRetry(
-  `https://www.youtube.com/watch?v=${videoId}`,
-  {
-    format: "best[ext=mp4]/best",
-    getUrl: true
-  },
-  proxy
-);
+    streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+     {
+       format: "best[ext=mp4]/best",
+       getUrl: true,
+       proxy: proxy
+    }
+    );
 
       streamUrl = streamUrl.toString().trim();
 
@@ -526,6 +525,7 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
+
     const agent = new HttpsProxyAgent(proxy);
 
 const response = await axios({
@@ -602,9 +602,10 @@ const response = await axios({
   }
 });  
 
-async function ytdlpWithRetry(url, options, proxy, retries = 3) {
+async function ytdlpWithRetry(url, options, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
+      const proxy = getRandomProxy();
       return await ytdlp(url, { ...options, proxy });
     } catch (err) {
       console.log("Proxy patladı, retry...");
