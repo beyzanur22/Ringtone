@@ -1,9 +1,10 @@
 FROM node:20
 
-# Python ve ffmpeg kur
+# Python, ffmpeg ve yt-dlp kur
 RUN apt-get update && \
     apt-get install -y python3 python3-pip ffmpeg && \
-    ln -s /usr/bin/python3 /usr/bin/python
+    ln -s /usr/bin/python3 /usr/bin/python && \
+    pip3 install --no-cache-dir yt-dlp --break-system-packages
 
 WORKDIR /app
 
