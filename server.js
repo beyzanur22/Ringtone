@@ -7,13 +7,13 @@ const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
-const rateLimit = require("express-rate-limit");    // botu azaltır. CPU korunur.
+const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
 
 const PQueue = require("p-queue").default;
 
 const queue = new PQueue({
   concurrency: 2,      // aynı anda max 2 işlem
-  interval: 1000,      // 1 saniyede 
+  interval: 1000,      // 1 saniyede
   intervalCap: 3       // max 3 request
 });
 const axiosClient = axios.create({
@@ -33,7 +33,6 @@ app.use(express.json());
 app.use((req, res, next) => {
     const appKey = req.headers['x-app-key'];
     // Health ve Config açık kalabilir, diğerleri korumalı
-
    if (
 req.path === "/health" ||
 req.path === "/config" ||
