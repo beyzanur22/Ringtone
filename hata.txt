@@ -1,0 +1,58 @@
+dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit
+Backend running on port 8080
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] client=web başarısız: ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=ios, format=bestaudio
+[yt-dlp] client=ios başarısız: WARNING: [youtube] NqLe3mk__kg: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: [youtube] NqLe3mk__kg: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: Only images are available for download. use --list-formats to see them
+ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] Başarılı: client=default
+AUDIO CACHE SAVE: NqLe3mk__kg
+[yt-dlp] client=web başarısız: ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=ios, format=bestaudio
+[yt-dlp] client=ios başarısız: WARNING: [youtube] NqLe3mk__kg: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: [youtube] NqLe3mk__kg: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: Only images are available for download. use --list-formats to see them
+ERROR: [youtube] NqLe3mk__kg: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+AUDIO CACHE HIT: NqLe3mk__kg
+[yt-dlp] Başarılı: client=default
+AUDIO CACHE SAVE: NqLe3mk__kg
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:38:25.506Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:38:31.962Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:38:39.388Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:38:49.050Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:38:55.555Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+[2026-03-23T16:39:03.930Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO CACHE SAVE: NqLe3mk__kg
+VIDEO STREAM ERROR: Request failed with status code 403
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[yt-dlp] Başarılı: client=web
+VIDEO CACHE SAVE: NqLe3mk__kg
+[2026-03-23T16:39:12.271Z] - [STREAM_VIDEO] - VideoID: NqLe3mk__kg - Error: Request failed with status code 403
+VIDEO STREAM ERROR: Request failed with status code 403

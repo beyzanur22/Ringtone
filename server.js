@@ -121,8 +121,8 @@ const randomJitter = async () => {
     await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Fallback player client stratejisi: web → ios → default
-const PLAYER_CLIENTS = ["web", "ios", "default"];
+// Fallback player client stratejisi: android → mweb → web → ios → default
+const PLAYER_CLIENTS = ["android", "mweb", "web", "ios", "default"];
 
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
@@ -142,7 +142,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         format: format,
         getUrl: true,
         addHeader: [
-          "referer:youtube.com",
+          "referer:https://www.youtube.com/",
           `user-agent:${ua}`
         ]
       };
@@ -467,7 +467,10 @@ app.get("/stream", async (req, res) => {
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: { "User-Agent": ua }
+        headers: { 
+          "User-Agent": ua,
+          "Referer": "https://www.youtube.com/"
+        }
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
@@ -532,7 +535,10 @@ app.get("/stream/video", async (req, res) => {
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: { "User-Agent": ua }
+        headers: { 
+          "User-Agent": ua,
+          "Referer": "https://www.youtube.com/"
+        }
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
@@ -613,7 +619,10 @@ app.get("/download/mp3", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": ua }
+      headers: { 
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      }
     });
 
     response.data.pipe(res);
@@ -657,7 +666,10 @@ app.get("/download/mp4", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": ua }
+      headers: { 
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      }
     });
 
     response.data.pipe(res);
