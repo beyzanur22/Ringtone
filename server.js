@@ -169,83 +169,48 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 // STREAM (Direct Pipe)
 // STREAM 
+
 app.get("/stream", async (req, res) => {
   try {
-
     const { videoId } = req.query;
-
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
+   const streamUrl = await queue.add(() =>
+  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    format: "bestaudio[ext=m4a]/bestaudio",
+    getUrl: true,
 
-    let streamUrl;
+    extractorArgs: "youtube:player_client=android",
 
-    // CACHE VAR MI
-    if (streamCache.has(videoId)) {
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:Mozilla/5.0"
+    ],
 
-      const cached = streamCache.get(videoId);
-
-      if (Date.now() < cached.expire) {
-
-        streamUrl = cached.url;
-
-        console.log("STREAM CACHE HIT:", videoId);
-
-      } else {
-
-        streamCache.delete(videoId);
-
-      }
-
-    }
-
-    // CACHE YOKSA YT-DLP ÇALIŞTIR
-    if (!streamUrl) {
-
-      streamUrl = await ytdlp(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        {                                                                
-          format: "bestaudio[ext=m4a]/bestaudio",                                                                    
-          getUrl: true                                                                   
-        }
-      );
-
-      streamUrl = streamUrl.toString().trim();
-
-      // CACHE'E KOY
-      streamCache.set(videoId, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
-      });
-
-      console.log("STREAM CACHE SAVE:", videoId);
-
-    }
-
+    cookies: "./cookies.txt"
+  })
+);
+    console.log("STREAM URL:", streamUrl);
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl,
+      url: streamUrl.toString().trim(),
       responseType: "stream",
       headers: {
         "User-Agent": "Mozilla/5.0"
       }
     });
-
     res.setHeader("Content-Type", response.headers["content-type"]);
-
-    response.data.pipe(res);
-
+    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
   } catch (err) {
-
     console.error("STREAM ERROR:", err);
-
     res.status(500).json({
       error: "Streaming failed",
       message: err.message
     });
-
   }
 });
+
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
@@ -446,4 +411,4 @@ app.get("/download/mp4", async (req, res) => {
     console.error("MP4 ERROR:", err.message);
     res.status(500).json({ error: "MP4 download failed" });
   }
-});  
+});
