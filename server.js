@@ -327,7 +327,7 @@ app.get("/stream", async (req, res) => {
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
      
-      streamUrl = await ytdlp(
+      streamUrl = await ytdlpWithRetry(
         `https://www.youtube.com/watch?v=${videoId}`,
         {                                                                
           format: "bestaudio[ext=m4a]/bestaudio",                                                                
