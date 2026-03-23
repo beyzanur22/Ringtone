@@ -437,12 +437,15 @@ app.get("/stream", async (req, res) => {
     const countryClient = getPlayerClientForCountry(country);
 
     const cacheKey = `stream:audio:${videoId}`;
-    let streamUrl = await cacheGet(cacheKey);
-    const ua = getRandomUA();
+    const cachedData = await cacheGet(cacheKey);
+    let streamUrl, ua;
 
-    if (streamUrl) {
+    if (cachedData && cachedData.url) {
+      streamUrl = cachedData.url;
+      ua = cachedData.ua || getRandomUA();
       console.log("AUDIO CACHE HIT:", videoId);
     } else {
+      ua = getRandomUA();
       // Queue ile sıralı çalıştır
       streamUrl = await queue.add(async () => {
         await randomJitter();
@@ -453,16 +456,28 @@ app.get("/stream", async (req, res) => {
           countryClient
         );
       });
-      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
+      // URL'ler genelde daha kısa sürede expire olur
+      await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      headers: { "User-Agent": ua }
-    });
+    let response;
+    try {
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl,
+        responseType: "stream",
+        headers: { "User-Agent": ua }
+      });
+    } catch (fetchErr) {
+      if (fetchErr.response && fetchErr.response.status === 403) {
+        // Cache URL expire olmuş veya banlanmış, temizle
+        if (redis) redis.del(cacheKey);
+        memoryCache.delete(cacheKey);
+      }
+      throw fetchErr;
+    }
+
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
@@ -488,12 +503,15 @@ app.get("/stream/video", async (req, res) => {
     const countryClient = getPlayerClientForCountry(country);
 
     const cacheKey = `stream:video:${videoId}`;
-    let streamUrl = await cacheGet(cacheKey);
-    const ua = getRandomUA();
+    const cachedData = await cacheGet(cacheKey);
+    let streamUrl, ua;
 
-    if (streamUrl) {
+    if (cachedData && cachedData.url) {
+      streamUrl = cachedData.url;
+      ua = cachedData.ua || getRandomUA();
       console.log("VIDEO CACHE HIT:", videoId);
     } else {
+      ua = getRandomUA();
       // Queue ile sıralı çalıştır
       streamUrl = await queue.add(async () => {
         await randomJitter();
@@ -504,16 +522,27 @@ app.get("/stream/video", async (req, res) => {
           countryClient
         );
       });
-      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
+      await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
       console.log("VIDEO CACHE SAVE:", videoId);
     }
 
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      headers: { "User-Agent": ua }
-    });
+    let response;
+    try {
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl,
+        responseType: "stream",
+        headers: { "User-Agent": ua }
+      });
+    } catch (fetchErr) {
+      if (fetchErr.response && fetchErr.response.status === 403) {
+        // Cache temizle
+        if (redis) redis.del(cacheKey);
+        memoryCache.delete(cacheKey);
+      }
+      throw fetchErr;
+    }
+
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
