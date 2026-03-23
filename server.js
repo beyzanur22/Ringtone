@@ -332,8 +332,9 @@ app.get("/stream", async (req, res) => {
         {                                                                
           format: "bestaudio[ext=m4a]/bestaudio",                                                                
           getUrl: true,
-          proxy: proxy                                                                 
-        }
+                                                                        
+        },
+        proxy
       );
 
       streamUrl = streamUrl.toString().trim();
@@ -415,14 +416,14 @@ const proxy = getRandomProxy();
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
 
-    streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-     {
-       format: "best[ext=mp4]/best",
-       getUrl: true,
-       proxy: proxy
-    }
-    );
+streamUrl = await ytdlpWithRetry(
+  `https://www.youtube.com/watch?v=${videoId}`,
+  {
+    format: "best[ext=mp4]/best",
+    getUrl: true
+  },
+  proxy
+);
 
       streamUrl = streamUrl.toString().trim();
 
@@ -601,10 +602,9 @@ const response = await axios({
   }
 });  
 
-async function ytdlpWithRetry(url, options, retries = 3) {
+async function ytdlpWithRetry(url, options, proxy, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const proxy = getRandomProxy();
       return await ytdlp(url, { ...options, proxy });
     } catch (err) {
       console.log("Proxy patladı, retry...");
