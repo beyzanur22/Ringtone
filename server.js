@@ -16,6 +16,67 @@ const queue = new PQueue({
   interval: 1000,      // 1 saniyede
   intervalCap: 3       // max 3 request
 });
+
+// Bots & Jitter
+const USER_AGENTS = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
+];
+function getRandomUA() {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+const randomJitter = async () => {
+    // 500ms ile 1500ms arası rastgele gecikme ekler
+    const ms = Math.floor(Math.random() * 1000) + 500;
+    await new Promise(resolve => setTimeout(resolve, ms));
+};
+
+// Fallback player client stratejisi: web → ios → default
+const PLAYER_CLIENTS = ["web", "ios", "default"];
+
+async function resolveStreamUrl(videoUrl, format, ua) {
+  let lastError = null;
+
+  for (const client of PLAYER_CLIENTS) {
+    try {
+      const opts = {
+        format: format,
+        getUrl: true,
+        addHeader: [
+          "referer:youtube.com",
+          `user-agent:${ua}`
+        ]
+      };
+
+      // cookies.txt varsa ekle
+      if (fs.existsSync("cookies.txt")) {
+        opts.cookies = "cookies.txt";
+      }
+
+      // "default" = yt-dlp kendi seçsin
+      if (client !== "default") {
+        opts.extractorArgs = `youtube:player_client=${client}`;
+      }
+
+      console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
+      const result = await ytdlp(videoUrl, opts);
+      const url = result.toString().trim();
+
+      if (url && url.startsWith("http")) {
+        console.log(`[yt-dlp] Başarılı: client=${client}`);
+        return url;
+      }
+    } catch (err) {
+      console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("Tüm player client'lar başarısız oldu");
+}
 const axiosClient = axios.create({
     httpAgent: new http.Agent({ keepAlive: true }),
     httpsAgent: new https.Agent({ keepAlive: true })
@@ -40,7 +101,8 @@ req.path.startsWith("/stream") ||
 req.path.startsWith("/download")
 ) return next();
 
-    if (appKey === "RINGTONE_MASTER_V2_SECRET_2026") {
+    const expectedKey = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
+    if (appKey === expectedKey) {
         next();
     } else {
         console.warn(`Yetkisiz erişim denemesi: ${req.ip}`);
@@ -172,30 +234,53 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 app.get("/stream", async (req, res) => {
   try {
+    await randomJitter();
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const streamUrl = await ytdlp(
-      `https://www.youtube.com/watch?v=${videoId}`,
-      {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true
+
+    // Audio cache kontrolü
+    const cacheKey = "audio_" + videoId;
+    let streamUrl;
+
+    if (streamCache.has(cacheKey)) {
+      const cached = streamCache.get(cacheKey);
+      if (Date.now() < cached.expire) {
+        streamUrl = cached.url;
+        console.log("AUDIO CACHE HIT:", videoId);
+      } else {
+        streamCache.delete(cacheKey);
       }
-    );
-    console.log("STREAM URL:", streamUrl);
+    }
+
+    const ua = getRandomUA();
+
+    if (!streamUrl) {
+      streamUrl = await resolveStreamUrl(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        "bestaudio",
+        ua
+      );
+      streamCache.set(cacheKey, {
+        url: streamUrl,
+        expire: Date.now() + STREAM_CACHE_DURATION
+      });
+      console.log("AUDIO CACHE SAVE:", videoId);
+    }
+
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: streamUrl,
       responseType: "stream",
       headers: {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": ua
       }
     });
     res.setHeader("Content-Type", response.headers["content-type"]);
-    response.data.pipe(res); // *** YouTube proxy streaming kullanıcı youtube a doğrudan bağlanmıyor sayesinde 
+    response.data.pipe(res);
   } catch (err) {
-    console.error("STREAM ERROR:", err);
+    console.error("STREAM ERROR:", err.message);
     res.status(500).json({
       error: "Streaming failed",
       message: err.message
@@ -208,7 +293,6 @@ app.get("/stream", async (req, res) => {
 app.get("/stream/video", async (req, res) => {
 
   try {
-
     const { videoId } = req.query;
 
     if (!videoId) {
@@ -216,8 +300,8 @@ app.get("/stream/video", async (req, res) => {
     }
 
     const cacheKey = "video_" + videoId;
-
     let streamUrl;
+    const ua = getRandomUA();
 
     // CACHE VAR MI
     if (streamCache.has(cacheKey)) {
@@ -240,16 +324,12 @@ app.get("/stream/video", async (req, res) => {
 
     // CACHE YOKSA YT-DLP ÇALIŞTIR
     if (!streamUrl) {
-
-      streamUrl = await ytdlp(
+      await randomJitter();
+      streamUrl = await resolveStreamUrl(
         `https://www.youtube.com/watch?v=${videoId}`,
-        {
-          format: "best[ext=mp4]/best",
-          getUrl: true
-        }
+        "best[ext=mp4]/best",
+        ua
       );
-
-      streamUrl = streamUrl.toString().trim();
 
       streamCache.set(cacheKey, {
         url: streamUrl,
@@ -265,7 +345,7 @@ app.get("/stream/video", async (req, res) => {
       url: streamUrl,
       responseType: "stream",
       headers: {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": ua
       }
     });
 
@@ -327,16 +407,10 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Type", "audio/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
+    const ua = getRandomUA();
+    await randomJitter();
     const streamUrl = await queue.add(() =>
-      ytdlp(url, {
-        format: "bestaudio[ext=m4a]/bestaudio",
-        getUrl: true,
-        extractorArgs: "youtube:player_client=android",
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
-        ]
-      })
+      resolveStreamUrl(url, "bestaudio", ua)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -348,7 +422,7 @@ app.get("/download/mp3", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: { "User-Agent": ua }
     });
 
     response.data.pipe(res);
@@ -373,16 +447,10 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
+    const ua = getRandomUA();
+    await randomJitter();
     const streamUrl = await queue.add(() =>
-      ytdlp(url, {
-        format: "best[ext=mp4]/best",
-        getUrl: true,
-        extractorArgs: "youtube:player_client=android",
-        addHeader: [
-          "referer:youtube.com",
-          "user-agent:Mozilla/5.0"
-        ]
-      })
+      resolveStreamUrl(url, "best[ext=mp4]/best", ua)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -394,7 +462,7 @@ app.get("/download/mp4", async (req, res) => {
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: { "User-Agent": "Mozilla/5.0" }
+      headers: { "User-Agent": ua }
     });
 
     response.data.pipe(res);
