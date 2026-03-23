@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: ringtone-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - USE_COOKIES=true
+    volumes:
+      - ./cookies.txt:/app/cookies.txt:ro
+      - ./blockedChannels.json:/app/blockedChannels.json
+      - ./config.json:/app/config.json
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: ringtone-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

@@ -19,6 +19,26 @@ const queue = new PQueue({
 });
 
 /* =========================
+   ERROR LOGGING & CIRCUIT BREAKER
+========================= */
+const path = require("path");
+
+function logError(type, videoId, errorMessage) {
+    const timestamp = new Date().toISOString();
+    const logLine = `[${timestamp}] - [${type}] - VideoID: ${videoId || "N/A"} - Error: ${errorMessage}\n`;
+    console.error(logLine.trim());
+    try {
+        fs.appendFileSync(path.join(__dirname, "error.log"), logLine);
+    } catch(e) { /* ignore */ }
+}
+
+let ytDlpFailCount = 0;
+let ytDlpCircuitBreakerUntil = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_TIMEOUT = 5 * 60 * 1000; // 5 mins
+let youtubeApiStatus = "ok";
+
+/* =========================
    REDIS CACHE (fallback: in-memory)
 ========================= */
 let redis = null;
@@ -104,10 +124,19 @@ const randomJitter = async () => {
 // Fallback player client stratejisi: web → ios → default
 const PLAYER_CLIENTS = ["web", "ios", "default"];
 
-async function resolveStreamUrl(videoUrl, format, ua) {
+async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
+  if (Date.now() < ytDlpCircuitBreakerUntil) {
+    throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
+  }
+
   let lastError = null;
 
-  for (const client of PLAYER_CLIENTS) {
+  let clientsToTry = PLAYER_CLIENTS;
+  if (countryClient && countryClient !== "default") {
+    clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
+  }
+
+  for (const client of clientsToTry) {
     try {
       const opts = {
         format: format,
@@ -135,12 +164,21 @@ async function resolveStreamUrl(videoUrl, format, ua) {
 
       if (url && url.startsWith("http")) {
         console.log(`[yt-dlp] Başarılı: client=${client}`);
+        ytDlpFailCount = 0; // reset on success
         return url;
       }
     } catch (err) {
       console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
       lastError = err;
     }
+  }
+
+  ytDlpFailCount++;
+  if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    const videoIdMatch = videoUrl.match(/v=([^&]+)/);
+    const vId = videoIdMatch ? videoIdMatch[1] : videoUrl;
+    logError("CIRCUIT_BREAKER", vId, `yt-dlp failed ${ytDlpFailCount} times. Circuit open for 5 mins.`);
+    ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
   }
 
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
@@ -239,11 +277,29 @@ function filterBlockedChannels(items) {
   });
 }
 
+function getPlayerClientForCountry(countryCode) {
+    try {
+        const data = fs.readFileSync(CONFIG_FILE, "utf-8");
+        const configData = JSON.parse(data);
+        if (configData.countries && configData.countries[countryCode]) {
+            return configData.countries[countryCode];
+        }
+    } catch (e) { /* ignore */ }
+    return "default";
+}
+
 /* =========================
    ENDPOINTS
 ========================= */
 
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", (req, res) => {
+    res.json({
+        status: "ok",
+        redis: redis ? "connected" : "disconnected",
+        ytDlp: Date.now() < ytDlpCircuitBreakerUntil ? "circuit_breaker_open" : "ok",
+        youtubeApi: youtubeApiStatus
+    });
+});
 
 app.get("/config", (req, res) => {
     const data = fs.readFileSync(CONFIG_FILE);
@@ -265,23 +321,46 @@ app.get("/top50", async (req, res) => {
             return res.json({ source: "cache", data: cached });
         }
 
-        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
-            params: {
-                part: "snippet,contentDetails,statistics",
-                chart: "mostPopular",
-                regionCode: "US",
-                maxResults: 50,
-                videoCategoryId: 10,
-                key: YOUTUBE_API_KEY
+        let items;
+        try {
+            const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+                params: {
+                    part: "snippet,contentDetails,statistics",
+                    chart: "mostPopular",
+                    regionCode: "US",
+                    maxResults: 50,
+                    videoCategoryId: 10,
+                    key: YOUTUBE_API_KEY
+                }
+            });
+            items = filterBlockedChannels(response.data.items);
+            youtubeApiStatus = "ok";
+        } catch (apiError) {
+            if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
+                logError("API_FALLBACK", null, "YouTube API Quota exceeded or forbidden. Using Piped API fallback config for top50.");
+                youtubeApiStatus = "quota_exceeded";
+                const pipedRes = await axiosClient.get("https://pipedapi.kavin.rocks/trending?region=US");
+                const pipedItems = pipedRes.data.map(item => ({
+                    id: (item.url || "").split("?v=")[1],
+                    snippet: {
+                        title: item.title,
+                        channelTitle: item.uploaderName,
+                        channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
+                    }
+                }));
+                items = filterBlockedChannels(pipedItems);
+            } else {
+                throw apiError;
             }
-        });
+        }
 
-        const items = filterBlockedChannels(response.data.items);
         await cacheSet("top50", items, CACHE_DURATION);
+        res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
         res.json({ source: "youtube", data: items });
     } catch (error) {
+        logError("TOP50", null, error.message);
         console.error("TOP50 ERROR:", error.message);
-        res.status(500).json({ error: "YouTube API error" });
+        res.status(500).json({ error: "API error" });
     }
 });
 
@@ -298,22 +377,47 @@ app.get("/search", searchLimiter, async (req, res) => {
         const cached = await cacheGet(cacheKey);
         if (cached) return res.json(cached);
 
-        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
-            params: {
-                part: "snippet",
-                q: query,
-                type: "video",
-                maxResults: 20,
-                pageToken: pageToken,
-                key: YOUTUBE_API_KEY
+        let resultData, nextToken = "";
+        try {
+            const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+                params: {
+                    part: "snippet",
+                    q: query,
+                    type: "video",
+                    maxResults: 20,
+                    pageToken: pageToken,
+                    key: YOUTUBE_API_KEY
+                }
+            });
+            resultData = filterBlockedChannels(response.data.items);
+            nextToken = response.data.nextPageToken;
+            youtubeApiStatus = "ok";
+        } catch (apiError) {
+            if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
+                logError("API_FALLBACK", null, `YouTube API Quota exceeded or forbidden. Using Piped API fallback config for search: ${query}`);
+                youtubeApiStatus = "quota_exceeded";
+                const pipedRes = await axiosClient.get(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(query)}&filter=videos`);
+                const pipedItems = pipedRes.data.map(item => ({
+                    id: { videoId: (item.url || "").split("?v=")[1] },
+                    snippet: {
+                        title: item.title,
+                        channelTitle: item.uploaderName,
+                        channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
+                    }
+                }));
+                resultData = filterBlockedChannels(pipedItems);
+                nextToken = ""; // Piped basic API may not always have next page cursor matching easily
+            } else {
+                throw apiError;
             }
-        });
+        }
 
-        const filteredItems = filterBlockedChannels(response.data.items);
-        const result = { nextPageToken: response.data.nextPageToken, data: filteredItems };
+        const result = { nextPageToken: nextToken, data: resultData };
         await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
+        res.setHeader("Cache-Control", `public, max-age=${SEARCH_CACHE_DURATION}`);
         res.json(result);
     } catch (error) {
+        logError("SEARCH", null, error.message);
         console.error("SEARCH ERROR:", error.message);
         res.status(500).json({ error: "Search failed" });
     }
@@ -329,6 +433,9 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+
     const cacheKey = `stream:audio:${videoId}`;
     let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
@@ -342,7 +449,8 @@ app.get("/stream", async (req, res) => {
         return resolveStreamUrl(
           `https://www.youtube.com/watch?v=${videoId}`,
           "bestaudio",
-          ua
+          ua,
+          countryClient
         );
       });
       await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
@@ -358,6 +466,7 @@ app.get("/stream", async (req, res) => {
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
+    logError("STREAM", req.query.videoId, err.message);
     console.error("STREAM ERROR:", err.message);
     res.status(500).json({
       error: "Streaming failed",
@@ -375,6 +484,9 @@ app.get("/stream/video", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+
     const cacheKey = `stream:video:${videoId}`;
     let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
@@ -388,7 +500,8 @@ app.get("/stream/video", async (req, res) => {
         return resolveStreamUrl(
           `https://www.youtube.com/watch?v=${videoId}`,
           "best[ext=mp4]/best",
-          ua
+          ua,
+          countryClient
         );
       });
       await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
@@ -404,6 +517,7 @@ app.get("/stream/video", async (req, res) => {
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
+    logError("STREAM_VIDEO", req.query.videoId, err.message);
     console.error("VIDEO STREAM ERROR:", err.message);
     res.status(500).json({ error: "Video streaming failed" });
   }
@@ -453,9 +567,12 @@ app.get("/download/mp3", async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
 
     const ua = getRandomUA();
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+
     await randomJitter();
     const streamUrl = await queue.add(() =>
-      resolveStreamUrl(url, "bestaudio", ua)
+      resolveStreamUrl(url, "bestaudio", ua, countryClient)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -473,6 +590,7 @@ app.get("/download/mp3", async (req, res) => {
     response.data.pipe(res);
 
   } catch (err) {
+    logError("DOWNLOAD_MP3", req.query.videoId, err.message);
     console.error("MP3 ERROR:", err.message);
     res.status(500).json({ error: "Audio download failed" });
   }
@@ -493,9 +611,12 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
 
     const ua = getRandomUA();
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+
     await randomJitter();
     const streamUrl = await queue.add(() =>
-      resolveStreamUrl(url, "best[ext=mp4]/best", ua)
+      resolveStreamUrl(url, "best[ext=mp4]/best", ua, countryClient)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -513,6 +634,7 @@ app.get("/download/mp4", async (req, res) => {
     response.data.pipe(res);
 
   } catch (err) {
+    logError("DOWNLOAD_MP4", req.query.videoId, err.message);
     console.error("MP4 ERROR:", err.message);
     res.status(500).json({ error: "MP4 download failed" });
   }
