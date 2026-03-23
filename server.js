@@ -7,7 +7,8 @@ const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 const cors = require("cors");
 const fs = require("fs");
-const rateLimit = require("express-rate-limit"); //botu azaltır. CPU korunur . 
+const rateLimit = require("express-rate-limit");
+const Redis = require("ioredis");
 
 const PQueue = require("p-queue").default;
 
@@ -16,6 +17,60 @@ const queue = new PQueue({
   interval: 1000,      // 1 saniyede
   intervalCap: 3       // max 3 request
 });
+
+/* =========================
+   REDIS CACHE (fallback: in-memory)
+========================= */
+let redis = null;
+const memoryCache = new Map(); // Redis yoksa fallback
+
+try {
+  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times) => {
+      if (times > 3) {
+        console.warn("[Redis] Bağlantı kurulamadı, in-memory cache kullanılacak");
+        redis = null;
+        return null; // retry durduruluyor
+      }
+      return Math.min(times * 200, 2000);
+    },
+    lazyConnect: true
+  });
+  redis.connect().catch(() => {
+    console.warn("[Redis] Bağlantı başarısız, in-memory cache aktif");
+    redis = null;
+  });
+} catch (e) {
+  console.warn("[Redis] Init hatası, in-memory cache aktif");
+  redis = null;
+}
+
+// Cache helper fonksiyonları
+async function cacheGet(key) {
+  try {
+    if (redis) {
+      const val = await redis.get(key);
+      return val ? JSON.parse(val) : null;
+    }
+  } catch (e) { /* Redis hata, fallback */ }
+  // In-memory fallback
+  const cached = memoryCache.get(key);
+  if (cached && Date.now() < cached.expire) return cached.data;
+  if (cached) memoryCache.delete(key);
+  return null;
+}
+
+async function cacheSet(key, data, ttlSeconds) {
+  try {
+    if (redis) {
+      await redis.set(key, JSON.stringify(data), "EX", ttlSeconds);
+      return;
+    }
+  } catch (e) { /* Redis hata, fallback */ }
+  // In-memory fallback
+  memoryCache.set(key, { data, expire: Date.now() + (ttlSeconds * 1000) });
+}
 
 // Bots & Jitter
 const USER_AGENTS = [
@@ -144,14 +199,32 @@ const searchLimiter = rateLimit({ //spam search engellemek için.
    YOUTUBE API SETUP
 ========================= */
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-let top50Cache = null;
-let top50CacheTime = 0;
-const CACHE_DURATION = 60 * 60 * 1000;
+const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
+const STREAM_CACHE_DURATION = 6 * 60 * 60; // 6 saat (saniye cinsinden)
+const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
+
 /* =========================
-   STREAM CACHE
+   BLOCKED CHANNELS
 ========================= */
-const streamCache = new Map();
-const STREAM_CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 saat
+function getBlockedChannels() {
+  try {
+    const data = fs.readFileSync(DATA_FILE, "utf-8");
+    return JSON.parse(data);
+  } catch (e) { return []; }
+}
+
+function filterBlockedChannels(items) {
+  const blocked = getBlockedChannels();
+  if (!blocked.length) return items;
+  return items.filter(item => {
+    const channelId = item.snippet?.channelId;
+    const channelTitle = item.snippet?.channelTitle?.toLowerCase();
+    return !blocked.some(b =>
+      b.id === channelId ||
+      (b.name && channelTitle && channelTitle.includes(b.name.toLowerCase()))
+    );
+  });
+}
 
 /* =========================
    ENDPOINTS
@@ -172,11 +245,13 @@ app.post("/config", (req, res) => {
 // TOP 50
 
 app.get("/top50", async (req, res) => {
-    const now = Date.now();
     try {
-        if (top50Cache && (now - top50CacheTime < CACHE_DURATION)) {
-            return res.json({ source: "cache", data: top50Cache });
+        // Redis cache kontrol
+        const cached = await cacheGet("top50");
+        if (cached) {
+            return res.json({ source: "cache", data: cached });
         }
+
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
             params: {
                 part: "snippet,contentDetails,statistics",
@@ -187,28 +262,28 @@ app.get("/top50", async (req, res) => {
                 key: YOUTUBE_API_KEY
             }
         });
-        top50Cache = response.data.items;
-        top50CacheTime = now;
-        res.json({ source: "youtube", data: top50Cache });
+
+        const items = filterBlockedChannels(response.data.items);
+        await cacheSet("top50", items, CACHE_DURATION);
+        res.json({ source: "youtube", data: items });
     } catch (error) {
+        console.error("TOP50 ERROR:", error.message);
         res.status(500).json({ error: "YouTube API error" });
     }
 });
 
 // SEARCH
-let searchCache = new Map();
 app.get("/search", searchLimiter, async (req, res) => {
     try {
         const query = req.query.q?.toLowerCase().trim();
         if (!query) return res.status(400).json({ error: "Query required" });
 
         const pageToken = req.query.pageToken || "";
-        const cacheKey = query + "_" + pageToken;
-        
-        if (searchCache.has(cacheKey)) {
-            const cached = searchCache.get(cacheKey);
-            if (Date.now() - cached.time < (60 * 60 * 1000)) return res.json(cached.data);
-        }
+        const cacheKey = `search:${query}_${pageToken}`;
+
+        // Redis cache kontrol
+        const cached = await cacheGet(cacheKey);
+        if (cached) return res.json(cached);
 
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
             params: {
@@ -221,10 +296,12 @@ app.get("/search", searchLimiter, async (req, res) => {
             }
         });
 
-        const result = { nextPageToken: response.data.nextPageToken, data: response.data.items };
-        searchCache.set(cacheKey, { data: result, time: Date.now() });
+        const filteredItems = filterBlockedChannels(response.data.items);
+        const result = { nextPageToken: response.data.nextPageToken, data: filteredItems };
+        await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
         res.json(result);
     } catch (error) {
+        console.error("SEARCH ERROR:", error.message);
         res.status(500).json({ error: "Search failed" });
     }
 });
@@ -234,38 +311,28 @@ app.get("/search", searchLimiter, async (req, res) => {
 
 app.get("/stream", async (req, res) => {
   try {
-    await randomJitter();
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    // Audio cache kontrolü
-    const cacheKey = "audio_" + videoId;
-    let streamUrl;
-
-    if (streamCache.has(cacheKey)) {
-      const cached = streamCache.get(cacheKey);
-      if (Date.now() < cached.expire) {
-        streamUrl = cached.url;
-        console.log("AUDIO CACHE HIT:", videoId);
-      } else {
-        streamCache.delete(cacheKey);
-      }
-    }
-
+    const cacheKey = `stream:audio:${videoId}`;
+    let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
 
-    if (!streamUrl) {
-      streamUrl = await resolveStreamUrl(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        "bestaudio",
-        ua
-      );
-      streamCache.set(cacheKey, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
+    if (streamUrl) {
+      console.log("AUDIO CACHE HIT:", videoId);
+    } else {
+      // Queue ile sıralı çalıştır
+      streamUrl = await queue.add(async () => {
+        await randomJitter();
+        return resolveStreamUrl(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          "bestaudio",
+          ua
+        );
       });
+      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
@@ -273,9 +340,7 @@ app.get("/stream", async (req, res) => {
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": ua
-      }
+      headers: { "User-Agent": ua }
     });
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
@@ -291,78 +356,44 @@ app.get("/stream", async (req, res) => {
 
 // VIDEO STREAM (MP4)
 app.get("/stream/video", async (req, res) => {
-
   try {
     const { videoId } = req.query;
-
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const cacheKey = "video_" + videoId;
-    let streamUrl;
+    const cacheKey = `stream:video:${videoId}`;
+    let streamUrl = await cacheGet(cacheKey);
     const ua = getRandomUA();
 
-    // CACHE VAR MI
-    if (streamCache.has(cacheKey)) {
-
-      const cached = streamCache.get(cacheKey);
-
-      if (Date.now() < cached.expire) {
-
-        streamUrl = cached.url;
-
-        console.log("VIDEO CACHE HIT:", videoId);
-
-      } else {
-
-        streamCache.delete(cacheKey);
-
-      }
-
-    }
-
-    // CACHE YOKSA YT-DLP ÇALIŞTIR
-    if (!streamUrl) {
-      await randomJitter();
-      streamUrl = await resolveStreamUrl(
-        `https://www.youtube.com/watch?v=${videoId}`,
-        "best[ext=mp4]/best",
-        ua
-      );
-
-      streamCache.set(cacheKey, {
-        url: streamUrl,
-        expire: Date.now() + STREAM_CACHE_DURATION
+    if (streamUrl) {
+      console.log("VIDEO CACHE HIT:", videoId);
+    } else {
+      // Queue ile sıralı çalıştır
+      streamUrl = await queue.add(async () => {
+        await randomJitter();
+        return resolveStreamUrl(
+          `https://www.youtube.com/watch?v=${videoId}`,
+          "best[ext=mp4]/best",
+          ua
+        );
       });
-
+      await cacheSet(cacheKey, streamUrl, STREAM_CACHE_DURATION);
       console.log("VIDEO CACHE SAVE:", videoId);
-
     }
 
     const response = await axiosClient({
       method: "GET",
       url: streamUrl,
       responseType: "stream",
-      headers: {
-        "User-Agent": ua
-      }
+      headers: { "User-Agent": ua }
     });
-
     res.setHeader("Content-Type", response.headers["content-type"]);
-
     response.data.pipe(res);
-
   } catch (err) {
-
-    console.error("VIDEO STREAM ERROR:", err);
-
-    res.status(500).json({
-      error: "Video streaming failed"
-    });
-
+    console.error("VIDEO STREAM ERROR:", err.message);
+    res.status(500).json({ error: "Video streaming failed" });
   }
-
 });
 
 /* =========================
@@ -381,15 +412,16 @@ async function warmTop50() {
                 key: YOUTUBE_API_KEY
             }
         });
-        top50Cache = response.data.items;
-        top50CacheTime = Date.now();
-        console.log("Top50 cache hazır");
-    } catch (e) { console.log("Warmup başarısız"); }
+        const items = filterBlockedChannels(response.data.items);
+        await cacheSet("top50", items, CACHE_DURATION);
+        console.log("Top50 cache hazır (Redis)");
+    } catch (e) { console.log("Warmup başarısız:", e.message); }
 }
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", async () => {
     console.log(`Backend running on port ${PORT}`);
+    console.log(`Redis: ${redis ? "bağlı" : "in-memory fallback"}`);
     await warmTop50();
 });
 
