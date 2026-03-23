@@ -26,19 +26,31 @@ const memoryCache = new Map(); // Redis yoksa fallback
 
 try {
   redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: 1,
     retryStrategy: (times) => {
-      if (times > 3) {
-        console.warn("[Redis] Bağlantı kurulamadı, in-memory cache kullanılacak");
-        redis = null;
+      if (times > 2) {
         return null; // retry durduruluyor
       }
-      return Math.min(times * 200, 2000);
+      return Math.min(times * 500, 2000);
     },
-    lazyConnect: true
+    lazyConnect: true,
+    enableOfflineQueue: false
   });
-  redis.connect().catch(() => {
+
+  // Unhandled error event'leri yakala
+  redis.on("error", (err) => {
+    if (redis) {
+      console.warn("[Redis] Bağlantı hatası, in-memory cache'e geçiliyor");
+      redis.disconnect();
+      redis = null;
+    }
+  });
+
+  redis.connect().then(() => {
+    console.log("[Redis] Bağlantı başarılı");
+  }).catch(() => {
     console.warn("[Redis] Bağlantı başarısız, in-memory cache aktif");
+    redis.disconnect();
     redis = null;
   });
 } catch (e) {
@@ -106,8 +118,9 @@ async function resolveStreamUrl(videoUrl, format, ua) {
         ]
       };
 
-      // cookies.txt varsa ekle
-      if (fs.existsSync("cookies.txt")) {
+      // cookies.txt varsa ve USE_COOKIES=false değilse ekle
+      const useCookies = process.env.USE_COOKIES !== "false";
+      if (useCookies && fs.existsSync("cookies.txt")) {
         opts.cookies = "cookies.txt";
       }
 
