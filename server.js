@@ -176,21 +176,13 @@ app.get("/stream", async (req, res) => {
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
     }
-    const streamUrl = await queue.add(() =>
-  ytdlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    format: "bestaudio[ext=m4a]/bestaudio",
-    getUrl: true,
-
-    extractorArgs: "youtube:player_client=android",
-
-    addHeader: [
-      "referer:youtube.com",
-      "user-agent:Mozilla/5.0"
-    ],
-
-    cookies: "./cookies.txt"
-  })
-);
+    const streamUrl = await ytdlp(
+      `https://www.youtube.com/watch?v=${videoId}`,
+      {
+        format: "bestaudio[ext=m4a]/bestaudio",
+        getUrl: true
+      }
+    );
     console.log("STREAM URL:", streamUrl);
     const response = await axiosClient({
       method: "GET",
