@@ -29,13 +29,24 @@ if (!fs.existsSync(CACHE_DIR)) {
 const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB limit
 const downloadingFiles = new Set();
 
+const MIN_AUDIO_SIZE = 50 * 1024;   // 50 KB altı ses dosyası bozuktur
+const MIN_VIDEO_SIZE = 500 * 1024;  // 500 KB altı video dosyası bozuktur
+
 async function downloadToCache(videoId, type, streamUrl) {
   const ext = type === "audio" ? "m4a" : "mp4";
   const fileName = `${type}_${videoId}.${ext}`;
   const filePath = path.join(CACHE_DIR, fileName);
   const tempPath = filePath + ".tmp";
 
-  if (fs.existsSync(filePath) || downloadingFiles.has(fileName)) return;
+  if (fs.existsSync(filePath)) {
+    // Varsa boyut kontrolü yap, bozuksa sil
+    const size = fs.statSync(filePath).size;
+    const minSize = type === "audio" ? MIN_AUDIO_SIZE : MIN_VIDEO_SIZE;
+    if (size >= minSize) return; // Sağlam dosya, atla
+    console.log(`[DISK_CACHE] Bozuk dosya siliniyor (${size} bytes): ${fileName}`);
+    fs.unlinkSync(filePath);
+  }
+  if (downloadingFiles.has(fileName)) return;
 
   downloadingFiles.add(fileName);
   try {
@@ -43,7 +54,11 @@ async function downloadToCache(videoId, type, streamUrl) {
       method: 'GET',
       url: streamUrl,
       responseType: 'stream',
-      timeout: 60000,
+      timeout: 120000,
+      headers: {
+        'User-Agent': getRandomUA(),
+        'Referer': 'https://www.youtube.com/'
+      },
       validateStatus: (status) => status >= 200 && status < 400
     });
 
@@ -55,8 +70,17 @@ async function downloadToCache(videoId, type, streamUrl) {
       writer.on('error', reject);
     });
 
+    // İndirilen dosyanın boyutunu kontrol et
+    const fileSize = fs.statSync(tempPath).size;
+    const minSize = type === "audio" ? MIN_AUDIO_SIZE : MIN_VIDEO_SIZE;
+    if (fileSize < minSize) {
+      console.log(`[DISK_CACHE_ERR] ${fileName} çok küçük (${fileSize} bytes), bozuk dosya siliniyor.`);
+      fs.unlinkSync(tempPath);
+      return;
+    }
+
     fs.renameSync(tempPath, filePath);
-    console.log(`[DISK_CACHE] Kaydedildi: ${fileName}`);
+    console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(fileSize / 1024 / 1024).toFixed(1)} MB)`);
   } catch (err) {
     console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
@@ -763,7 +787,7 @@ app.get("/stream", async (req, res) => {
 });
 
 
-// VIDEO STREAM (MP4)
+// VIDEO STREAM (MP4) — yt-dlp ile doğrudan sunucuya indir, sonra serve et
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -771,76 +795,94 @@ app.get("/stream/video", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
-    const extStr = typeStr === "audio" ? "m4a" : "mp4";
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    const localFile = path.join(CACHE_DIR, `video_${videoId}.mp4`);
 
-    if (fs.existsSync(localFile)) {
-      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-
-      if (req.path.includes("download")) {
-        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
-      }
+    // 1. Diskten sağlam dosya varsa direkt serve et
+    if (fs.existsSync(localFile) && fs.statSync(localFile).size > MIN_VIDEO_SIZE) {
+      console.log(`[DISK_CACHE_HIT] Serving local video for`, videoId);
+      res.setHeader("Content-Type", "video/mp4");
       return res.sendFile(localFile);
     }
 
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
+    // Bozuk/küçük dosya varsa sil
+    if (fs.existsSync(localFile)) {
+      fs.unlinkSync(localFile);
+    }
 
-    const cacheKey = `stream:video:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
-    let streamUrl, ua;
+    // 2. yt-dlp ile doğrudan dosyayı sunucuya indir
+    console.log(`[yt-dlp] Video indiriliyor: ${videoId}`);
+    const tempFile = localFile + ".tmp";
 
-    if (cachedData && cachedData.url) {
-      streamUrl = cachedData.url;
-      ua = cachedData.ua || getRandomUA();
-      console.log("VIDEO CACHE HIT:", videoId);
-    } else {
-      ua = getRandomUA();
-      // Queue ile sıralı çalıştır
-      streamUrl = await queue.add(async () => {
+    try {
+      const opts = {
+        format: 'best[ext=mp4]/best',
+        output: tempFile,
+        addHeader: [
+          'referer:https://www.youtube.com/',
+          `user-agent:${getRandomUA()}`
+        ]
+      };
+
+      const useCookies = process.env.USE_COOKIES !== "false";
+      if (useCookies && fs.existsSync("cookies.txt")) {
+        opts.cookies = "cookies.txt";
+      }
+
+      await ytdlp(`https://www.youtube.com/watch?v=${videoId}`, opts);
+
+      // Boyut kontrolü
+      if (!fs.existsSync(tempFile) || fs.statSync(tempFile).size < MIN_VIDEO_SIZE) {
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        throw new Error("yt-dlp downloaded a corrupted/empty file");
+      }
+
+      fs.renameSync(tempFile, localFile);
+      console.log(`[DISK_CACHE] Video kaydedildi: video_${videoId}.mp4 (${(fs.statSync(localFile).size / 1024 / 1024).toFixed(1)} MB)`);
+
+    } catch (dlErr) {
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      console.error(`[yt-dlp] Video indirme başarısız: ${dlErr.message}`);
+
+      // Fallback: Stream URL çözüp doğrudan proxy yap
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
+      const ua = getRandomUA();
+
+      const streamUrl = await queue.add(async () => {
         await randomJitter();
         return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
       });
-      await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
-      console.log("VIDEO CACHE SAVE:", videoId);
-    }
 
-    let response;
-    try {
       const headersOptions = {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
       };
       if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-      response = await axiosClient({
+      const response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
         headers: headersOptions,
         validateStatus: (status) => status < 400
       });
-    } catch (fetchErr) {
-      if (fetchErr.response && fetchErr.response.status === 403) {
-        // Cache temizle
-        if (redis) redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
-      }
-      throw fetchErr;
+
+      res.status(response.status);
+      if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+      if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+      if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+      if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+      response.data.pipe(res);
+
+      // Arka planda cache'e kaydet
+      downloadToCache(videoId, "video", streamUrl).catch(() => {});
+      return;
     }
 
-    res.status(response.status);
-    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
-    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
-    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+    // 3. İndirilen dosyayı serve et
+    res.setHeader("Content-Type", "video/mp4");
+    res.sendFile(localFile);
 
-    response.data.pipe(res);
-
-    if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
-    }
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
     console.error("VIDEO STREAM ERROR:", err.message);
