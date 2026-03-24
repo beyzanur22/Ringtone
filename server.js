@@ -204,8 +204,8 @@ const randomJitter = async () => {
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Fallback player client stratejisi: android → mweb → web → ios → default
-const PLAYER_CLIENTS = ["android", "mweb", "web", "ios", "default"];
+// Fallback player client stratejisi: default → android → mweb → web → ios
+const PLAYER_CLIENTS = ["default", "android", "mweb", "web", "ios"];
 
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
