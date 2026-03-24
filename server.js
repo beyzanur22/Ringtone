@@ -627,27 +627,34 @@ app.get("/stream", async (req, res) => {
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
+    const headers = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headers["Range"] = req.headers.range;
+
     let response;
     try {
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: {
-          "User-Agent": ua,
-          "Referer": "https://www.youtube.com/"
-        }
+        headers: headers,
+        validateStatus: (status) => status >= 200 && status < 400
       });
     } catch (fetchErr) {
-      if (fetchErr.response && fetchErr.response.status === 403) {
-        // Cache URL expire olmuş veya banlanmış, temizle
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
         if (redis) redis.del(cacheKey);
         memoryCache.delete(cacheKey);
       }
       throw fetchErr;
     }
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.status === 206) res.status(206);
+    const passHeaders = ['content-length', 'content-range', 'accept-ranges', 'content-type'];
+    for (const h of passHeaders) {
+      if (response.headers[h]) res.setHeader(h, response.headers[h]);
+    }
     response.data.pipe(res);
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
@@ -690,27 +697,34 @@ app.get("/stream/video", async (req, res) => {
       console.log("VIDEO CACHE SAVE:", videoId);
     }
 
+    const headers = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headers["Range"] = req.headers.range;
+
     let response;
     try {
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: {
-          "User-Agent": ua,
-          "Referer": "https://www.youtube.com/"
-        }
+        headers: headers,
+        validateStatus: (status) => status >= 200 && status < 400
       });
     } catch (fetchErr) {
-      if (fetchErr.response && fetchErr.response.status === 403) {
-        // Cache temizle
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
         if (redis) redis.del(cacheKey);
         memoryCache.delete(cacheKey);
       }
       throw fetchErr;
     }
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.status === 206) res.status(206);
+    const passHeaders = ['content-length', 'content-range', 'accept-ranges', 'content-type'];
+    for (const h of passHeaders) {
+      if (response.headers[h]) res.setHeader(h, response.headers[h]);
+    }
     response.data.pipe(res);
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
@@ -775,17 +789,26 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
+    const headers = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headers["Range"] = req.headers.range;
+
     const response = await axios({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      }
+      headers: headers,
+      validateStatus: (status) => status >= 200 && status < 400
     });
 
+    if (response.status === 206) res.status(206);
+    const passHeaders = ['content-length', 'content-range', 'accept-ranges'];
+    for (const h of passHeaders) {
+      if (response.headers[h]) res.setHeader(h, response.headers[h]);
+    }
     response.data.pipe(res);
 
   } catch (err) {
@@ -822,17 +845,26 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
+    const headers = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headers["Range"] = req.headers.range;
+
     const response = await axios({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      }
+      headers: headers,
+      validateStatus: (status) => status >= 200 && status < 400
     });
 
+    if (response.status === 206) res.status(206);
+    const passHeaders = ['content-length', 'content-range', 'accept-ranges'];
+    for (const h of passHeaders) {
+      if (response.headers[h]) res.setHeader(h, response.headers[h]);
+    }
     response.data.pipe(res);
 
   } catch (err) {
