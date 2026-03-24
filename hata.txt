@@ -1,13 +1,55 @@
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] PqGOGvv-X5U: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] PqGOGvv-X5U: Requested format is not available. Use --list-formats for a list of available formats
+N
+[yt-dlp] Deneniyor: client=android, format=bestaudio
+[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
 [yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: ERROR: [youtube] PqGOGvv-X5U: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
 [yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] PqGOGvv-X5U: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: [youtube] PqGOGvv-X5U: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+[yt-dlp] client=ios başarısız: WARNING: [youtube] IirESJ4AQlM: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: [youtube] IirESJ4AQlM: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
 WARNING: Only images are available for download. use --list-formats to see them
-ERROR: [youtube] PqGOGvv-X5U: Requested format is not available. Use --list-formats for a list of available formats
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+[yt-dlp] Deneniyor: client=android, format=bestaudio
+AUDIO CACHE SAVE: IirESJ4AQlM
+[2026-03-24T06:59:28.972Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Request failed with status code 403
 [yt-dlp] Başarılı: client=default
-AUDIO CACHE SAVE: PqGOGvv-X5U
-[REQ] 2026-03-24T06:52:18.547Z | HEAD /health | IP: 178.156.187.238 | Country: UNKNOWN
+[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] Deneniyor: client=ios, format=bestaudio
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+WARNING: [youtube] IirESJ4AQlM: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: Only images are available for download. use --list-formats to see them
+[REQ] 2026-03-24T06:59:44.261Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
+[yt-dlp] Deneniyor: client=android, format=bestaudio
+[yt-dlp] Başarılı: client=default
+AUDIO CACHE SAVE: IirESJ4AQlM
+[2026-03-24T06:59:45.190Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Request failed with status code 403
+STREAM ERROR: Request failed with status code 403
+[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=ios, format=bestaudio
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+AUDIO CACHE SAVE: IirESJ4AQlM
+STREAM ERROR: Request failed with status code 403
+[REQ] 2026-03-24T07:00:02.431Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
+[yt-dlp] Deneniyor: client=android, format=bestaudio
+[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
