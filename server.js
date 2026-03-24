@@ -184,15 +184,35 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
 }
 
+const PIPED_INSTANCES = [
+  "https://pipedapi.smnz.de",
+  "https://pipedapi.in.projectsegfau.lt",
+  "https://pipedapi.kavin.rocks"
+];
+
+async function fetchFromPiped(endpointPath) {
+  let lastError = null;
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 7000 });
+      if (res && res.data) return res;
+    } catch (err) {
+      lastError = err;
+      logError("PIPED_INSTANCE_ERR", null, `Instance ${instance} error: ${err.message}`);
+    }
+  }
+  throw lastError || new Error("Tüm Piped API instance'ları başarısız oldu.");
+}
+
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Piped API...`);
+    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Piped API dizi sunucuları...`);
     try {
-      const pipedRes = await axiosClient.get(`https://pipedapi.kavin.rocks/streams/${videoId}`);
+      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
       if (type === "audio") {
         const streams = pipedRes.data.audioStreams;
         const best = streams.find(s => s.mimeType.includes("mp4a") || s.format === "M4A") || streams[0];
@@ -373,7 +393,7 @@ app.get("/top50", async (req, res) => {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
         logError("API_FALLBACK", null, "YouTube API Quota exceeded or forbidden. Using Piped API fallback config for top50.");
         youtubeApiStatus = "quota_exceeded";
-        const pipedRes = await axiosClient.get("https://pipedapi.kavin.rocks/trending?region=US");
+        const pipedRes = await fetchFromPiped("/trending?region=US");
         const pipedItems = pipedRes.data.map(item => ({
           id: (item.url || "").split("?v=")[1],
           snippet: {
@@ -430,7 +450,7 @@ app.get("/search", searchLimiter, async (req, res) => {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
         logError("API_FALLBACK", null, `YouTube API Quota exceeded or forbidden. Using Piped API fallback config for search: ${query}`);
         youtubeApiStatus = "quota_exceeded";
-        const pipedRes = await axiosClient.get(`https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(query)}&filter=videos`);
+        const pipedRes = await fetchFromPiped(`/search?q=${encodeURIComponent(query)}&filter=videos`);
         const pipedItems = pipedRes.data.map(item => ({
           id: { videoId: (item.url || "").split("?v=")[1] },
           snippet: {
