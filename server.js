@@ -848,17 +848,7 @@ async function warmTop50() {
     });
     const items = filterBlockedChannels(response.data.items);
     await cacheSet("top50", items, CACHE_DURATION);
-    console.log("Top50 cache hazır (Redis). Arka planda fiziki disk indirmeleri başlatılıyor...");
-
-    setTimeout(async () => {
-      for (const item of items) {
-        const vid = item.id;
-        try {
-          const streamUrl = await resolveStreamUrlWithFallback(vid, "audio", getRandomUA(), getPlayerClientForCountry("UNKNOWN"));
-          if (streamUrl) await downloadToCache(vid, "audio", streamUrl);
-        } catch (e) { }
-      }
-    }, 5000);
+    console.log("Top50 cache hazır (Redis).");
   } catch (e) { console.log("Warmup başarısız:", e.message); }
 }
 

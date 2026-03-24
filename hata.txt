@@ -1,106 +1,107 @@
-[Redis] Bağlantı başarılı
-Top50 cache hazır (Redis)
-[REQ] 2026-03-24T07:24:33.696Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-24T07:24:44.019Z] - [YTDLP_FATAL_FALLBACK] - VideoID: IirESJ4AQlM - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=IirESJ4AQlM --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
-[2026-03-24T07:24:44.162Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-24T07:24:44.229Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
-[2026-03-24T07:24:44.545Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
-[2026-03-24T07:24:44.665Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
-[2026-03-24T07:24:45.357Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-24T07:24:45.595Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
-[2026-03-24T07:24:46.411Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-24T07:24:46.747Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-24T07:24:46.903Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
-[2026-03-24T07:24:47.508Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
-[2026-03-24T07:24:47.991Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 808CCE48A97F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:24:47.991Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: write EPROTO 808CCE48A97F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:24:48.933Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-24T07:24:49.155Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
-[2026-03-24T07:24:49.218Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
-[2026-03-24T07:24:49.783Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-24T07:24:50.089Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.lunar.icu failed: certificate has expired
-[2026-03-24T07:24:50.354Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.flokinet.to failed:
-[REQ] 2026-03-24T07:24:51.829Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
-[2026-03-24T07:24:52.430Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-24T07:24:52.686Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.weblibre.org failed: socket hang up
-[2026-03-24T07:24:53.052Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yt.artemislena.eu failed: write EPROTO 808CCE48A97F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
-[2026-03-24T07:24:53.143Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
-[2026-03-24T07:24:53.143Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: All Invidious instances failed.
-[2026-03-24T07:24:53.143Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Tüm proxy ağları başarısız oldu.
+[2026-03-24T07:51:49.862Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: PqGOGvv-X5U - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-24T07:51:49.862Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: PqGOGvv-X5U - Error: All Invidious instances failed.
+[2026-03-24T07:51:49.862Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NgRnbfWQmvw - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[REQ] 2026-03-24T07:51:49.936Z | GET /stream?videoId=NqLe3mk__kg | IP: 212.154.66.243 | Country: UNKNOWN
+[2026-03-24T07:51:49.986Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:51:50.043Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:51:50.336Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-03-24T07:51:50.356Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
+[2026-03-24T07:51:50.503Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:51:50.816Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NqLe3mk__kg - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-03-24T07:51:50.881Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:51:50.883Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:51:51.142Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-24T07:51:51.174Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-03-24T07:51:51.190Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
+[2026-03-24T07:51:51.217Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:51:51.336Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:51:51.497Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:51:51.657Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-24T07:51:51.668Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-24T07:51:51.669Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:51:51.766Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:51:52.079Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:52.080Z] - [PIPED_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:52.152Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:51:52.322Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-24T07:51:52.420Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:51:52.473Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:52.473Z] - [PIPED_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:52.476Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:51:52.782Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:51:52.784Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:51:52.953Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-03-24T07:51:52.963Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:51:53.259Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-03-24T07:51:53.512Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.flokinet.to failed:
+[2026-03-24T07:51:54.784Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-24T07:51:55.401Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:51:55.562Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:51:56.054Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-24T07:51:56.111Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:51:56.651Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:51:56.965Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:56.965Z] - [PIPED_FALLBACK_ERR] - VideoID: alUx2fAOE4A - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:51:57.208Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-24T07:51:57.275Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:51:57.334Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:51:57.513Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:51:57.810Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-03-24T07:51:58.062Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://invidious.flokinet.to failed:
+[2026-03-24T07:51:59.261Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://invidious.weblibre.org failed: socket hang up
+[2026-03-24T07:51:59.514Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.privacyredirect.com failed: timeout of 6000ms exceeded
+[2026-03-24T07:51:59.594Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: alUx2fAOE4A - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACC4E96C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:51:59.671Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.weblibre.org failed: socket hang up
+[2026-03-24T07:52:00.012Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACC4E96C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:52:00.179Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: alUx2fAOE4A - Error: All Invidious instances failed.
+[2026-03-24T07:52:00.179Z] - [YTDLP_FATAL_FALLBACK] - VideoID: JJ9ta3gmNo0 - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-03-24T07:52:00.180Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: All Invidious instances failed.
 STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-24T07:25:01.948Z] - [YTDLP_FATAL_FALLBACK] - VideoID: IirESJ4AQlM - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=IirESJ4AQlM --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
-[2026-03-24T07:25:02.005Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-24T07:25:02.068Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
-[2026-03-24T07:25:02.362Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: read ECONNRESET
-[2026-03-24T07:25:02.383Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
-[2026-03-24T07:25:02.532Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-24T07:25:02.693Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
-[2026-03-24T07:25:03.194Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-24T07:25:03.206Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-24T07:25:03.259Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
-[2026-03-24T07:25:03.797Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
-[2026-03-24T07:25:04.447Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 808CCE48A97F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:25:04.447Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: write EPROTO 808CCE48A97F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:25:04.689Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-24T07:25:04.758Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
-[2026-03-24T07:25:04.814Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
-[2026-03-24T07:25:04.999Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-24T07:25:05.306Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.lunar.icu failed: certificate has expired
-[2026-03-24T07:25:05.559Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.flokinet.to failed:
-[2026-03-24T07:25:06.584Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-24T07:25:06.792Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.weblibre.org failed: socket hang up
-[2026-03-24T07:25:07.133Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yt.artemislena.eu failed: write EPROTO 808CCE48A97F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
-[2026-03-24T07:25:07.189Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
-[2026-03-24T07:25:07.189Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: All Invidious instances failed.
-STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[REQ] 2026-03-24T07:25:07.969Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
-ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-24T07:25:17.668Z] - [YTDLP_FATAL_FALLBACK] - VideoID: IirESJ4AQlM - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=IirESJ4AQlM --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
-[2026-03-24T07:25:18.109Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
-[2026-03-24T07:25:18.129Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
-[2026-03-24T07:25:18.277Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-24T07:25:18.439Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:52:00.645Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-03-24T07:52:00.809Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:52:00.975Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:52:01.472Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-24T07:52:01.542Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:52:02.080Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:52:02.395Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:52:02.395Z] - [PIPED_FALLBACK_ERR] - VideoID: JJ9ta3gmNo0 - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:52:02.951Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: JJ9ta3gmNo0 - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:52:04.704Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: JJ9ta3gmNo0 - Error: Instance https://invidious.weblibre.org failed: socket hang up
+[2026-03-24T07:52:05.103Z] - [YTDLP_FATAL_FALLBACK] - VideoID: GCLD72wDLLU - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-03-24T07:52:05.040Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: JJ9ta3gmNo0 - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACC4E96C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:52:05.103Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: JJ9ta3gmNo0 - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-24T07:52:05.103Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: JJ9ta3gmNo0 - Error: All Invidious instances failed.
+[2026-03-24T07:52:05.214Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:52:05.270Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:52:05.564Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-03-24T07:52:05.582Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
+[2026-03-24T07:52:05.728Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[REQ] 2026-03-24T07:52:06.268Z | GET /stream?videoId=NqLe3mk__kg | IP: 212.154.66.243 | Country: UNKNOWN
+[2026-03-24T07:52:06.434Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:52:06.972Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:52:07.296Z] - [PIPED_FALLBACK_ERR] - VideoID: GCLD72wDLLU - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:52:07.538Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-24T07:52:07.606Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:52:07.662Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:52:07.727Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NqLe3mk__kg - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-03-24T07:52:07.823Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:52:07.841Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:52:07.879Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:52:08.134Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-03-24T07:52:08.177Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-03-24T07:52:08.198Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
+[2026-03-24T07:52:08.344Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:52:08.404Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.flokinet.to failed:
+[2026-03-24T07:52:08.505Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:52:08.984Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-24T07:52:08.997Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-24T07:52:09.053Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
+[2026-03-24T07:52:09.460Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
+[2026-03-24T07:52:09.590Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:52:09.616Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.weblibre.org failed: socket hang up
+[2026-03-24T07:52:09.910Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:52:09.910Z] - [PIPED_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: write EPROTO 80ACC4E96C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:52:09.953Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACC4E96C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:52:10.010Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: GCLD72wDLLU - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-24T07:52:10.010Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: GCLD72wDLLU - Error: All Invidious instances failed.
+[2026-03-24T07:52:10.010Z] - [YTDLP_FATAL_FALLBACK] - VideoID: HtVcltkn3HI - Error: yt-dlp failed: yt-dlp has been temporarily disabled due to consecutive failures. Try again later.. Trying Ultimate Proxy Ring (Piped + Invidious)...
