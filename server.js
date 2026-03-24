@@ -321,12 +321,9 @@ async function tryInvidiousFallback(videoId, type) {
       if (res && res.data) {
         if (res.data.error) throw new Error(res.data.error);
         if (type === "audio") {
-          let streams = res.data.adaptiveFormats;
-          if (!streams || !Array.isArray(streams) || streams.length === 0) {
-            streams = res.data.formatStreams;
-          }
+          const streams = res.data.adaptiveFormats;
           if (streams && Array.isArray(streams)) {
-            const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio")) || streams.find(s => s.type && s.type.includes("video/mp4"));
+            const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio"));
             if (m4a && m4a.url) return m4a.url;
           }
         } else {
@@ -359,12 +356,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
     try {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
       if (type === "audio") {
-        let streams = pipedRes.data.audioStreams;
-        if (!streams || !Array.isArray(streams) || streams.length === 0) {
-          if (pipedRes.data.videoStreams) {
-            streams = pipedRes.data.videoStreams.filter(s => s.videoOnly === false);
-          }
-        }
+        const streams = pipedRes.data.audioStreams;
         if (!streams || !Array.isArray(streams) || streams.length === 0) {
           throw new Error("No valid audioStreams array found");
         }
