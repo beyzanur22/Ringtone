@@ -195,7 +195,11 @@ async function fetchFromPiped(endpointPath) {
   for (const instance of PIPED_INSTANCES) {
     try {
       const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 7000 });
-      if (res && res.data) return res;
+      if (res && res.data) {
+        if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
+        if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
+        return res;
+      }
     } catch (err) {
       lastError = err;
       logError("PIPED_INSTANCE_ERR", null, `Instance ${instance} error: ${err.message}`);
@@ -215,13 +219,19 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
       if (type === "audio") {
         const streams = pipedRes.data.audioStreams;
-        const best = streams.find(s => s.mimeType.includes("mp4a") || s.format === "M4A") || streams[0];
+        if (!streams || !Array.isArray(streams) || streams.length === 0) {
+          throw new Error("No valid audioStreams array found");
+        }
+        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
         if (best && best.url) {
           logError("YTDLP_FATAL_FALLBACK", videoId, `Piped API Fallback successful for audio.`);
           return best.url;
         }
       } else {
         const streams = pipedRes.data.videoStreams;
+        if (!streams || !Array.isArray(streams) || streams.length === 0) {
+          throw new Error("No valid videoStreams array found");
+        }
         const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
           streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
           streams[0];
