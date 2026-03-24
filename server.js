@@ -185,16 +185,32 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 }
 
 const PIPED_INSTANCES = [
+  "https://api.piped.yt",
+  "https://pipedapi.tokhmi.xyz",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.astartes.nl",
+  "https://pipedapi.osphost.fi",
   "https://pipedapi.smnz.de",
   "https://pipedapi.in.projectsegfau.lt",
   "https://pipedapi.kavin.rocks"
+];
+
+const INVIDIOUS_INSTANCES = [
+  "https://vid.puffyan.us",
+  "https://invidious.jing.rocks",
+  "https://invidious.nerdvpn.de",
+  "https://yt.artemislena.eu",
+  "https://invidious.flokinet.to",
+  "https://inv.rvere.com",
+  "https://invidious.lunar.icu",
+  "https://yewtu.be"
 ];
 
 async function fetchFromPiped(endpointPath) {
   let lastError = null;
   for (const instance of PIPED_INSTANCES) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 7000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 6000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
@@ -208,13 +224,45 @@ async function fetchFromPiped(endpointPath) {
   throw lastError || new Error("Tüm Piped API instance'ları başarısız oldu.");
 }
 
+async function tryInvidiousFallback(videoId, type) {
+  for (const instance of INVIDIOUS_INSTANCES) {
+    try {
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
+      if (res && res.data) {
+        if (res.data.error) throw new Error(res.data.error);
+        if (type === "audio") {
+          const streams = res.data.adaptiveFormats;
+          if (streams && Array.isArray(streams)) {
+            const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio"));
+            if (m4a && m4a.url) return m4a.url;
+          }
+        } else {
+          const streams = res.data.formatStreams;
+          if (streams && Array.isArray(streams)) {
+            const mp4 = streams.find(s => (s.type && s.type.includes("video/mp4") && s.qualityLabel === "720p")) ||
+              streams.find(s => s.type && s.type.includes("video/mp4")) ||
+              streams[0];
+            if (mp4 && mp4.url) return mp4.url;
+          }
+        }
+        throw new Error("No valid streams in Invidious instance payload.");
+      }
+    } catch (err) {
+      logError("INVIDIOUS_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
+    }
+  }
+  throw new Error("All Invidious instances failed.");
+}
+
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Piped API dizi sunucuları...`);
+    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
+
+    // First line of defense: Piped APIs
     try {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
       if (type === "audio") {
@@ -224,7 +272,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
         }
         const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
         if (best && best.url) {
-          logError("YTDLP_FATAL_FALLBACK", videoId, `Piped API Fallback successful for audio.`);
+          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
           return best.url;
         }
       } else {
@@ -236,14 +284,26 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
           streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
           streams[0];
         if (best && best.url) {
-          logError("YTDLP_FATAL_FALLBACK", videoId, `Piped API Fallback successful for video.`);
+          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
           return best.url;
         }
       }
     } catch (pipedErr) {
       logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
     }
-    throw err;
+
+    // Second line of defense: Invidious APIs
+    try {
+      const invidiousUrl = await tryInvidiousFallback(videoId, type);
+      if (invidiousUrl) {
+        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
+        return invidiousUrl;
+      }
+    } catch (invidiousErr) {
+      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
+    }
+
+    throw new Error("Tüm proxy ağları başarısız oldu.");
   }
 }
 
