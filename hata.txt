@@ -1,55 +1,87 @@
-N
+[REQ] 2026-03-24T07:05:40.396Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
 [yt-dlp] Deneniyor: client=android, format=bestaudio
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] IirESJ4AQlM: ios client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: [youtube] IirESJ4AQlM: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: Only images are available for download. use --list-formats to see them
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=default, format=bestaudio
+[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-24T07:05:49.775Z] - [YTDLP_FATAL_FALLBACK] - VideoID: IirESJ4AQlM - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=IirESJ4AQlM --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring...
+[2026-03-24T07:05:49.842Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:05:50.665Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-24T07:05:51.246Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:05:51.877Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACF08D3C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:05:52.375Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.osphost.fi error: getaddrinfo ENOTFOUND pipedapi.osphost.fi
+[2026-03-24T07:05:52.565Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:05:53.427Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:05:53.541Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:05:53.541Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: Request failed with status code 521
+[2026-03-24T07:05:53.798Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:05:55.966Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[REQ] 2026-03-24T07:05:56.479Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
+[2026-03-24T07:05:56.738Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:05:57.100Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACF08D3C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:05:57.519Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.flokinet.to failed:
+[2026-03-24T07:05:57.589Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:05:57.919Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.lunar.icu failed: certificate has expired
 [yt-dlp] Deneniyor: client=android, format=bestaudio
-AUDIO CACHE SAVE: IirESJ4AQlM
-[2026-03-24T06:59:28.972Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Request failed with status code 403
-[yt-dlp] Başarılı: client=default
-[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[2026-03-24T07:05:58.662Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-24T07:05:58.662Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: All Invidious instances failed.
+[2026-03-24T07:05:58.662Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Tüm proxy ağları başarısız oldu.
+STREAM ERROR: Tüm proxy ağları başarısız oldu.
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=ios, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=default, format=bestaudio
-WARNING: [youtube] IirESJ4AQlM: ios client hls formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=ios.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-WARNING: Only images are available for download. use --list-formats to see them
-[REQ] 2026-03-24T06:59:44.261Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
+[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-24T07:06:06.877Z] - [YTDLP_FATAL_FALLBACK] - VideoID: IirESJ4AQlM - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=IirESJ4AQlM --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring...
+[2026-03-24T07:06:06.931Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
+[2026-03-24T07:06:07.413Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-24T07:06:07.945Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-03-24T07:06:08.270Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 80ACF08D3C7F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
+[2026-03-24T07:06:08.323Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.osphost.fi error: getaddrinfo ENOTFOUND pipedapi.osphost.fi
+[2026-03-24T07:06:08.509Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-24T07:06:08.784Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-24T07:06:08.934Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-24T07:06:08.934Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: Request failed with status code 521
+[2026-03-24T07:06:09.001Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-03-24T07:06:09.098Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-24T07:06:09.289Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-24T07:06:09.654Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yt.artemislena.eu failed: write EPROTO 80ACF08D3C7F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
+[2026-03-24T07:06:09.905Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.flokinet.to failed:
+[2026-03-24T07:06:09.958Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
+[2026-03-24T07:06:10.251Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-03-24T07:06:10.521Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-24T07:06:10.521Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: All Invidious instances failed.
+[2026-03-24T07:06:10.521Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Tüm proxy ağları başarısız oldu.
+STREAM ERROR: Tüm proxy ağları başarısız oldu.
+[REQ] 2026-03-24T07:06:12.564Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
 [yt-dlp] Deneniyor: client=android, format=bestaudio
-[yt-dlp] Başarılı: client=default
-AUDIO CACHE SAVE: IirESJ4AQlM
-[2026-03-24T06:59:45.190Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Request failed with status code 403
-STREAM ERROR: Request failed with status code 403
-[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] IirESJ4AQlM: mweb client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=mweb.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
 [yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-AUDIO CACHE SAVE: IirESJ4AQlM
-STREAM ERROR: Request failed with status code 403
-[REQ] 2026-03-24T07:00:02.431Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] IirESJ4AQlM: android client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=android.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing

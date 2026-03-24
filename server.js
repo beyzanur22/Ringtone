@@ -267,65 +267,61 @@ async function tryInvidiousFallback(videoId, type) {
   throw new Error("All Invidious instances failed.");
 }
 
-async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  if (!forceProxy) {
+async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
+  try {
+    const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    return await resolveStreamUrl(url, format, ua, countryClient);
+  } catch (err) {
+    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
+
+    // First line of defense: Piped APIs
     try {
-      const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      return await resolveStreamUrl(url, format, ua, countryClient);
-    } catch (err) {
-      logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring...`);
-    }
-  } else {
-    logError("FORCE_PROXY", videoId, `Forcing Ultimate Proxy Ring due to 403...`);
-  }
-
-  // First line of defense: Piped APIs
-  try {
-    const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-    if (type === "audio") {
-      const streams = pipedRes.data.audioStreams;
-      if (!streams || !Array.isArray(streams) || streams.length === 0) {
-        throw new Error("No valid audioStreams array found");
+      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+      if (type === "audio") {
+        const streams = pipedRes.data.audioStreams;
+        if (!streams || !Array.isArray(streams) || streams.length === 0) {
+          throw new Error("No valid audioStreams array found");
+        }
+        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
+        if (best && best.url) {
+          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
+          stats.proxyFallbackSuccess++;
+          return best.url;
+        }
+      } else {
+        const streams = pipedRes.data.videoStreams;
+        if (!streams || !Array.isArray(streams) || streams.length === 0) {
+          throw new Error("No valid videoStreams array found");
+        }
+        const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+          streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
+          streams[0];
+        if (best && best.url) {
+          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
+          stats.proxyFallbackSuccess++;
+          return best.url;
+        }
       }
-      const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-      if (best && best.url) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
+    } catch (pipedErr) {
+      logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
+    }
+
+    // Second line of defense: Invidious APIs
+    try {
+      const invidiousUrl = await tryInvidiousFallback(videoId, type);
+      if (invidiousUrl) {
+        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
         stats.proxyFallbackSuccess++;
-        return best.url;
+        return invidiousUrl;
       }
-    } else {
-      const streams = pipedRes.data.videoStreams;
-      if (!streams || !Array.isArray(streams) || streams.length === 0) {
-        throw new Error("No valid videoStreams array found");
-      }
-      const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-        streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
-        streams[0];
-      if (best && best.url) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
-        stats.proxyFallbackSuccess++;
-        return best.url;
-      }
+    } catch (invidiousErr) {
+      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
     }
-  } catch (pipedErr) {
-    logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
-  }
 
-  // Second line of defense: Invidious APIs
-  try {
-    const invidiousUrl = await tryInvidiousFallback(videoId, type);
-    if (invidiousUrl) {
-      logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
-      stats.proxyFallbackSuccess++;
-      return invidiousUrl;
-    }
-  } catch (invidiousErr) {
-    logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
+    stats.proxyFallbackFail++;
+    throw new Error("Tüm proxy ağları başarısız oldu.");
   }
-
-  stats.proxyFallbackFail++;
-  throw new Error("Tüm proxy ağları başarısız oldu.");
 }
 
 const axiosClient = axios.create({
@@ -631,44 +627,27 @@ app.get("/stream", async (req, res) => {
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
-    const headers = {
-      "User-Agent": ua,
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headers["Range"] = req.headers.range;
-
     let response;
     try {
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: headers,
-        validateStatus: (status) => status >= 200 && status < 400
+        headers: {
+          "User-Agent": ua,
+          "Referer": "https://www.youtube.com/"
+        }
       });
     } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
+      if (fetchErr.response && fetchErr.response.status === 403) {
+        // Cache URL expire olmuş veya banlanmış, temizle
         if (redis) redis.del(cacheKey);
         memoryCache.delete(cacheKey);
-        console.log(`[STREAM] 403/404 received. Forcing proxy fallback for ${videoId}`);
-        streamUrl = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient, true);
-        response = await axiosClient({
-          method: "GET",
-          url: streamUrl,
-          responseType: "stream",
-          headers: headers,
-          validateStatus: (status) => status >= 200 && status < 400
-        });
-      } else {
-        throw fetchErr;
       }
+      throw fetchErr;
     }
 
-    if (response.status === 206) res.status(206);
-    const passHeaders = ['content-length', 'content-range', 'accept-ranges', 'content-type'];
-    for (const h of passHeaders) {
-      if (response.headers[h]) res.setHeader(h, response.headers[h]);
-    }
+    res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
@@ -711,44 +690,27 @@ app.get("/stream/video", async (req, res) => {
       console.log("VIDEO CACHE SAVE:", videoId);
     }
 
-    const headers = {
-      "User-Agent": ua,
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headers["Range"] = req.headers.range;
-
     let response;
     try {
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: headers,
-        validateStatus: (status) => status >= 200 && status < 400
+        headers: {
+          "User-Agent": ua,
+          "Referer": "https://www.youtube.com/"
+        }
       });
     } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
+      if (fetchErr.response && fetchErr.response.status === 403) {
+        // Cache temizle
         if (redis) redis.del(cacheKey);
         memoryCache.delete(cacheKey);
-        console.log(`[STREAM_VIDEO] 403/404 received. Forcing proxy fallback for ${videoId}`);
-        streamUrl = await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient, true);
-        response = await axiosClient({
-          method: "GET",
-          url: streamUrl,
-          responseType: "stream",
-          headers: headers,
-          validateStatus: (status) => status >= 200 && status < 400
-        });
-      } else {
-        throw fetchErr;
       }
+      throw fetchErr;
     }
 
-    if (response.status === 206) res.status(206);
-    const passHeaders = ['content-length', 'content-range', 'accept-ranges', 'content-type'];
-    for (const h of passHeaders) {
-      if (response.headers[h]) res.setHeader(h, response.headers[h]);
-    }
+    res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
@@ -813,44 +775,21 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const headers = {
-      "User-Agent": ua,
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headers["Range"] = req.headers.range;
-
-    let response;
-    try {
-      response = await axios({
-        method: "GET",
-        url: streamUrl.toString().trim(),
-        responseType: "stream",
-        timeout: 20000,
-        headers: headers,
-        validateStatus: (status) => status >= 200 && status < 400
-      });
-    } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.log(`[DOWNLOAD_MP3] 403/404. Forcing proxy for ${videoId}`);
-        streamUrl = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient, true);
-        response = await axios({
-          method: "GET",
-          url: streamUrl.toString().trim(),
-          responseType: "stream",
-          timeout: 20000,
-          headers: headers,
-          validateStatus: (status) => status >= 200 && status < 400
-        });
-      } else {
-        throw fetchErr;
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
       }
+    });
+
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
     }
 
-    if (response.status === 206) res.status(206);
-    const passHeaders = ['content-length', 'content-range', 'accept-ranges'];
-    for (const h of passHeaders) {
-      if (response.headers[h]) res.setHeader(h, response.headers[h]);
-    }
     response.data.pipe(res);
 
   } catch (err) {
@@ -887,44 +826,21 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const headers = {
-      "User-Agent": ua,
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headers["Range"] = req.headers.range;
-
-    let response;
-    try {
-      response = await axios({
-        method: "GET",
-        url: streamUrl.toString().trim(),
-        responseType: "stream",
-        timeout: 20000,
-        headers: headers,
-        validateStatus: (status) => status >= 200 && status < 400
-      });
-    } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.log(`[DOWNLOAD_MP4] 403/404. Forcing proxy for ${videoId}`);
-        streamUrl = await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient, true);
-        response = await axios({
-          method: "GET",
-          url: streamUrl.toString().trim(),
-          responseType: "stream",
-          timeout: 20000,
-          headers: headers,
-          validateStatus: (status) => status >= 200 && status < 400
-        });
-      } else {
-        throw fetchErr;
+    const response = await axios({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 20000,
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
       }
+    });
+
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
     }
 
-    if (response.status === 206) res.status(206);
-    const passHeaders = ['content-length', 'content-range', 'accept-ranges'];
-    for (const h of passHeaders) {
-      if (response.headers[h]) res.setHeader(h, response.headers[h]);
-    }
     response.data.pipe(res);
 
   } catch (err) {
