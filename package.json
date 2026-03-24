@@ -19,6 +19,7 @@
     "https-proxy-agent": "^5.0.1",
     "ioredis": "^5.10.0",
     "p-queue": "^9.1.0",
+    "play-dl": "^1.9.7",
     "redis": "^5.11.0",
     "yt-dlp-exec": "^1.0.2"
   }
