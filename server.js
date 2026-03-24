@@ -198,25 +198,30 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 }
 
 const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
   "https://api.piped.yt",
-  "https://pipedapi.tokhmi.xyz",
-  "https://pipedapi.adminforge.de",
-  "https://pipedapi.astartes.nl",
-  "https://pipedapi.osphost.fi",
+  "https://piped-api.lunar.icu",
+  "https://pipedapi.syncpundit.io",
+  "https://api.piped.projectsegfau.lt",
   "https://pipedapi.smnz.de",
-  "https://pipedapi.in.projectsegfau.lt",
-  "https://pipedapi.kavin.rocks"
+  "https://pipedapi.tokhmi.xyz",
+  "https://pipedapi.us.projectsegfau.lt",
+  "https://pi.ped.yt",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.astartes.nl"
 ];
 
 const INVIDIOUS_INSTANCES = [
+  "https://yewtu.be",
   "https://vid.puffyan.us",
-  "https://invidious.jing.rocks",
-  "https://invidious.nerdvpn.de",
-  "https://yt.artemislena.eu",
-  "https://invidious.flokinet.to",
   "https://inv.rvere.com",
+  "https://invidious.nerdvpn.de",
   "https://invidious.lunar.icu",
-  "https://yewtu.be"
+  "https://invidious.flokinet.to",
+  "https://invidious.privacyredirect.com",
+  "https://invidious.weblibre.org",
+  "https://yt.artemislena.eu",
+  "https://invidious.jing.rocks"
 ];
 
 async function fetchFromPiped(endpointPath) {
