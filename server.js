@@ -719,14 +719,18 @@ app.get("/stream", async (req, res) => {
 
     let response;
     try {
+      const headersOptions = {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      };
+      if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: {
-          "User-Agent": ua,
-          "Referer": "https://www.youtube.com/"
-        }
+        headers: headersOptions,
+        validateStatus: (status) => status < 400
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
@@ -737,7 +741,12 @@ app.get("/stream", async (req, res) => {
       throw fetchErr;
     }
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.status(response.status);
+    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
@@ -799,14 +808,18 @@ app.get("/stream/video", async (req, res) => {
 
     let response;
     try {
+      const headersOptions = {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      };
+      if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
       response = await axiosClient({
         method: "GET",
         url: streamUrl,
         responseType: "stream",
-        headers: {
-          "User-Agent": ua,
-          "Referer": "https://www.youtube.com/"
-        }
+        headers: headersOptions,
+        validateStatus: (status) => status < 400
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
@@ -817,7 +830,12 @@ app.get("/stream/video", async (req, res) => {
       throw fetchErr;
     }
 
-    res.setHeader("Content-Type", response.headers["content-type"]);
+    res.status(response.status);
+    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
