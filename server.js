@@ -38,6 +38,17 @@ const CIRCUIT_BREAKER_THRESHOLD = 5;
 const CIRCUIT_BREAKER_TIMEOUT = 5 * 60 * 1000; // 5 mins
 let youtubeApiStatus = "ok";
 
+// Analytics & Stats
+const stats = {
+  ytDlpSuccess: 0,
+  ytDlpFail: 0,
+  proxyFallbackSuccess: 0,
+  proxyFallbackFail: 0,
+  youtubeApiQuotaExceeded: 0,
+  rateLimitHits: 0,
+  totalRequests: 0
+};
+
 /* =========================
    REDIS CACHE (fallback: in-memory)
 ========================= */
@@ -165,6 +176,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
       if (url && url.startsWith("http")) {
         console.log(`[yt-dlp] Başarılı: client=${client}`);
         ytDlpFailCount = 0; // reset on success
+        stats.ytDlpSuccess++;
         return url;
       }
     } catch (err) {
@@ -181,6 +193,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
   }
 
+  stats.ytDlpFail++;
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
 }
 
@@ -273,6 +286,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
         const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
         if (best && best.url) {
           logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
+          stats.proxyFallbackSuccess++;
           return best.url;
         }
       } else {
@@ -285,6 +299,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
           streams[0];
         if (best && best.url) {
           logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
+          stats.proxyFallbackSuccess++;
           return best.url;
         }
       }
@@ -297,12 +312,14 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
       const invidiousUrl = await tryInvidiousFallback(videoId, type);
       if (invidiousUrl) {
         logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
+        stats.proxyFallbackSuccess++;
         return invidiousUrl;
       }
     } catch (invidiousErr) {
       logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
     }
 
+    stats.proxyFallbackFail++;
     throw new Error("Tüm proxy ağları başarısız oldu.");
   }
 }
@@ -317,6 +334,13 @@ app.set("trust proxy", 1);
 
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  stats.totalRequests++;
+  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+  console.log(`[REQ] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${req.ip} | Country: ${country}`);
+  next();
+});
 
 /* =========================
    AUTH MIDDLEWARE
@@ -362,12 +386,22 @@ if (!fs.existsSync(DATA_FILE)) {
 ========================= */
 app.use(rateLimit({
   windowMs: 60 * 1000, //bot saldırı azaltma
-  max: 40
+  max: 40,
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Global)`);
+    res.status(options.statusCode).send(options.message);
+  }
 }));
 
 const searchLimiter = rateLimit({ //spam search engellemek için.
   windowMs: 60 * 1000,
-  max: 20
+  max: 20,
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search)`);
+    res.status(options.statusCode).send(options.message);
+  }
 });
 
 /* =========================
@@ -419,9 +453,20 @@ function getPlayerClientForCountry(countryCode) {
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
+    uptimeSeconds: Math.floor(process.uptime()),
+    memoryRssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     redis: redis ? "connected" : "disconnected",
     ytDlp: Date.now() < ytDlpCircuitBreakerUntil ? "circuit_breaker_open" : "ok",
     youtubeApi: youtubeApiStatus
+  });
+});
+
+app.get("/admin/stats", (req, res) => {
+  res.json({
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    stats: stats
   });
 });
 
@@ -463,6 +508,7 @@ app.get("/top50", async (req, res) => {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
         logError("API_FALLBACK", null, "YouTube API Quota exceeded or forbidden. Using Piped API fallback config for top50.");
         youtubeApiStatus = "quota_exceeded";
+        stats.youtubeApiQuotaExceeded++;
         const pipedRes = await fetchFromPiped("/trending?region=US");
         const pipedItems = pipedRes.data.map(item => ({
           id: (item.url || "").split("?v=")[1],
@@ -520,6 +566,7 @@ app.get("/search", searchLimiter, async (req, res) => {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
         logError("API_FALLBACK", null, `YouTube API Quota exceeded or forbidden. Using Piped API fallback config for search: ${query}`);
         youtubeApiStatus = "quota_exceeded";
+        stats.youtubeApiQuotaExceeded++;
         const pipedRes = await fetchFromPiped(`/search?q=${encodeURIComponent(query)}&filter=videos`);
         const pipedItems = pipedRes.data.map(item => ({
           id: { videoId: (item.url || "").split("?v=")[1] },
