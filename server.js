@@ -19,9 +19,81 @@ const queue = new PQueue({
 });
 
 /* =========================
-   ERROR LOGGING & CIRCUIT BREAKER
+   PHASE 6: DISK CACHING
 ========================= */
 const path = require("path");
+const CACHE_DIR = path.join(__dirname, 'cache');
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB limit
+const downloadingFiles = new Set();
+
+async function downloadToCache(videoId, type, streamUrl) {
+  const ext = type === "audio" ? "m4a" : "mp4";
+  const fileName = `${type}_${videoId}.${ext}`;
+  const filePath = path.join(CACHE_DIR, fileName);
+  const tempPath = filePath + ".tmp";
+
+  if (fs.existsSync(filePath) || downloadingFiles.has(fileName)) return;
+
+  downloadingFiles.add(fileName);
+  try {
+    const response = await axios({
+      method: 'GET',
+      url: streamUrl,
+      responseType: 'stream',
+      timeout: 60000,
+      validateStatus: (status) => status >= 200 && status < 400
+    });
+
+    const writer = fs.createWriteStream(tempPath);
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    fs.renameSync(tempPath, filePath);
+    console.log(`[DISK_CACHE] Kaydedildi: ${fileName}`);
+  } catch (err) {
+    console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+  } finally {
+    downloadingFiles.delete(fileName);
+  }
+}
+
+setInterval(() => {
+  try {
+    const files = fs.readdirSync(CACHE_DIR).filter(f => !f.endsWith('.tmp'));
+    let totalSize = 0;
+    const fileStats = [];
+
+    for (const f of files) {
+      const p = path.join(CACHE_DIR, f);
+      const s = fs.statSync(p);
+      totalSize += s.size;
+      fileStats.push({ path: p, size: s.size, mtime: s.mtime.getTime() });
+    }
+
+    if (totalSize > MAX_CACHE_SIZE) {
+      console.log(`[DISK_MANAGER] Kapasite aşıldı! Toplam Boyut: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB. Eski dosyalar siliniyor...`);
+      fileStats.sort((a, b) => a.mtime - b.mtime);
+      for (const fsObj of fileStats) {
+        fs.unlinkSync(fsObj.path);
+        totalSize -= fsObj.size;
+        console.log(`[DISK_MANAGER] Silindi: ${path.basename(fsObj.path)}`);
+        if (totalSize < MAX_CACHE_SIZE * 0.9) break; // Clean down to 9 GB
+      }
+    }
+  } catch (e) { }
+}, 3600 * 1000);
+
+/* =========================
+   ERROR LOGGING & CIRCUIT BREAKER
+========================= */
 
 function logError(type, videoId, errorMessage) {
   const timestamp = new Date().toISOString();
@@ -609,6 +681,19 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
+    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
+    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    if (fs.existsSync(localFile)) {
+      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+
+      if (req.path.includes("download")) {
+        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+      }
+      return res.sendFile(localFile);
+    }
+
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
 
@@ -654,6 +739,10 @@ app.get("/stream", async (req, res) => {
 
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
+
+    if (typeof streamUrl !== 'undefined') {
+      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+    }
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
     console.error("STREAM ERROR:", err.message);
@@ -671,6 +760,19 @@ app.get("/stream/video", async (req, res) => {
     const { videoId } = req.query;
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
+    }
+
+    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
+    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    if (fs.existsSync(localFile)) {
+      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+
+      if (req.path.includes("download")) {
+        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+      }
+      return res.sendFile(localFile);
     }
 
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
@@ -717,6 +819,10 @@ app.get("/stream/video", async (req, res) => {
 
     res.setHeader("Content-Type", response.headers["content-type"]);
     response.data.pipe(res);
+
+    if (typeof streamUrl !== 'undefined') {
+      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+    }
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
     console.error("VIDEO STREAM ERROR:", err.message);
@@ -742,7 +848,17 @@ async function warmTop50() {
     });
     const items = filterBlockedChannels(response.data.items);
     await cacheSet("top50", items, CACHE_DURATION);
-    console.log("Top50 cache hazır (Redis)");
+    console.log("Top50 cache hazır (Redis). Arka planda fiziki disk indirmeleri başlatılıyor...");
+
+    setTimeout(async () => {
+      for (const item of items) {
+        const vid = item.id;
+        try {
+          const streamUrl = await resolveStreamUrlWithFallback(vid, "audio", getRandomUA(), getPlayerClientForCountry("UNKNOWN"));
+          if (streamUrl) await downloadToCache(vid, "audio", streamUrl);
+        } catch (e) { }
+      }
+    }, 5000);
   } catch (e) { console.log("Warmup başarısız:", e.message); }
 }
 
@@ -760,6 +876,19 @@ app.get("/download/mp3", async (req, res) => {
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
+    }
+
+    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
+    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    if (fs.existsSync(localFile)) {
+      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+
+      if (req.path.includes("download")) {
+        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+      }
+      return res.sendFile(localFile);
     }
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -797,6 +926,10 @@ app.get("/download/mp3", async (req, res) => {
 
     response.data.pipe(res);
 
+    if (typeof streamUrl !== 'undefined') {
+      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+    }
+
   } catch (err) {
     logError("DOWNLOAD_MP3", req.query.videoId, err.message);
     console.error("MP3 ERROR:", err.message);
@@ -811,6 +944,19 @@ app.get("/download/mp4", async (req, res) => {
 
     if (!videoId) {
       return res.status(400).json({ error: "videoId required" });
+    }
+
+    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
+    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    if (fs.existsSync(localFile)) {
+      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+
+      if (req.path.includes("download")) {
+        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+      }
+      return res.sendFile(localFile);
     }
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -847,6 +993,10 @@ app.get("/download/mp4", async (req, res) => {
     }
 
     response.data.pipe(res);
+
+    if (typeof streamUrl !== 'undefined') {
+      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+    }
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);
