@@ -285,7 +285,16 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   // 4. SON ÇARE: play-dl (Cookies ile)
   try {
     console.log(`[play-dl] Deneniyor...`);
-    // play-dl için cookies.txt ayarı (Eğer gerekirse playdl.setToken ile yapılır ama şimdilik doğrudan deneyelim)
+    
+    // play-dl için cookies.txt (varsa)
+    if (fs.existsSync("cookies.txt")) {
+        await playdl.setToken({
+            youtube: {
+                cookie: fs.readFileSync("cookies.txt", "utf8")
+            }
+        });
+    }
+
     const stream = await playdl.stream(videoUrl, { 
       quality: format === "bestaudio" ? 0 : 2, // 0: audio only, 2: video
       discordPlayerCompatibility: true 
