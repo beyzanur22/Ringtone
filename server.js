@@ -441,9 +441,9 @@ async function updateInvidiousInstances() {
   try {
     const res = await axiosClient.get("https://api.invidious.io/instances.json?pretty=1", { timeout: 15000 });
     if (res.data && Array.isArray(res.data)) {
-      // Sadece çalışır durumdaki https API'leri filtrele
+      // Sadece çalışır durumdaki https API'leri filtrele (api: false olsa bile proxy kullanacağız)
       const validInstances = res.data
-        .filter(inst => inst[1]?.type === 'https' && inst[1]?.api === true && inst[1]?.monitor?.statusClass === 'success')
+        .filter(inst => inst[1]?.type === 'https' && inst[1]?.monitor?.statusClass === 'success')
         .map(inst => inst[1].uri)
         .sort(() => Math.random() - 0.5); // Her seferinde karıştır
 
@@ -478,17 +478,18 @@ async function fetchFromPiped(endpointPath) {
 
 async function tryCobaltFallback(videoId, type) {
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const cobaltInstances = ["https://api.cobalt.tools", ...COBALT_INSTANCES];
 
-  for (const instance of COBALT_INSTANCES) {
+  for (const instance of cobaltInstances) {
     try {
       const payload = {
         url: ytUrl,
-        vQuality: "720",
-        isAudioOnly: type === "audio",
-        aFormat: "mp3" // mp3 veya best
+        videoQuality: "720",
+        downloadMode: type === "audio" ? "audio" : "auto",
+        audioFormat: "mp3"
       };
 
-      const res = await axiosClient.post(`${instance}/api/json`, payload, {
+      const res = await axiosClient.post(`${instance}/`, payload, {
         headers: {
           "Accept": "application/json",
           "Content-Type": "application/json",
@@ -497,10 +498,8 @@ async function tryCobaltFallback(videoId, type) {
         timeout: 8000
       });
 
-      // Cobalt bize kendi sunucusunda barındırılan proxy/stream linki verir.
-      // Örn: status: "stream", url: "https://co.wuk.sh/api/stream?..."
-      // Veya redirect status: "redirect", url: "https://cobalt..."
-      if (res && res.data && (res.data.status === "stream" || res.data.status === "redirect")) {
+      // Cobalt v10 returns { status: "tunnel" | "redirect", url: "..." }
+      if (res && res.data && (res.data.status === "tunnel" || res.data.status === "redirect" || res.data.status === "stream")) {
         if (res.data.url) return res.data.url;
       }
     } catch (err) {
@@ -557,74 +556,76 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
+  // == KESİN ÇÖZÜM: The Ultimate Proxy Ring'i ÖNCE KULLAN ==
+  // YouTube Railway IP'sini banladığı için direkt local bağlantı kurmak (yt-dlp) hep başarısız olur.
+  // Bu nedenle önce dinamik proxy sunucularını kullanacağız.
+
+  // 1. Dinamik Invidious Proxy Streaming
+  try {
+    const invidiousUrl = await tryInvidiousFallback(videoId, type);
+    if (invidiousUrl) {
+      logError("PROXY_SUCCESS", videoId, `Invidious API successful for ${type}.`);
+      stats.proxyFallbackSuccess++;
+      return invidiousUrl;
+    }
+  } catch (invidiousErr) {
+    logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
+  }
+
+  // 2. COBALT API v10
+  try {
+    const cobaltUrl = await tryCobaltFallback(videoId, type);
+    if (cobaltUrl) {
+      logError("PROXY_SUCCESS", videoId, `Cobalt API successful for ${type}.`);
+      stats.proxyFallbackSuccess++;
+      return cobaltUrl;
+    }
+  } catch (cobaltErr) {
+    logError("COBALT_FALLBACK_ERR", videoId, cobaltErr.message);
+  }
+
+  // Yalnızca Invidious ve Cobalt çökerse Piped'ı dene
+  try {
+    const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+    if (type === "audio") {
+      const streams = pipedRes.data.audioStreams;
+      if (!streams || !Array.isArray(streams) || streams.length === 0) {
+        throw new Error("No valid audioStreams array found");
+      }
+      const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
+      if (best && best.url) {
+        logError("PROXY_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
+        stats.proxyFallbackSuccess++;
+        return best.url;
+      }
+    } else {
+      const streams = pipedRes.data.videoStreams;
+      if (!streams || !Array.isArray(streams) || streams.length === 0) {
+        throw new Error("No valid videoStreams array found");
+      }
+      const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+        streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
+        streams[0];
+      if (best && best.url) {
+        logError("PROXY_SUCCESS", videoId, `Piped API Fallback successful for video.`);
+        stats.proxyFallbackSuccess++;
+        return best.url;
+      }
+    }
+  } catch (pipedErr) {
+    logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
+  }
+
+  // == 4. SON ÇARE: Railway IP'sinden şansımızı deniyoruz (play-dl / yt-dlp) ==
+  logError("PROXY_FAIL_WAIT", videoId, "Tüm proxy'ler çöktü, Railway IP üzerinden yerel motorlar deneniyor...");
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...`);
-
-    // == THE ULTIMATE PROXY RING ==
-    // YouTube Railway IP'sine engelli (403). Piped'ın verdiği googlevideo linkleri IP Mismatch veriyor.
-
-    // 1st Line of Defense: COBALT.TOOLS (En Stabil, native proxy yapar)
-    try {
-      const cobaltUrl = await tryCobaltFallback(videoId, type);
-      if (cobaltUrl) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Cobalt API Fallback successful for ${type}.`);
-        stats.proxyFallbackSuccess++;
-        return cobaltUrl;
-      }
-    } catch (cobaltErr) {
-      logError("COBALT_FALLBACK_ERR", videoId, cobaltErr.message);
-    }
-
-    // 2nd Line of Defense: Invidious Proxy Streaming (Ücretsiz instance'lar genelde 401/403 atabilir)
-    try {
-      const invidiousUrl = await tryInvidiousFallback(videoId, type);
-      if (invidiousUrl) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
-        stats.proxyFallbackSuccess++;
-        return invidiousUrl;
-      }
-    } catch (invidiousErr) {
-      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
-    }
-
-    // Yalnızca Invidious çökerse Piped'ı dene (ancak IP block yiyebiliriz)
-    try {
-      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-      if (type === "audio") {
-        const streams = pipedRes.data.audioStreams;
-        if (!streams || !Array.isArray(streams) || streams.length === 0) {
-          throw new Error("No valid audioStreams array found");
-        }
-        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-        if (best && best.url) {
-          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
-          stats.proxyFallbackSuccess++;
-          return best.url; // IP Mismatch riski var ama deneriz
-        }
-      } else {
-        const streams = pipedRes.data.videoStreams;
-        if (!streams || !Array.isArray(streams) || streams.length === 0) {
-          throw new Error("No valid videoStreams array found");
-        }
-        const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-          streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
-          streams[0];
-        if (best && best.url) {
-          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
-          stats.proxyFallbackSuccess++;
-          return best.url;
-        }
-      }
-    } catch (pipedErr) {
-      logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
-    }
-
+    logError("YTDLP_FATAL_FALLBACK", videoId, err.message);
     stats.proxyFallbackFail++;
-    throw new Error("Tüm proxy ağları başarısız oldu.");
+    throw new Error("Tüm proxy ağları VE yerel motorlar başarısız oldu.");
   }
 }
 
