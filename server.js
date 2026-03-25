@@ -9,6 +9,7 @@ const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
+const playdl = require("play-dl");
 
 const PQueue = require("p-queue").default;
 
@@ -281,6 +282,22 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     }
   }
 
+  // 4. SON ÇARE: play-dl (Cookies ile)
+  try {
+    console.log(`[play-dl] Deneniyor...`);
+    // play-dl için cookies.txt ayarı (Eğer gerekirse playdl.setToken ile yapılır ama şimdilik doğrudan deneyelim)
+    const stream = await playdl.stream(videoUrl, { 
+      quality: format === "bestaudio" ? 0 : 2, // 0: audio only, 2: video
+      discordPlayerCompatibility: true 
+    });
+    if (stream && stream.url) {
+      console.log(`[play-dl] BAŞARILI!`);
+      return stream.url;
+    }
+  } catch (pdlErr) {
+    console.warn(`[play-dl] Başarısız:`, pdlErr.message);
+  }
+
   ytDlpFailCount++;
   if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
     const videoIdMatch = videoUrl.match(/v=([^&]+)/);
@@ -290,7 +307,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   }
 
   stats.ytDlpFail++;
-  throw lastError || new Error("Tüm player client'lar başarısız oldu");
+  throw lastError || new Error("Tüm player client'lar ve play-dl başarısız oldu");
 }
 
 const PIPED_INSTANCES = [
