@@ -288,9 +288,13 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     
     // play-dl için cookies.txt (varsa)
     if (fs.existsSync("cookies.txt")) {
+        let cookieContent = fs.readFileSync("cookies.txt", "utf8");
+        // BOM (Byte Order Mark) temizle - \ufeff karakteri yt-dlp ve play-dl'i bozuyor
+        cookieContent = cookieContent.replace(/^\ufeff/, "");
+        
         await playdl.setToken({
             youtube: {
-                cookie: fs.readFileSync("cookies.txt", "utf8")
+                cookie: cookieContent
             }
         });
     }
