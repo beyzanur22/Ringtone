@@ -10,6 +10,7 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 const playdl = require("play-dl");
+const { Innertube, UniversalCache } = require("youtubei.js");
 
 // CRITICAL: Catch unhandled rejections globally to prevent server crashes
 // play-dl sometimes throws outside of promise chains
@@ -282,6 +283,20 @@ function initPlayDlCookies() {
 }
 initPlayDlCookies();
 
+let ytInnertube = null;
+async function initInnertube() {
+  try {
+    ytInnertube = await Innertube.create({
+      cache: new UniversalCache(false),
+      generate_session_locally: true
+    });
+    console.log("[youtubei.js] Başarıyla başlatıldı");
+  } catch (err) {
+    console.error("[youtubei.js] Başlatma hatası:", err.message);
+  }
+}
+initInnertube();
+
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   // == 1. ADIM: play-dl (EN HIZLI - Cookies ile YouTube'a doğrudan) ==
   // yt-dlp Railway IP'sinden hiçbir şekilde çalışmıyor.
@@ -313,6 +328,36 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     }
   } catch (pdlErr) {
     console.warn(`[play-dl] Başarısız:`, pdlErr.message?.slice(0, 150));
+  }
+
+  // == 1.5 ADIM: youtubei.js (InnerTube API) ==
+  if (ytInnertube) {
+    try {
+      console.log(`[youtubei.js] Deneniyor...`);
+      const videoIdMatch = videoUrl.match(/v=([^&]+)/);
+      if (videoIdMatch && videoIdMatch[1]) {
+        const vidId = videoIdMatch[1];
+        const info = await ytInnertube.getBasicInfo(vidId);
+
+        const isAudio = format.includes("audio") || format === "bestaudio";
+        const pbFormat = isAudio
+          ? info.chooseFormat({ type: 'audio', quality: 'best' })
+          : info.chooseFormat({ type: 'video+audio', quality: '360p' });
+
+        if (pbFormat && pbFormat.decipher) {
+          const url = pbFormat.decipher(ytInnertube.session.player);
+          if (url) {
+            console.log(`[youtubei.js] BAŞARILI! format=${pbFormat.mime_type}`);
+            return url;
+          }
+        } else if (pbFormat && pbFormat.url) {
+          console.log(`[youtubei.js] BAŞARILI! format=${pbFormat.mime_type}`);
+          return pbFormat.url;
+        }
+      }
+    } catch (innertubeErr) {
+      console.warn(`[youtubei.js] Başarısız:`, innertubeErr.message?.slice(0, 150));
+    }
   }
 
   // == 2. ADIM: yt-dlp (Sadece circuit breaker açıksa) ==
@@ -366,32 +411,27 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   throw lastError || new Error("Tüm player client'lar ve play-dl başarısız oldu");
 }
 const COBALT_INSTANCES = [
-  "https://co.wuk.sh",
-  "https://cobalt-api.peppe8o.com",
-  "https://api.cobalt.tools",
   "https://cobalt.q-n.cc",
-  "https://cobalt.catterall.info"
+  "https://cobalt.catterall.info",
+  "https://co.e-z.host",
+  "https://cobalt.twi.cx"
 ];
 
 const PIPED_INSTANCES = [
-  "https://pipedapi.aeong.one",
+  "https://pipedapi.kavin.rocks",
   "https://pipedapi.in.projectsegfau.lt",
   "https://pipedapi.us.projectsegfau.lt",
-  "https://api.piped.projectsegfau.lt",
-  "https://pipedapi.tokhmi.xyz",
   "https://pipedapi.smnz.de",
-  "https://pipedapi.kavin.rocks"
+  "https://pipedapi.tokhmi.xyz"
 ];
 
 const INVIDIOUS_INSTANCES = [
-  "https://invidious.fdn.fr",
   "https://invidious.projectsegfau.lt",
   "https://yewtu.be",
-  "https://invidious.privacyredirect.com",
-  "https://inv.us.projectsegfau.lt",
   "https://invidious.nerdvpn.de",
   "https://invidious.io",
-  "https://invidious.slipfox.xyz"
+  "https://invidious.slipfox.xyz",
+  "https://invidious.jing.rocks"
 ];
 
 async function fetchFromPiped(endpointPath) {
@@ -414,7 +454,7 @@ async function fetchFromPiped(endpointPath) {
 
 async function tryCobaltFallback(videoId, type) {
   const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  
+
   for (const instance of COBALT_INSTANCES) {
     try {
       const payload = {
@@ -423,7 +463,7 @@ async function tryCobaltFallback(videoId, type) {
         isAudioOnly: type === "audio",
         aFormat: "mp3" // mp3 veya best
       };
-      
+
       const res = await axiosClient.post(`${instance}/api/json`, payload, {
         headers: {
           "Accept": "application/json",
@@ -454,7 +494,7 @@ async function tryInvidiousFallback(videoId, type) {
       // local=true argümanı Invidious'un kendi IP'sinden videoyu çekip bize aktarmasını sağlar!
       const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
       if (res && res.data && !res.data.error) {
-        
+
         let itag = null;
         if (type === "audio") {
           // Itag 140 = m4a audio (en uyumlu)
@@ -473,7 +513,7 @@ async function tryInvidiousFallback(videoId, type) {
             else if (mp4_360) itag = 18;
           }
         }
-        
+
         if (itag) {
           // İŞTE BÜYÜ BURADA: Invidious Proxy Stream URL'si
           const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
@@ -497,7 +537,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
 
     // == THE ULTIMATE PROXY RING ==
     // YouTube Railway IP'sine engelli (403). Piped'ın verdiği googlevideo linkleri IP Mismatch veriyor.
-    
+
     // 1st Line of Defense: COBALT.TOOLS (En Stabil, native proxy yapar)
     try {
       const cobaltUrl = await tryCobaltFallback(videoId, type);
@@ -521,7 +561,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
     } catch (invidiousErr) {
       logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
     }
-    
+
     // Yalnızca Invidious çökerse Piped'ı dene (ancak IP block yiyebiliriz)
     try {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);

@@ -1,0 +1,18 @@
+[2026-03-25T10:28:57.821Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: No valid URL to decipher. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T10:29:05.811Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T10:29:13.818Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T10:29:21.799Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.e-z.host failed: getaddrinfo ENOTFOUND co.e-z.host
+[2026-03-25T10:29:29.802Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.twi.cx failed: timeout of 8000ms exceeded
+[2026-03-25T10:29:29.804Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
+[2026-03-25T10:29:30.546Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T10:29:30.862Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T10:29:31.548Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T10:29:38.397Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.jing.rocks failed: timeout of 6000ms exceeded
+[2026-03-25T10:29:38.397Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Invidious instances failed.
+[2026-03-25T10:29:39.218Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 502
+[2026-03-25T10:29:39.819Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T10:29:42.793Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error: connect ECONNREFUSED 74.48.191.220:443
+[2026-03-25T10:29:45.056Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error: connect ECONNREFUSED 37.120.162.86:443
+[2026-03-25T10:29:45.376Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T10:29:45.377Z] - [PIPED_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: API returned no valid streams.
+[2026-03-25T10:29:45.377Z] - [STREAM] - VideoID: e__YaECyqTI - Error: Tüm proxy ağları başarısız oldu.

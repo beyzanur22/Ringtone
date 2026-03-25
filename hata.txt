@@ -1,106 +1,107 @@
-Top50 cache hazır (Redis).
+[Redis] Bağlantı başarılı
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/a7907aef-4dcf-4d59-94b0-feb1862e42fb/vol_3vibbjo3yyghyg9v
 Starting Container
-[REQ] 2026-03-24T07:57:58.343Z | GET /stream?videoId=NqLe3mk__kg | IP: 212.154.66.243 | Country: UNKNOWN
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+Top50 cache hazır (Redis).
+[REQ] 2026-03-25T09:13:16.422Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[play-dl] Deneniyor...
+[play-dl] Başarısız: While getting info from url
+Sign in to confirm you’re not a bot
+[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
+[yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=tv, format=bestaudio
+[yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-24T07:58:09.371Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NqLe3mk__kg - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NqLe3mk__kg --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
-[2026-03-24T07:58:09.469Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-24T07:58:09.535Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
-[2026-03-24T07:58:09.842Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: read ECONNRESET
-[2026-03-24T07:58:09.882Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
-[2026-03-24T07:58:10.344Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-24T07:58:10.660Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
-[2026-03-24T07:58:11.469Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-24T07:58:11.647Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-24T07:58:11.713Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
-[2026-03-24T07:58:12.489Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
-[2026-03-24T07:58:12.833Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 807C3F29E57F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:58:12.833Z] - [PIPED_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: write EPROTO 807C3F29E57F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:58:13.576Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-24T07:58:13.821Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
-[2026-03-24T07:58:13.895Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
-[2026-03-24T07:58:14.448Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-24T07:58:14.758Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.lunar.icu failed: certificate has expired
-[2026-03-24T07:58:15.193Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.flokinet.to failed:
-[REQ] 2026-03-24T07:58:15.561Z | GET /stream?videoId=NqLe3mk__kg | IP: 212.154.66.243 | Country: UNKNOWN
-[2026-03-24T07:58:16.351Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-24T07:58:16.669Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.weblibre.org failed: socket hang up
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-[2026-03-24T07:58:17.075Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://yt.artemislena.eu failed: write EPROTO 807C3F29E57F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
-[2026-03-24T07:58:17.289Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
-[2026-03-24T07:58:17.290Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: All Invidious instances failed.
-[2026-03-24T07:58:17.291Z] - [STREAM] - VideoID: NqLe3mk__kg - Error: Tüm proxy ağları başarısız oldu.
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[2026-03-25T09:13:27.968Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T09:13:28.029Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
+[2026-03-25T09:13:28.098Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
+[2026-03-25T09:13:28.298Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
+[2026-03-25T09:13:28.367Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T09:13:28.421Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T09:13:28.422Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
+[2026-03-25T09:13:28.476Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
+[2026-03-25T09:13:29.696Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T09:13:30.750Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
+[2026-03-25T09:13:30.765Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
+[2026-03-25T09:13:31.301Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T09:13:32.099Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T09:13:32.217Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Invidious instances failed.
+[REQ] 2026-03-25T09:13:32.533Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[play-dl] Deneniyor...
+[play-dl] Başarısız: While getting info from url
+Sign in to confirm you’re not a bot
+[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
+[yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=tv, format=bestaudio
+[2026-03-25T09:13:37.289Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.aeong.one error: getaddrinfo EAI_AGAIN pipedapi.aeong.one
+[yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+[2026-03-25T09:13:38.115Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T09:13:38.132Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-25T09:13:38.592Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T09:13:39.406Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T09:13:39.589Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=ios, format=bestaudio
+[2026-03-25T09:13:39.696Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-25T09:13:39.697Z] - [PIPED_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: Request failed with status code 521
+[2026-03-25T09:13:39.697Z] - [STREAM] - VideoID: e__YaECyqTI - Error: Tüm proxy ağları başarısız oldu.
 STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[REQ] 2026-03-24T07:58:24.029Z | HEAD /health | IP: 178.156.189.249 | Country: UNKNOWN
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-24T07:58:26.269Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NqLe3mk__kg - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NqLe3mk__kg --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt
-[2026-03-24T07:58:26.336Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-24T07:58:26.393Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: getaddrinfo ENOTFOUND api.piped.yt
-[2026-03-24T07:58:26.685Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
-[2026-03-24T07:58:26.702Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
-[2026-03-24T07:58:26.851Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-24T07:58:27.013Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
-[2026-03-24T07:58:27.488Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-24T07:58:27.500Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-24T07:58:27.554Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: getaddrinfo ENOTFOUND pi.ped.yt
-[2026-03-24T07:58:28.097Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
-[2026-03-24T07:58:28.422Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 807C3F29E57F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:58:28.422Z] - [PIPED_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: write EPROTO 807C3F29E57F0000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 112
-[2026-03-24T07:58:28.664Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-24T07:58:28.732Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
-[2026-03-24T07:58:29.071Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://inv.rvere.com failed: getaddrinfo ENOTFOUND inv.rvere.com
-[2026-03-24T07:58:29.251Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-24T07:58:29.548Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.lunar.icu failed: certificate has expired
-[2026-03-24T07:58:29.801Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.flokinet.to failed:
-[2026-03-24T07:58:31.851Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-24T07:58:32.008Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.weblibre.org failed: socket hang up
-[2026-03-24T07:58:32.350Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://yt.artemislena.eu failed: write EPROTO 807C3F29E57F0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:1601:SSL alert number 80
-[2026-03-24T07:58:32.404Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NqLe3mk__kg - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
-[2026-03-24T07:58:32.404Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: NqLe3mk__kg - Error: All Invidious instances failed.
-[2026-03-24T07:58:32.404Z] - [STREAM] - VideoID: NqLe3mk__kg - Error: Tüm proxy ağları başarısız oldu.
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[2026-03-25T09:13:43.087Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T09:13:43.131Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
+[2026-03-25T09:13:43.174Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
+[2026-03-25T09:13:43.346Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
+[2026-03-25T09:13:43.391Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T09:13:43.438Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T09:13:43.439Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
+[2026-03-25T09:13:43.487Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
+[2026-03-25T09:13:43.887Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T09:13:44.903Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
+[2026-03-25T09:13:44.916Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
+[2026-03-25T09:13:45.094Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T09:13:45.261Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T09:13:45.322Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Invidious instances failed.
+[2026-03-25T09:13:50.393Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.aeong.one error: getaddrinfo EAI_AGAIN pipedapi.aeong.one
+[2026-03-25T09:13:50.651Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T09:13:50.667Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-25T09:13:50.822Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T09:13:51.311Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T09:13:51.473Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-25T09:13:51.529Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-25T09:13:51.529Z] - [PIPED_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: Request failed with status code 521
+[2026-03-25T09:13:51.529Z] - [STREAM] - VideoID: e__YaECyqTI - Error: Tüm proxy ağları başarısız oldu.
 STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[REQ] 2026-03-24T07:58:33.685Z | GET /stream?videoId=NqLe3mk__kg | IP: 212.154.66.243 | Country: UNKNOWN
-[yt-dlp] Deneniyor: client=android, format=bestaudio
-[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[REQ] 2026-03-25T09:13:51.669Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[play-dl] Deneniyor...
+[play-dl] Başarısız: While getting info from url
+Sign in to confirm you’re not a bot
+[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
+[yt-dlp] Deneniyor: client=tv, format=bestaudio
+[yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
 [yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] NqLe3mk__kg: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[2026-03-24T07:58:43.221Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NqLe3mk__kg - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NqLe3mk__kg --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
-[2026-03-24T07:58:43.667Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: Request failed with status code 403
+[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[2026-03-25T09:14:01.956Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T09:14:01.997Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
+[2026-03-25T09:14:02.039Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
+[2026-03-25T09:14:02.211Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
+[2026-03-25T09:14:02.256Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T09:14:02.299Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T09:14:02.299Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
+[2026-03-25T09:14:02.344Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
+[2026-03-25T09:14:02.743Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T09:14:03.749Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
+[2026-03-25T09:14:03.763Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
+[2026-03-25T09:14:03.941Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T09:14:04.108Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
