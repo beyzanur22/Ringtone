@@ -787,7 +787,7 @@ app.get("/stream", async (req, res) => {
 });
 
 
-// VIDEO STREAM (MP4) — yt-dlp ile doğrudan sunucuya indir, sonra serve et
+// VIDEO STREAM (MP4) — Önce hızlı proxy, arka planda cache
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -800,8 +800,32 @@ app.get("/stream/video", async (req, res) => {
     // 1. Diskten sağlam dosya varsa direkt serve et
     if (fs.existsSync(localFile) && fs.statSync(localFile).size > MIN_VIDEO_SIZE) {
       console.log(`[DISK_CACHE_HIT] Serving local video for`, videoId);
-      res.setHeader("Content-Type", "video/mp4");
-      return res.sendFile(localFile);
+      const stat = fs.statSync(localFile);
+      const fileSize = stat.size;
+
+      // Range header desteği (ExoPlayer seek için)
+      if (req.headers.range) {
+        const parts = req.headers.range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = end - start + 1;
+
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": "video/mp4"
+        });
+        fs.createReadStream(localFile, { start, end }).pipe(res);
+      } else {
+        res.writeHead(200, {
+          "Content-Length": fileSize,
+          "Content-Type": "video/mp4",
+          "Accept-Ranges": "bytes"
+        });
+        fs.createReadStream(localFile).pipe(res);
+      }
+      return;
     }
 
     // Bozuk/küçük dosya varsa sil
@@ -809,20 +833,30 @@ app.get("/stream/video", async (req, res) => {
       fs.unlinkSync(localFile);
     }
 
-    // 2. yt-dlp ile doğrudan dosyayı sunucuya indir
-    console.log(`[yt-dlp] Video indiriliyor: ${videoId}`);
-    const tempFile = localFile + ".tmp";
+    // 2. HIZLI YOL: Stream URL çözüp anında proxy yap (yt-dlp beklemeden!)
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+    const ua = getRandomUA();
 
+    let streamUrl;
     try {
+      streamUrl = await queue.add(async () => {
+        await randomJitter();
+        return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
+      });
+    } catch (resolveErr) {
+      console.error(`[STREAM_VIDEO] URL resolve başarısız, yt-dlp fallback: ${resolveErr.message}`);
+
+      // 3. YAVAŞ FALLBACK: yt-dlp ile indir, sonra serve et
+      const tempFile = localFile + ".tmp";
       const opts = {
         format: 'best[ext=mp4]/best',
         output: tempFile,
         addHeader: [
           'referer:https://www.youtube.com/',
-          `user-agent:${getRandomUA()}`
+          `user-agent:${ua}`
         ]
       };
-
       const useCookies = process.env.USE_COOKIES !== "false";
       if (useCookies && fs.existsSync("cookies.txt")) {
         opts.cookies = "cookies.txt";
@@ -830,58 +864,42 @@ app.get("/stream/video", async (req, res) => {
 
       await ytdlp(`https://www.youtube.com/watch?v=${videoId}`, opts);
 
-      // Boyut kontrolü
       if (!fs.existsSync(tempFile) || fs.statSync(tempFile).size < MIN_VIDEO_SIZE) {
         if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
         throw new Error("yt-dlp downloaded a corrupted/empty file");
       }
 
       fs.renameSync(tempFile, localFile);
-      console.log(`[DISK_CACHE] Video kaydedildi: video_${videoId}.mp4 (${(fs.statSync(localFile).size / 1024 / 1024).toFixed(1)} MB)`);
-
-    } catch (dlErr) {
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-      console.error(`[yt-dlp] Video indirme başarısız: ${dlErr.message}`);
-
-      // Fallback: Stream URL çözüp doğrudan proxy yap
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
-      const ua = getRandomUA();
-
-      const streamUrl = await queue.add(async () => {
-        await randomJitter();
-        return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
-
-      const headersOptions = {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      };
-      if (req.headers.range) headersOptions["Range"] = req.headers.range;
-
-      const response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        validateStatus: (status) => status < 400
-      });
-
-      res.status(response.status);
-      if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
-      if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-      if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
-      if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
-      response.data.pipe(res);
-
-      // Arka planda cache'e kaydet
-      downloadToCache(videoId, "video", streamUrl).catch(() => {});
-      return;
+      console.log(`[yt-dlp] Video kaydedildi: video_${videoId}.mp4 (${(fs.statSync(localFile).size / 1024 / 1024).toFixed(1)} MB)`);
+      res.setHeader("Content-Type", "video/mp4");
+      return res.sendFile(localFile);
     }
 
-    // 3. İndirilen dosyayı serve et
-    res.setHeader("Content-Type", "video/mp4");
-    res.sendFile(localFile);
+    // Stream URL başarıyla çözüldü → anında proxy yap
+    console.log(`[PROXY] Video streaming: ${videoId}`);
+    const headersOptions = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: headersOptions,
+      validateStatus: (status) => status < 400
+    });
+
+    res.status(response.status);
+    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+    response.data.pipe(res);
+
+    // Arka planda cache'e kaydet (kullanıcıyı bekletmeden)
+    downloadToCache(videoId, "video", streamUrl).catch(() => {});
 
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
