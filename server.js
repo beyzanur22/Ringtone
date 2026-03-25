@@ -407,25 +407,36 @@ async function fetchFromPiped(endpointPath) {
 async function tryInvidiousFallback(videoId, type) {
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
+      // Invidious üzerinden proxy izleyerek YouTube IP banını ve IP Mismatch hatasını aşıyoruz!
+      // Invidious API'den direct url ('googlevideo.com') ALMIYORUZ, Invidious'u proxy olarak kullanıyoruz.
+      // local=true argümanı Invidious'un kendi IP'sinden videoyu çekip bize aktarmasını sağlar!
       const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
-      if (res && res.data) {
-        if (res.data.error) throw new Error(res.data.error);
+      if (res && res.data && !res.data.error) {
+        
+        let itag = null;
         if (type === "audio") {
+          // Itag 140 = m4a audio (en uyumlu)
           const streams = res.data.adaptiveFormats;
           if (streams && Array.isArray(streams)) {
-            const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio"));
-            if (m4a && m4a.url) return m4a.url;
+            const m4a = streams.find(s => s.itag === "140" || (s.type && s.type.includes("audio/mp4")));
+            if (m4a) itag = m4a.itag || 140;
           }
         } else {
+          // Video: Itag 18 (360p mp4) veya Itag 22 (720p mp4)
           const streams = res.data.formatStreams;
           if (streams && Array.isArray(streams)) {
-            const mp4 = streams.find(s => (s.type && s.type.includes("video/mp4") && s.qualityLabel === "720p")) ||
-              streams.find(s => s.type && s.type.includes("video/mp4")) ||
-              streams[0];
-            if (mp4 && mp4.url) return mp4.url;
+            const mp4_720 = streams.find(s => s.itag === "22");
+            const mp4_360 = streams.find(s => s.itag === "18");
+            if (mp4_720) itag = 22;
+            else if (mp4_360) itag = 18;
           }
         }
-        throw new Error("No valid streams in Invidious instance payload.");
+        
+        if (itag) {
+          // İŞTE BÜYÜ BURADA: Invidious Proxy Stream URL'si
+          const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
+          return proxyUrl;
+        }
       }
     } catch (err) {
       logError("INVIDIOUS_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
@@ -442,7 +453,24 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   } catch (err) {
     logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
 
-    // First line of defense: Piped APIs
+    // == THE ULTIMATE PROXY RING ==
+    // YouTube Railway'in IP'sine 403 Forbidden veriyor. Ayrıca Piped gibi API'lerin verdiği "googlevideo" linkleri
+    // 'IP Mismatch' sebebiyle biz çekmeye kalktığımızda hata veriyor.
+    // Bu yüzden İLK OLARAK Invidious Proxy (local=true) deniyoruz ki indirme işini Invidious sunucusu bizim yerimize yapsın!
+    
+    // First line of defense: Invidious Proxy Streaming
+    try {
+      const invidiousUrl = await tryInvidiousFallback(videoId, type);
+      if (invidiousUrl) {
+        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
+        stats.proxyFallbackSuccess++;
+        return invidiousUrl;
+      }
+    } catch (invidiousErr) {
+      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
+    }
+    
+    // Yalnızca Invidious çökerse Piped'ı dene (ancak IP block yiyebiliriz)
     try {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
       if (type === "audio") {
@@ -454,7 +482,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
         if (best && best.url) {
           logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
           stats.proxyFallbackSuccess++;
-          return best.url;
+          return best.url; // IP Mismatch riski var ama deneriz
         }
       } else {
         const streams = pipedRes.data.videoStreams;
@@ -472,18 +500,6 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
       }
     } catch (pipedErr) {
       logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
-    }
-
-    // Second line of defense: Invidious APIs
-    try {
-      const invidiousUrl = await tryInvidiousFallback(videoId, type);
-      if (invidiousUrl) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
-        stats.proxyFallbackSuccess++;
-        return invidiousUrl;
-      }
-    } catch (invidiousErr) {
-      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
     }
 
     stats.proxyFallbackFail++;
