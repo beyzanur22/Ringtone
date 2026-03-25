@@ -239,8 +239,10 @@ const randomJitter = async () => {
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// 2025/2026 Bot-bypass client stratejisi: tv_embedded ve web_creator datacenter IP'lerinde bile sign-in gerektirmez
-const PLAYER_CLIENTS = ["tv_embedded", "web_creator", "android_creator", "mweb", "ios", "default"];
+// 2025/2026 Bot-bypass client stratejisi:
+// tv_embedded, web_embedded: datacenter IP'lerinde sign-in gerektirmez
+// mediaconnect: en yeni bypass client'ı
+const PLAYER_CLIENTS = ["tv_embedded", "web_embedded", "mediaconnect", "tv", "mweb", "ios"];
 
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
@@ -265,20 +267,23 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         ]
       };
 
-      // cookies.txt varsa ve USE_COOKIES=false değilse ekle
+      // KEY FIX: Extractor args syntax
+      // Semicolon (;) separates different keys for the same extractor
+      // Comma (,) separates multiple VALUES for the same key
+      // WRONG: youtube:player_client=tv_embedded,player_skip=webpage  <- yt-dlp treats 'player_skip=webpage' as a client name!
+      // CORRECT: youtube:player_client=tv_embedded;player_skip=webpage,configs
       const useCookies = process.env.USE_COOKIES !== "false";
       if (useCookies && fs.existsSync("cookies.txt")) {
         opts.cookies = "cookies.txt";
       }
 
-      // player_skip: webpage ve configs request'lerini atla = daha az detection surface
-      // tv_embedded ve web_creator botlara karşı en dirençli clientlar
       if (client === "default") {
-        opts.extractorArgs = `youtube:player_skip=webpage,configs`;
+        // default = yt-dlp kendi client'ı seçsin, sadece player_skip ile detection azalt
+        opts.extractorArgs = `youtube:player_skip=webpage`;
       } else {
-        opts.extractorArgs = `youtube:player_client=${client},player_skip=webpage,configs`;
+        // Noktalı virgülle ayır: player_client=X;player_skip=Y şeklinde
+        opts.extractorArgs = `youtube:player_client=${client};player_skip=webpage`;
       }
-      opts.noCheckCertificates = true;
 
       console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
       const result = await ytdlp(videoUrl, opts);
