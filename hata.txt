@@ -1,107 +1,135 @@
-[Redis] Bağlantı başarılı
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/a7907aef-4dcf-4d59-94b0-feb1862e42fb/vol_3vibbjo3yyghyg9v
-Starting Container
-Top50 cache hazır (Redis).
-[REQ] 2026-03-25T09:13:16.422Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[REQ] 2026-03-25T10:51:29.110Z | HEAD /health | IP: 5.161.117.52 | Country: UNKNOWN
+[REQ] 2026-03-25T10:56:20.014Z | GET /stream?videoId=l8sSQAa1kNM | IP: 212.154.66.243 | Country: UNKNOWN
+[DISK_CACHE_HIT] Serving local audio for l8sSQAa1kNM
+[REQ] 2026-03-25T10:56:33.763Z | HEAD /health | IP: 3.133.226.214 | Country: UNKNOWN
+[REQ] 2026-03-25T10:56:55.669Z | GET /stream?videoId=F3iIU6LjXhs | IP: 212.154.66.243 | Country: UNKNOWN
+[DISK_CACHE_HIT] Serving local audio for F3iIU6LjXhs
+[REQ] 2026-03-25T10:57:09.537Z | GET /top50 | IP: 212.154.66.243 | Country: UNKNOWN
+[REQ] 2026-03-25T10:57:28.429Z | GET /stream/video?videoId=fEl_ug9VfvQ | IP: 212.154.66.243 | Country: UNKNOWN
+[DISK_CACHE_HIT] Serving local video for fEl_ug9VfvQ
+[REQ] 2026-03-25T10:58:00.241Z | GET /stream/video?videoId=NgRnbfWQmvw | IP: 212.154.66.243 | Country: UNKNOWN
 [play-dl] Deneniyor...
 [play-dl] Başarısız: While getting info from url
 Sign in to confirm you’re not a bot
-[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
+[youtubei.js] Deneniyor...
+[youtubei.js] Başarısız: Streaming data not available
+[yt-dlp] Deneniyor: client=web_embedded, format=best[ext=mp4]/best
 [yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=tv, format=bestaudio
+[yt-dlp] Deneniyor: client=tv, format=best[ext=mp4]/best
 [yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
 [yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[yt-dlp] Deneniyor: client=web, format=bestaudio
+[yt-dlp] Deneniyor: client=ios, format=best[ext=mp4]/best
 [yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
 [yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[2026-03-25T09:13:27.968Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
-[2026-03-25T09:13:28.029Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
-[2026-03-25T09:13:28.098Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
-[2026-03-25T09:13:28.298Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
-[2026-03-25T09:13:28.367Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
-[2026-03-25T09:13:28.421Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
-[2026-03-25T09:13:28.422Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
-[2026-03-25T09:13:28.476Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
-[2026-03-25T09:13:29.696Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-25T09:13:30.750Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-25T09:13:30.765Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
-[2026-03-25T09:13:31.301Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-25T09:13:32.099Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
-[2026-03-25T09:13:32.217Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Invidious instances failed.
-[REQ] 2026-03-25T09:13:32.533Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[2026-03-25T10:58:11.424Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NgRnbfWQmvw - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T10:58:11.486Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T10:58:11.540Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T10:58:11.596Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://co.e-z.host failed: getaddrinfo ENOTFOUND co.e-z.host
+[2026-03-25T10:58:11.649Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.twi.cx failed: getaddrinfo ENOTFOUND cobalt.twi.cx
+[2026-03-25T10:58:11.649Z] - [COBALT_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: All Cobalt instances failed.
+[2026-03-25T10:58:12.856Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T10:58:13.613Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T10:58:14.433Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T10:58:14.807Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: All Invidious instances failed.
+[2026-03-25T10:58:14.807Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-25T10:58:14.920Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-25T10:58:15.665Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T10:58:15.678Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-25T10:58:16.012Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-25T10:58:16.821Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T10:58:16.821Z] - [PIPED_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: API returned no valid streams.
+[STREAM_VIDEO] URL resolve başarısız, yt-dlp fallback: Tüm proxy ağları başarısız oldu.
+[REQ] 2026-03-25T10:58:18.365Z | GET /stream/video?videoId=NgRnbfWQmvw | IP: 212.154.66.243 | Country: UNKNOWN
+[2026-03-25T10:58:18.568Z] - [STREAM_VIDEO] - VideoID: NgRnbfWQmvw - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NgRnbfWQmvw --format best[ext=mp4]/best --output /app/cache/video_NgRnbfWQmvw.mp4.tmp --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] NgRnbfWQmvw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[youtube] Extracting URL: https://www.youtube.com/watch?v=NgRnbfWQmvw
+[youtube] NgRnbfWQmvw: Downloading webpage
+[youtube] NgRnbfWQmvw: Downloading android vr player API JSON
+VIDEO STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NgRnbfWQmvw --format best[ext=mp4]/best --output /app/cache/video_NgRnbfWQmvw.mp4.tmp --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] NgRnbfWQmvw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[youtube] Extracting URL: https://www.youtube.com/watch?v=NgRnbfWQmvw
+[youtube] NgRnbfWQmvw: Downloading webpage
+[youtube] NgRnbfWQmvw: Downloading android vr player API JSON
 [play-dl] Deneniyor...
 [play-dl] Başarısız: While getting info from url
 Sign in to confirm you’re not a bot
-[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
+[youtubei.js] Deneniyor...
+[youtubei.js] Başarısız: Streaming data not available
+[yt-dlp] Deneniyor: client=web_embedded, format=best[ext=mp4]/best
 [yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=tv, format=bestaudio
-[2026-03-25T09:13:37.289Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.aeong.one error: getaddrinfo EAI_AGAIN pipedapi.aeong.one
+[yt-dlp] Deneniyor: client=tv, format=best[ext=mp4]/best
 [yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[2026-03-25T09:13:38.115Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
-[2026-03-25T09:13:38.132Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-25T09:13:38.592Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-25T09:13:39.406Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-25T09:13:39.589Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[yt-dlp] Deneniyor: client=mweb, format=best[ext=mp4]/best
 [yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
-[2026-03-25T09:13:39.696Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-25T09:13:39.697Z] - [PIPED_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: Request failed with status code 521
-[2026-03-25T09:13:39.697Z] - [STREAM] - VideoID: e__YaECyqTI - Error: Tüm proxy ağları başarısız oldu.
+[yt-dlp] Deneniyor: client=ios, format=best[ext=mp4]/best
+[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=web, format=best[ext=mp4]/best
+[2026-03-25T10:58:29.121Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.twi.cx failed: getaddrinfo ENOTFOUND cobalt.twi.cx
+[2026-03-25T10:58:29.121Z] - [COBALT_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: All Cobalt instances failed.
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[2026-03-25T10:58:28.959Z] - [YTDLP_FATAL_FALLBACK] - VideoID: NgRnbfWQmvw - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
+[2026-03-25T10:58:28.999Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T10:58:29.041Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
+[2026-03-25T10:58:29.081Z] - [COBALT_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://co.e-z.host failed: getaddrinfo ENOTFOUND co.e-z.host
+[2026-03-25T10:58:29.519Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T10:58:29.695Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-03-25T10:58:29.861Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T10:58:29.950Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: NgRnbfWQmvw - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-25T10:58:29.950Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: All Invidious instances failed.
+[2026-03-25T10:58:30.057Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-25T10:58:30.300Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T10:58:30.311Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-25T10:58:30.471Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-25T10:58:30.958Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T10:58:30.958Z] - [PIPED_FALLBACK_ERR] - VideoID: NgRnbfWQmvw - Error: API returned no valid streams.
+[STREAM_VIDEO] URL resolve başarısız, yt-dlp fallback: Tüm proxy ağları başarısız oldu.
+[2026-03-25T10:58:32.595Z] - [STREAM_VIDEO] - VideoID: NgRnbfWQmvw - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NgRnbfWQmvw --format best[ext=mp4]/best --output /app/cache/video_NgRnbfWQmvw.mp4.tmp --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] NgRnbfWQmvw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[youtube] Extracting URL: https://www.youtube.com/watch?v=NgRnbfWQmvw
+[youtube] NgRnbfWQmvw: Downloading webpage
+[youtube] NgRnbfWQmvw: Downloading android vr player API JSON
+VIDEO STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=NgRnbfWQmvw --format best[ext=mp4]/best --output /app/cache/video_NgRnbfWQmvw.mp4.tmp --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt
+WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] NgRnbfWQmvw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[youtube] Extracting URL: https://www.youtube.com/watch?v=NgRnbfWQmvw
+[youtube] NgRnbfWQmvw: Downloading webpage
+[youtube] NgRnbfWQmvw: Downloading android vr player API JSON
+Sign in to confirm you’re not a bot  
+[2026-03-25T10:59:16.988Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T10:59:17.549Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-03-25T10:59:17.793Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T10:59:17.965Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-25T10:59:18.435Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: API returned no valid streams.
+[2026-03-25T10:59:18.435Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Tüm proxy ağları başarısız oldu.
 STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[2026-03-25T09:13:43.087Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
-[2026-03-25T09:13:43.131Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
-[2026-03-25T09:13:43.174Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
-[2026-03-25T09:13:43.346Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
-[2026-03-25T09:13:43.391Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
-[2026-03-25T09:13:43.438Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
-[2026-03-25T09:13:43.439Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
-[2026-03-25T09:13:43.487Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
-[2026-03-25T09:13:43.887Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-25T09:13:44.903Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-25T09:13:44.916Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
-[2026-03-25T09:13:45.094Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-25T09:13:45.261Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
-[2026-03-25T09:13:45.322Z] - [INVIDIOUS_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Invidious instances failed.
-[2026-03-25T09:13:50.393Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.aeong.one error: getaddrinfo EAI_AGAIN pipedapi.aeong.one
-[2026-03-25T09:13:50.651Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
-[2026-03-25T09:13:50.667Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
-[2026-03-25T09:13:50.822Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: API returned no valid streams.
-[2026-03-25T09:13:51.311Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
-[2026-03-25T09:13:51.473Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
-[2026-03-25T09:13:51.529Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
-[2026-03-25T09:13:51.529Z] - [PIPED_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: Request failed with status code 521
-[2026-03-25T09:13:51.529Z] - [STREAM] - VideoID: e__YaECyqTI - Error: Tüm proxy ağları başarısız oldu.
-STREAM ERROR: Tüm proxy ağları başarısız oldu.
-[REQ] 2026-03-25T09:13:51.669Z | GET /stream?videoId=e__YaECyqTI | IP: 212.154.66.243 | Country: UNKNOWN
+[REQ] 2026-03-25T10:59:24.833Z | GET /stream?videoId=IirESJ4AQlM | IP: 212.154.66.243 | Country: UNKNOWN
 [play-dl] Deneniyor...
 [play-dl] Başarısız: While getting info from url
 Sign in to confirm you’re not a bot
-[yt-dlp] Deneniyor: client=web_embedded, format=bestaudio
-[yt-dlp] Deneniyor: client=tv, format=bestaudio
+[youtubei.js] Başarısız: Streaming data not available
 [yt-dlp] client=web_embedded başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] client=tv başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
+[yt-dlp] Deneniyor: client=tv, format=bestaudio
 [yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] Deneniyor: client=ios, format=bestaudio
 [yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] client=ios başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
 [yt-dlp] Deneniyor: client=web, format=bestaudio
 [yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[2026-03-25T09:14:01.956Z] - [YTDLP_FATAL_FALLBACK] - VideoID: e__YaECyqTI - Error: yt-dlp failed: lastError is not defined. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...
-[2026-03-25T09:14:01.997Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://co.wuk.sh failed: getaddrinfo ENOTFOUND co.wuk.sh
-[2026-03-25T09:14:02.039Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt-api.peppe8o.com failed: getaddrinfo ENOTFOUND cobalt-api.peppe8o.com
-[2026-03-25T09:14:02.211Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://api.cobalt.tools failed: Request failed with status code 400
-[2026-03-25T09:14:02.256Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
-[2026-03-25T09:14:02.299Z] - [COBALT_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://cobalt.catterall.info failed: getaddrinfo ENOTFOUND cobalt.catterall.info
-[2026-03-25T09:14:02.299Z] - [COBALT_FALLBACK_ERR] - VideoID: e__YaECyqTI - Error: All Cobalt instances failed.
-[2026-03-25T09:14:02.344Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.fdn.fr failed: getaddrinfo ENOTFOUND invidious.fdn.fr
-[2026-03-25T09:14:02.743Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://yewtu.be failed: Request failed with status code 403
-[2026-03-25T09:14:03.749Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.privacyredirect.com failed: socket hang up
-[2026-03-25T09:14:03.763Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://inv.us.projectsegfau.lt failed:
-[2026-03-25T09:14:03.941Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
-[2026-03-25T09:14:04.108Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: e__YaECyqTI - Error: Instance https://invidious.io failed: Request failed with status code 404
+[CIRCUIT_BREAKER] yt-dlp devre dışı bırakıldı.
+[2026-03-25T10:59:35.815Z] - [COBALT_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://cobalt.q-n.cc failed: getaddrinfo ENOTFOUND cobalt.q-n.cc
+[2026-03-25T10:59:35.898Z] - [COBALT_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://co.e-z.host failed: getaddrinfo ENOTFOUND co.e-z.host
+[2026-03-25T10:59:35.944Z] - [COBALT_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://cobalt.twi.cx failed: getaddrinfo ENOTFOUND cobalt.twi.cx
+[2026-03-25T10:59:36.348Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-03-25T10:59:36.689Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.io failed: Request failed with status code 404
+[2026-03-25T10:59:36.803Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: IirESJ4AQlM - Error: Instance https://invidious.jing.rocks failed: getaddrinfo ENOTFOUND invidious.jing.rocks
+[2026-03-25T10:59:37.098Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.in.projectsegfau.lt error: API returned no valid streams.
+[2026-03-25T10:59:37.111Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error:
+[2026-03-25T10:59:37.272Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error:
+[2026-03-25T10:59:37.766Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-03-25T10:59:37.767Z] - [PIPED_FALLBACK_ERR] - VideoID: IirESJ4AQlM - Error: API returned no valid streams.
+[2026-03-25T10:59:37.767Z] - [STREAM] - VideoID: IirESJ4AQlM - Error: Tüm proxy ağları başarısız oldu.
+STREAM ERROR: Tüm proxy ağları başarısız oldu.

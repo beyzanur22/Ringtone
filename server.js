@@ -179,7 +179,7 @@ try {
   redis.on("error", (err) => {
     if (redis) {
       console.warn("[Redis] Bağlantı hatası, in-memory cache'e geçiliyor");
-      redis.disconnect();
+      try { redis.disconnect(); } catch (e) { }
       redis = null;
     }
   });
@@ -188,7 +188,7 @@ try {
     console.log("[Redis] Bağlantı başarılı");
   }).catch(() => {
     console.warn("[Redis] Bağlantı başarısız, in-memory cache aktif");
-    redis.disconnect();
+    try { if (redis) redis.disconnect(); } catch (e) { }
     redis = null;
   });
 } catch (e) {
@@ -242,7 +242,9 @@ const randomJitter = async () => {
 // Railway/VPS'de çalışan, sign-in gerektirmeyen güvenilir clientlar:
 // web_embedded = sonuç verir ama IP banliysa yine de başarısız
 // Bu sıra yt-dlp-exec'in bu versiyonunda desteklenen clientları dener
-const PLAYER_CLIENTS = ["web_embedded", "tv", "mweb", "ios", "web"];
+// yt-dlp: default client downloads the JS player for cipher decryption.
+// player_skip=webpage MUST NOT be used — it prevents signature decryption.
+const PLAYER_CLIENTS = ["default", "web", "mweb"];
 
 // cookies.txt (Netscape formatı) → HTTP header formatı ( key=val; key=val )
 // play-dl Netscape formatı değil, HTTP cookie header şeklinde cookies ister!
@@ -288,9 +290,10 @@ async function initInnertube() {
   try {
     ytInnertube = await Innertube.create({
       cache: new UniversalCache(false),
-      generate_session_locally: true
+      generate_session_locally: true,
+      clientType: "TV_EMBEDDED" // YouTube TV uygulamasını taklit ederek datacenter banlarını atlar
     });
-    console.log("[youtubei.js] Başarıyla başlatıldı");
+    console.log("[youtubei.js] TV_EMBEDDED client ile başarıyla başlatıldı");
   } catch (err) {
     console.error("[youtubei.js] Başlatma hatası:", err.message);
   }
@@ -330,10 +333,10 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     console.warn(`[play-dl] Başarısız:`, pdlErr.message?.slice(0, 150));
   }
 
-  // == 1.5 ADIM: youtubei.js (InnerTube API) ==
+  // == 1.5 ADIM: youtubei.js (Smart TV API) ==
   if (ytInnertube) {
     try {
-      console.log(`[youtubei.js] Deneniyor...`);
+      console.log(`[youtubei.js] TV_EMBEDDED Deneniyor...`);
       const videoIdMatch = videoUrl.match(/v=([^&]+)/);
       if (videoIdMatch && videoIdMatch[1]) {
         const vidId = videoIdMatch[1];
@@ -353,6 +356,10 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         } else if (pbFormat && pbFormat.url) {
           console.log(`[youtubei.js] BAŞARILI! format=${pbFormat.mime_type}`);
           return pbFormat.url;
+        } else if (pbFormat && pbFormat.signature_cipher) {
+          console.warn(`[youtubei.js] Uyarı: Format ciphered fakat url çıkarılamadı.`);
+        } else {
+          console.warn(`[youtubei.js] Uyarı: Format objesinde url bulunamadı (BotGuard veya kısıtlama).`);
         }
       }
     } catch (innertubeErr) {
@@ -361,8 +368,8 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   }
 
   // == 2. ADIM: yt-dlp (Sadece circuit breaker açıksa) ==
+  let lastError = null;
   if (Date.now() >= ytDlpCircuitBreakerUntil) {
-    let lastError = null;
     let clientsToTry = PLAYER_CLIENTS;
     if (countryClient && countryClient !== "default") {
       clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
@@ -381,8 +388,10 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         if (useCookies && fs.existsSync("cookies.txt")) {
           opts.cookies = "cookies.txt";
         }
+        // CRITICAL: player_skip=webpage KALDIRILDI!
+        // Signature decryption için JS player'ın indirilmesi gerekiyor.
         if (client !== "default") {
-          opts.extractorArgs = `youtube:player_client=${client};player_skip=webpage`;
+          opts.extractorArgs = `youtube:player_client=${client}`;
         }
         console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
         const result = await ytdlp(videoUrl, opts);
@@ -425,20 +434,35 @@ const PIPED_INSTANCES = [
   "https://pipedapi.tokhmi.xyz"
 ];
 
-const INVIDIOUS_INSTANCES = [
-  "https://invidious.projectsegfau.lt",
-  "https://yewtu.be",
-  "https://invidious.nerdvpn.de",
-  "https://invidious.io",
-  "https://invidious.slipfox.xyz",
-  "https://invidious.jing.rocks"
-];
+// Invidious instances are now fetched dynamically!
+let DYNAMIC_INVIDIOUS_INSTANCES = [];
+
+async function updateInvidiousInstances() {
+  try {
+    const res = await axiosClient.get("https://api.invidious.io/instances.json?pretty=1", { timeout: 15000 });
+    if (res.data && Array.isArray(res.data)) {
+      // Sadece çalışır durumdaki https API'leri filtrele
+      const validInstances = res.data
+        .filter(inst => inst[1]?.type === 'https' && inst[1]?.api === true && inst[1]?.monitor?.statusClass === 'success')
+        .map(inst => inst[1].uri)
+        .sort(() => Math.random() - 0.5); // Her seferinde karıştır
+
+      if (validInstances.length > 0) {
+        DYNAMIC_INVIDIOUS_INSTANCES = validInstances.slice(0, 30); // En iyi 30'u al
+        console.log(`[DYNAMIC_PROXY] Başarıyla ${DYNAMIC_INVIDIOUS_INSTANCES.length} aktif Invidious sunucusu çekildi.`);
+      }
+    }
+  } catch (err) {
+    console.error(`[DYNAMIC_PROXY] Invidious listesi güncellenemedi: ${err.message}`);
+  }
+}
 
 async function fetchFromPiped(endpointPath) {
   let lastError = null;
-  for (const instance of PIPED_INSTANCES) {
+  const shuffledPiped = [...PIPED_INSTANCES].sort(() => Math.random() - 0.5);
+  for (const instance of shuffledPiped) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 6000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 3000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
@@ -487,24 +511,30 @@ async function tryCobaltFallback(videoId, type) {
 }
 
 async function tryInvidiousFallback(videoId, type) {
-  for (const instance of INVIDIOUS_INSTANCES) {
-    try {
-      // Invidious üzerinden proxy izleyerek YouTube IP banını ve IP Mismatch hatasını aşıyoruz!
-      // Invidious API'den direct url ('googlevideo.com') ALMIYORUZ, Invidious'u proxy olarak kullanıyoruz.
-      // local=true argümanı Invidious'un kendi IP'sinden videoyu çekip bize aktarmasını sağlar!
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
-      if (res && res.data && !res.data.error) {
+  const instances = DYNAMIC_INVIDIOUS_INSTANCES.length > 0
+    ? DYNAMIC_INVIDIOUS_INSTANCES
+    : [
+      "https://invidious.projectsegfau.lt",
+      "https://yewtu.be",
+      "https://invidious.nerdvpn.de"
+    ]; // Fallback list
 
+  // Dinamik listeden hızlıca 5 tanesini dene (Performans için)
+  const instancesToTry = instances.slice(0, 5);
+
+  for (const instance of instancesToTry) {
+    try {
+      // Invidious proxy stream URL (local=true)
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3000 });
+      if (res && res.data && !res.data.error) {
         let itag = null;
         if (type === "audio") {
-          // Itag 140 = m4a audio (en uyumlu)
           const streams = res.data.adaptiveFormats;
           if (streams && Array.isArray(streams)) {
             const m4a = streams.find(s => s.itag === "140" || (s.type && s.type.includes("audio/mp4")));
             if (m4a) itag = m4a.itag || 140;
           }
         } else {
-          // Video: Itag 18 (360p mp4) veya Itag 22 (720p mp4)
           const streams = res.data.formatStreams;
           if (streams && Array.isArray(streams)) {
             const mp4_720 = streams.find(s => s.itag === "22");
@@ -515,7 +545,6 @@ async function tryInvidiousFallback(videoId, type) {
         }
 
         if (itag) {
-          // İŞTE BÜYÜ BURADA: Invidious Proxy Stream URL'si
           const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
           return proxyUrl;
         }
@@ -524,7 +553,7 @@ async function tryInvidiousFallback(videoId, type) {
       logError("INVIDIOUS_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
     }
   }
-  throw new Error("All Invidious instances failed.");
+  throw new Error("All (Dynamic) Invidious instances failed.");
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
@@ -603,6 +632,10 @@ const axiosClient = axios.create({
   httpAgent: new http.Agent({ keepAlive: true }),
   httpsAgent: new https.Agent({ keepAlive: true })
 });
+
+// Başlangıçta ve her 6 saatte bir listeyi yenile
+updateInvidiousInstances();
+setInterval(updateInvidiousInstances, 6 * 60 * 60 * 1000);
 
 const app = express();
 app.set("trust proxy", 1);
