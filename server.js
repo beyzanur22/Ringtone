@@ -312,29 +312,27 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
 const PIPED_INSTANCES = [
   "https://pipedapi.kavin.rocks",
-  "https://api.piped.yt",
-  "https://piped-api.lunar.icu",
-  "https://pipedapi.syncpundit.io",
-  "https://api.piped.projectsegfau.lt",
+  "https://pipedapi.lunar.icu",
   "https://pipedapi.smnz.de",
   "https://pipedapi.tokhmi.xyz",
   "https://pipedapi.us.projectsegfau.lt",
-  "https://pi.ped.yt",
-  "https://pipedapi.adminforge.de",
-  "https://pipedapi.astartes.nl"
+  "https://pipedapi.darkness.services",
+  "https://pipedapi.rivo.lol",
+  "https://pipedapi.palladium.sh",
+  "https://api.piped.projectsegfau.lt"
 ];
 
 const INVIDIOUS_INSTANCES = [
   "https://yewtu.be",
   "https://vid.puffyan.us",
-  "https://inv.rvere.com",
   "https://invidious.nerdvpn.de",
-  "https://invidious.lunar.icu",
   "https://invidious.flokinet.to",
   "https://invidious.privacyredirect.com",
   "https://invidious.weblibre.org",
-  "https://yt.artemislena.eu",
-  "https://invidious.jing.rocks"
+  "https://invidious.drgns.space",
+  "https://invidious.slipfox.xyz",
+  "https://inv.zzls.xyz",
+  "https://invidious.projectsegfau.lt"
 ];
 
 async function fetchFromPiped(endpointPath) {
