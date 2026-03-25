@@ -237,28 +237,8 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
   }
 
-  // 1. ÖNCE PLAY-DL (En modern ve resilient motor)
-  try {
-    console.log(`[play-dl] Deneniyor...`);
-    if (fs.existsSync("cookies.txt")) {
-        let cookieContent = fs.readFileSync("cookies.txt", "utf8");
-        cookieContent = cookieContent.replace(/^\ufeff/, "");
-        await playdl.setToken({ youtube: { cookie: cookieContent } });
-    }
-    const stream = await playdl.stream(videoUrl, { 
-      quality: format === "bestaudio" ? 0 : 2, 
-      discordPlayerCompatibility: true 
-    });
-    if (stream && stream.url) {
-      console.log(`[play-dl] BAŞARILI!`);
-      return stream.url;
-    }
-  } catch (pdlErr) {
-    console.warn(`[play-dl] Başarısız:`, pdlErr.message);
-  }
-
-  // 2. FALLBACK: YT-DLP
   let lastError = null;
+
   let clientsToTry = PLAYER_CLIENTS;
   if (countryClient && countryClient !== "default") {
     clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
@@ -269,11 +249,22 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
       const opts = {
         format: format,
         getUrl: true,
-        addHeader: ["referer:https://www.youtube.com/", `user-agent:${ua}`]
+        addHeader: [
+          "referer:https://www.youtube.com/",
+          `user-agent:${ua}`
+        ]
       };
+
+      // cookies.txt varsa ve USE_COOKIES=false değilse ekle
       const useCookies = process.env.USE_COOKIES !== "false";
-      if (useCookies && fs.existsSync("cookies.txt")) opts.cookies = "cookies.txt";
-      if (client !== "default") opts.extractorArgs = `youtube:player_client=${client}`;
+      if (useCookies && fs.existsSync("cookies.txt")) {
+        opts.cookies = "cookies.txt";
+      }
+
+      // "default" = yt-dlp kendi seçsin
+      if (client !== "default") {
+        opts.extractorArgs = `youtube:player_client=${client}`;
+      }
 
       console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
       const result = await ytdlp(videoUrl, opts);
@@ -281,7 +272,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
       if (url && url.startsWith("http")) {
         console.log(`[yt-dlp] Başarılı: client=${client}`);
-        ytDlpFailCount = 0; 
+        ytDlpFailCount = 0; // reset on success
         stats.ytDlpSuccess++;
         return url;
       }
@@ -291,8 +282,23 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     }
   }
 
+  // 4. SON ÇARE: play-dl (Cookies ile)
+  try {
+    console.log(`[play-dl] Deneniyor...`);
+    // play-dl için cookies.txt ayarı (Eğer gerekirse playdl.setToken ile yapılır ama şimdilik doğrudan deneyelim)
+    const stream = await playdl.stream(videoUrl, {
+      quality: format === "bestaudio" ? 0 : 2, // 0: audio only, 2: video
+      discordPlayerCompatibility: true
+    });
+    if (stream && stream.url) {
+      console.log(`[play-dl] BAŞARILI!`);
+      return stream.url;
+    }
+  } catch (pdlErr) {
+    console.warn(`[play-dl] Başarısız:`, pdlErr.message);
+  }
+
   ytDlpFailCount++;
-  // ... (Circuit breaker logic remains)
   if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
     const videoIdMatch = videoUrl.match(/v=([^&]+)/);
     const vId = videoIdMatch ? videoIdMatch[1] : videoUrl;
@@ -910,7 +916,7 @@ app.get("/stream/video", async (req, res) => {
     response.data.pipe(res);
 
     // Arka planda cache'e kaydet (kullanıcıyı bekletmeden)
-    downloadToCache(videoId, "video", streamUrl).catch(() => {});
+    downloadToCache(videoId, "video", streamUrl).catch(() => { });
 
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
