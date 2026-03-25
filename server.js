@@ -355,7 +355,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     }
     ytDlpFailCount++;
     if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
-      ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_DURATION;
+      ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
       console.error(`[CIRCUIT_BREAKER] yt-dlp devre dışı bırakıldı.`);
     }
   } else {
@@ -365,6 +365,14 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   stats.ytDlpFail++;
   throw lastError || new Error("Tüm player client'lar ve play-dl başarısız oldu");
 }
+const COBALT_INSTANCES = [
+  "https://co.wuk.sh",
+  "https://cobalt-api.peppe8o.com",
+  "https://api.cobalt.tools",
+  "https://cobalt.q-n.cc",
+  "https://cobalt.catterall.info"
+];
+
 const PIPED_INSTANCES = [
   "https://pipedapi.aeong.one",
   "https://pipedapi.in.projectsegfau.lt",
@@ -402,6 +410,40 @@ async function fetchFromPiped(endpointPath) {
     }
   }
   throw lastError || new Error("Tüm Piped API instance'ları başarısız oldu.");
+}
+
+async function tryCobaltFallback(videoId, type) {
+  const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      const payload = {
+        url: ytUrl,
+        vQuality: "720",
+        isAudioOnly: type === "audio",
+        aFormat: "mp3" // mp3 veya best
+      };
+      
+      const res = await axiosClient.post(`${instance}/api/json`, payload, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+        timeout: 8000
+      });
+
+      // Cobalt bize kendi sunucusunda barındırılan proxy/stream linki verir.
+      // Örn: status: "stream", url: "https://co.wuk.sh/api/stream?..."
+      // Veya redirect status: "redirect", url: "https://cobalt..."
+      if (res && res.data && (res.data.status === "stream" || res.data.status === "redirect")) {
+        if (res.data.url) return res.data.url;
+      }
+    } catch (err) {
+      logError("COBALT_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
+    }
+  }
+  throw new Error("All Cobalt instances failed.");
 }
 
 async function tryInvidiousFallback(videoId, type) {
@@ -451,14 +493,24 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
+    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Cobalt + Invidious + Piped)...`);
 
     // == THE ULTIMATE PROXY RING ==
-    // YouTube Railway'in IP'sine 403 Forbidden veriyor. Ayrıca Piped gibi API'lerin verdiği "googlevideo" linkleri
-    // 'IP Mismatch' sebebiyle biz çekmeye kalktığımızda hata veriyor.
-    // Bu yüzden İLK OLARAK Invidious Proxy (local=true) deniyoruz ki indirme işini Invidious sunucusu bizim yerimize yapsın!
+    // YouTube Railway IP'sine engelli (403). Piped'ın verdiği googlevideo linkleri IP Mismatch veriyor.
     
-    // First line of defense: Invidious Proxy Streaming
+    // 1st Line of Defense: COBALT.TOOLS (En Stabil, native proxy yapar)
+    try {
+      const cobaltUrl = await tryCobaltFallback(videoId, type);
+      if (cobaltUrl) {
+        logError("PROXY_FALLBACK_SUCCESS", videoId, `Cobalt API Fallback successful for ${type}.`);
+        stats.proxyFallbackSuccess++;
+        return cobaltUrl;
+      }
+    } catch (cobaltErr) {
+      logError("COBALT_FALLBACK_ERR", videoId, cobaltErr.message);
+    }
+
+    // 2nd Line of Defense: Invidious Proxy Streaming (Ücretsiz instance'lar genelde 401/403 atabilir)
     try {
       const invidiousUrl = await tryInvidiousFallback(videoId, type);
       if (invidiousUrl) {
