@@ -10,8 +10,18 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 const playdl = require("play-dl");
+const { execSync } = require("child_process");
 
 const PQueue = require("p-queue").default;
+
+// Auto-update yt-dlp at startup to always use the latest bot-bypass signatures
+try {
+  console.log("[yt-dlp] Güncelleniyor...");
+  execSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp -U --no-check-certificate", { timeout: 45000, stdio: 'pipe' });
+  console.log("[yt-dlp] Güncelleme tamamlandı.");
+} catch (e) {
+  console.warn("[yt-dlp] Güncelleme başarısız (devam ediliyor):", e.message?.slice(0, 100));
+}
 
 const queue = new PQueue({
   concurrency: 2,      // aynı anda max 2 işlem
@@ -229,8 +239,8 @@ const randomJitter = async () => {
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Fallback player client stratejisi: default → android → mweb → web → ios
-const PLAYER_CLIENTS = ["default", "android", "mweb", "web", "ios"];
+// 2025/2026 Bot-bypass client stratejisi: tv_embedded ve web_creator datacenter IP'lerinde bile sign-in gerektirmez
+const PLAYER_CLIENTS = ["tv_embedded", "web_creator", "android_creator", "mweb", "ios", "default"];
 
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
@@ -261,10 +271,14 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         opts.cookies = "cookies.txt";
       }
 
-      // "default" = yt-dlp kendi seçsin
-      if (client !== "default") {
-        opts.extractorArgs = `youtube:player_client=${client}`;
+      // player_skip: webpage ve configs request'lerini atla = daha az detection surface
+      // tv_embedded ve web_creator botlara karşı en dirençli clientlar
+      if (client === "default") {
+        opts.extractorArgs = `youtube:player_skip=webpage,configs`;
+      } else {
+        opts.extractorArgs = `youtube:player_client=${client},player_skip=webpage,configs`;
       }
+      opts.noCheckCertificates = true;
 
       console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
       const result = await ytdlp(videoUrl, opts);
@@ -311,28 +325,24 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 }
 
 const PIPED_INSTANCES = [
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.lunar.icu",
-  "https://pipedapi.smnz.de",
-  "https://pipedapi.tokhmi.xyz",
+  "https://pipedapi.aeong.one",
+  "https://pipedapi.in.projectsegfau.lt",
   "https://pipedapi.us.projectsegfau.lt",
-  "https://pipedapi.darkness.services",
-  "https://pipedapi.rivo.lol",
-  "https://pipedapi.palladium.sh",
-  "https://api.piped.projectsegfau.lt"
+  "https://api.piped.projectsegfau.lt",
+  "https://pipedapi.tokhmi.xyz",
+  "https://pipedapi.smnz.de",
+  "https://pipedapi.kavin.rocks"
 ];
 
 const INVIDIOUS_INSTANCES = [
+  "https://invidious.fdn.fr",
+  "https://invidious.projectsegfau.lt",
   "https://yewtu.be",
-  "https://vid.puffyan.us",
-  "https://invidious.nerdvpn.de",
-  "https://invidious.flokinet.to",
   "https://invidious.privacyredirect.com",
-  "https://invidious.weblibre.org",
-  "https://invidious.drgns.space",
-  "https://invidious.slipfox.xyz",
-  "https://inv.zzls.xyz",
-  "https://invidious.projectsegfau.lt"
+  "https://inv.us.projectsegfau.lt",
+  "https://invidious.nerdvpn.de",
+  "https://invidious.io",
+  "https://invidious.slipfox.xyz"
 ];
 
 async function fetchFromPiped(endpointPath) {
