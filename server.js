@@ -243,91 +243,128 @@ const randomJitter = async () => {
 // Bu sıra yt-dlp-exec'in bu versiyonunda desteklenen clientları dener
 const PLAYER_CLIENTS = ["web_embedded", "tv", "mweb", "ios", "web"];
 
-async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
-  if (Date.now() < ytDlpCircuitBreakerUntil) {
-    throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
+// cookies.txt (Netscape formatı) → HTTP header formatı ( key=val; key=val )
+// play-dl Netscape formatı değil, HTTP cookie header şeklinde cookies ister!
+function parseCookiesToHeader(cookiePath) {
+  try {
+    const raw = fs.readFileSync(cookiePath, "utf8")
+      .replace(/^\uFEFF/, "") // BOM'u sil
+      .replace(/\r/g, "");
+    const lines = raw.split("\n");
+    const pairs = [];
+    for (const line of lines) {
+      if (!line || line.startsWith("#")) continue;
+      const parts = line.split("\t");
+      if (parts.length >= 7) {
+        const name = parts[5];
+        const value = parts[6].trim();
+        if (name) pairs.push(`${name}=${value}`);
+      }
+    }
+    return pairs.join("; ");
+  } catch (e) {
+    return null;
   }
+}
 
-  let lastError = null;
-
-  let clientsToTry = PLAYER_CLIENTS;
-  if (countryClient && countryClient !== "default") {
-    clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
-  }
-
-  for (const client of clientsToTry) {
-    try {
-      const opts = {
-        format: format,
-        getUrl: true,
-        addHeader: [
-          "referer:https://www.youtube.com/",
-          `user-agent:${ua}`
-        ]
-      };
-
-      // KEY FIX: Extractor args syntax
-      // Semicolon (;) separates different keys for the same extractor
-      // Comma (,) separates multiple VALUES for the same key
-      // WRONG: youtube:player_client=tv_embedded,player_skip=webpage  <- yt-dlp treats 'player_skip=webpage' as a client name!
-      // CORRECT: youtube:player_client=tv_embedded;player_skip=webpage,configs
-      const useCookies = process.env.USE_COOKIES !== "false";
-      if (useCookies && fs.existsSync("cookies.txt")) {
-        opts.cookies = "cookies.txt";
-      }
-
-      if (client === "default") {
-        // default = yt-dlp kendi client'ı seçsin, sadece player_skip ile detection azalt
-        opts.extractorArgs = `youtube:player_skip=webpage`;
-      } else {
-        // Noktalı virgülle ayır: player_client=X;player_skip=Y şeklinde
-        opts.extractorArgs = `youtube:player_client=${client};player_skip=webpage`;
-      }
-
-      console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
-      const result = await ytdlp(videoUrl, opts);
-      const url = result.toString().trim();
-
-      if (url && url.startsWith("http")) {
-        console.log(`[yt-dlp] Başarılı: client=${client}`);
-        ytDlpFailCount = 0; // reset on success
-        stats.ytDlpSuccess++;
-        return url;
-      }
-    } catch (err) {
-      console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
-      lastError = err;
+// play-dl token'unu sunucu başlangıcında ayarla (cookie header ile)
+function initPlayDlCookies() {
+  const useCookies = process.env.USE_COOKIES !== "false";
+  if (useCookies && fs.existsSync("cookies.txt")) {
+    const cookieHeader = parseCookiesToHeader("cookies.txt");
+    if (cookieHeader && cookieHeader.length > 10) {
+      playdl.setToken({ youtube: { cookie: cookieHeader } });
+      console.log("[play-dl] Cookies yüklendi (", cookieHeader.length, " karakter)");
+    } else {
+      console.warn("[play-dl] Cookie parse başarısız veya boş");
     }
   }
+}
+initPlayDlCookies();
 
-  // 4. SON ÇARE: play-dl (Cookies ile)
+async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
+  // == 1. ADIM: play-dl (EN HIZLI - Cookies ile YouTube'a doğrudan) ==
+  // yt-dlp Railway IP'sinden hiçbir şekilde çalışmıyor.
+  // play-dl cookie header formatıyla Bearer gibi çalışıyor.
   try {
     console.log(`[play-dl] Deneniyor...`);
-    // play-dl için cookies.txt ayarı (Eğer gerekirse playdl.setToken ile yapılır ama şimdilik doğrudan deneyelim)
-    const stream = await playdl.stream(videoUrl, {
-      quality: format === "bestaudio" ? 0 : 2, // 0: audio only, 2: video
-      discordPlayerCompatibility: true
-    });
-    if (stream && stream.url) {
-      console.log(`[play-dl] BAŞARILI!`);
-      return stream.url;
+    const yt_info = await playdl.video_info(videoUrl);
+    if (yt_info && yt_info.format && yt_info.format.length > 0) {
+      // Audio: codec=opus/webm, Video: mp4
+      const isAudio = format.includes("audio") || format === "bestaudio";
+      const formats = yt_info.format;
+      let chosen = null;
+      if (isAudio) {
+        // En yüksek kaliteli audio formatı seç
+        chosen = formats
+          .filter(f => f.mimeType && f.mimeType.startsWith("audio"))
+          .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      } else {
+        // mp4 video seç (360p veya daha yüksek)
+        chosen = formats
+          .filter(f => f.mimeType && f.mimeType.includes("video/mp4"))
+          .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+        if (!chosen) chosen = formats[0];
+      }
+      if (chosen && chosen.url && chosen.url.startsWith("http")) {
+        console.log(`[play-dl] BAŞARILI! format=${chosen.mimeType}`);
+        return chosen.url;
+      }
     }
   } catch (pdlErr) {
-    console.warn(`[play-dl] Başarısız:`, pdlErr.message);
+    console.warn(`[play-dl] Başarısız:`, pdlErr.message?.slice(0, 150));
   }
 
-  ytDlpFailCount++;
-  if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
-    const videoIdMatch = videoUrl.match(/v=([^&]+)/);
-    const vId = videoIdMatch ? videoIdMatch[1] : videoUrl;
-    logError("CIRCUIT_BREAKER", vId, `yt-dlp failed ${ytDlpFailCount} times. Circuit open for 5 mins.`);
-    ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
+  // == 2. ADIM: yt-dlp (Sadece circuit breaker açıksa) ==
+  if (Date.now() >= ytDlpCircuitBreakerUntil) {
+    let lastError = null;
+    let clientsToTry = PLAYER_CLIENTS;
+    if (countryClient && countryClient !== "default") {
+      clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
+    }
+    for (const client of clientsToTry) {
+      try {
+        const opts = {
+          format: format,
+          getUrl: true,
+          addHeader: [
+            "referer:https://www.youtube.com/",
+            `user-agent:${ua}`
+          ]
+        };
+        const useCookies = process.env.USE_COOKIES !== "false";
+        if (useCookies && fs.existsSync("cookies.txt")) {
+          opts.cookies = "cookies.txt";
+        }
+        if (client !== "default") {
+          opts.extractorArgs = `youtube:player_client=${client};player_skip=webpage`;
+        }
+        console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
+        const result = await ytdlp(videoUrl, opts);
+        const url = result.toString().trim();
+        if (url && url.startsWith("http")) {
+          console.log(`[yt-dlp] Başarılı: client=${client}`);
+          ytDlpFailCount = 0;
+          stats.ytDlpSuccess++;
+          return url;
+        }
+      } catch (err) {
+        console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr?.slice(0, 100) || err.message?.slice(0, 100));
+        lastError = err;
+      }
+    }
+    ytDlpFailCount++;
+    if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
+      ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_DURATION;
+      console.error(`[CIRCUIT_BREAKER] yt-dlp devre dışı bırakıldı.`);
+    }
+  } else {
+    console.warn(`[yt-dlp] Circuit breaker aktif, atlanıyor.`);
   }
 
   stats.ytDlpFail++;
   throw lastError || new Error("Tüm player client'lar ve play-dl başarısız oldu");
 }
-
 const PIPED_INSTANCES = [
   "https://pipedapi.aeong.one",
   "https://pipedapi.in.projectsegfau.lt",
