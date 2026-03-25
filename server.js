@@ -10,18 +10,17 @@ const fs = require("fs");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 const playdl = require("play-dl");
-const { execSync } = require("child_process");
+
+// CRITICAL: Catch unhandled rejections globally to prevent server crashes
+// play-dl sometimes throws outside of promise chains
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[GLOBAL] Yakalanmamiş rejection (sunucu devam ediyor):', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[GLOBAL] Yakalanmamiş exception (sunucu devam ediyor):', err.message);
+});
 
 const PQueue = require("p-queue").default;
-
-// Auto-update yt-dlp at startup to always use the latest bot-bypass signatures
-try {
-  console.log("[yt-dlp] Güncelleniyor...");
-  execSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp -U --no-check-certificate", { timeout: 45000, stdio: 'pipe' });
-  console.log("[yt-dlp] Güncelleme tamamlandı.");
-} catch (e) {
-  console.warn("[yt-dlp] Güncelleme başarısız (devam ediliyor):", e.message?.slice(0, 100));
-}
 
 const queue = new PQueue({
   concurrency: 2,      // aynı anda max 2 işlem
@@ -239,10 +238,10 @@ const randomJitter = async () => {
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// 2025/2026 Bot-bypass client stratejisi:
-// tv_embedded, web_embedded: datacenter IP'lerinde sign-in gerektirmez
-// mediaconnect: en yeni bypass client'ı
-const PLAYER_CLIENTS = ["tv_embedded", "web_embedded", "mediaconnect", "tv", "mweb", "ios"];
+// Railway/VPS'de çalışan, sign-in gerektirmeyen güvenilir clientlar:
+// web_embedded = sonuç verir ama IP banliysa yine de başarısız
+// Bu sıra yt-dlp-exec'in bu versiyonunda desteklenen clientları dener
+const PLAYER_CLIENTS = ["web_embedded", "tv", "mweb", "ios", "web"];
 
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
