@@ -285,6 +285,37 @@ function initPlayDlCookies() {
 }
 initPlayDlCookies();
 
+// ==========================================
+// RESIDENTIAL PROXY YÖNETİMİ
+// ==========================================
+let proxyList = [];
+const PROXY_USER = process.env.PROXY_USER || "jtsuuwtv";
+const PROXY_PASS = process.env.PROXY_PASS || "rk9mmw64wz5r";
+
+function loadProxies() {
+  try {
+    if (fs.existsSync("proxies.txt")) {
+      const data = fs.readFileSync("proxies.txt", "utf-8");
+      proxyList = data.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 5 && !line.startsWith('#'));
+      console.log(`[PROXY_POOL] ${proxyList.length} adet proxy başarıyla yüklendi.`);
+    }
+  } catch (e) {
+    console.warn(`[PROXY_POOL] proxies.txt okunamadı: ${e.message}`);
+  }
+}
+loadProxies();
+
+function getRandomProxyUrl() {
+  if (proxyList.length === 0) return process.env.PROXY_URL || null;
+  const target = proxyList[Math.floor(Math.random() * proxyList.length)];
+  if (target.startsWith('http')) return target;
+  // Format: http://username:password@ip:port
+  return `http://${PROXY_USER}:${PROXY_PASS}@${target}`;
+}
+// ==========================================
+
 let ytInnertube = null;
 async function initInnertube() {
   try {
@@ -388,6 +419,13 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         if (useCookies && fs.existsSync("cookies.txt")) {
           opts.cookies = "cookies.txt";
         }
+        
+        // KESİN ÇÖZÜM: RESIDENTIAL PROXY POOL
+        const activeProxy = getRandomProxyUrl();
+        if (activeProxy) {
+          opts.proxy = activeProxy;
+          console.log(`[yt-dlp] Proxy havuzundan rotasyon IP si atandı: ${activeProxy.split('@')[1] || 'Gizli Proxy'}`);
+        }
         // CRITICAL: player_skip=webpage KALDIRILDI!
         // Signature decryption için JS player'ın indirilmesi gerekiyor.
         if (client !== "default") {
@@ -419,214 +457,12 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   stats.ytDlpFail++;
   throw lastError || new Error("Tüm player client'lar ve play-dl başarısız oldu");
 }
-const COBALT_INSTANCES = [
-  "https://cobalt.q-n.cc",
-  "https://cobalt.catterall.info",
-  "https://co.e-z.host",
-  "https://cobalt.twi.cx"
-];
-
-const PIPED_INSTANCES = [
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.in.projectsegfau.lt",
-  "https://pipedapi.us.projectsegfau.lt",
-  "https://pipedapi.smnz.de",
-  "https://pipedapi.tokhmi.xyz"
-];
-
-// Invidious instances are now fetched dynamically!
-let DYNAMIC_INVIDIOUS_INSTANCES = [];
-
-async function updateInvidiousInstances() {
-  try {
-    const res = await axiosClient.get("https://api.invidious.io/instances.json?pretty=1", { timeout: 15000 });
-    if (res.data && Array.isArray(res.data)) {
-      // Sadece çalışır durumdaki https API'leri filtrele (api: false olsa bile proxy kullanacağız)
-      const validInstances = res.data
-        .filter(inst => inst[1]?.type === 'https' && inst[1]?.monitor?.statusClass === 'success')
-        .map(inst => inst[1].uri)
-        .sort(() => Math.random() - 0.5); // Her seferinde karıştır
-
-      if (validInstances.length > 0) {
-        DYNAMIC_INVIDIOUS_INSTANCES = validInstances.slice(0, 30); // En iyi 30'u al
-        console.log(`[DYNAMIC_PROXY] Başarıyla ${DYNAMIC_INVIDIOUS_INSTANCES.length} aktif Invidious sunucusu çekildi.`);
-      }
-    }
-  } catch (err) {
-    console.error(`[DYNAMIC_PROXY] Invidious listesi güncellenemedi: ${err.message}`);
-  }
-}
-
-async function fetchFromPiped(endpointPath) {
-  let lastError = null;
-  const shuffledPiped = [...PIPED_INSTANCES].sort(() => Math.random() - 0.5);
-  for (const instance of shuffledPiped) {
-    try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 3000 });
-      if (res && res.data) {
-        if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
-        if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
-        return res;
-      }
-    } catch (err) {
-      lastError = err;
-      logError("PIPED_INSTANCE_ERR", null, `Instance ${instance} error: ${err.message}`);
-    }
-  }
-  throw lastError || new Error("Tüm Piped API instance'ları başarısız oldu.");
-}
-
-async function tryCobaltFallback(videoId, type) {
-  const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const cobaltInstances = ["https://api.cobalt.tools", ...COBALT_INSTANCES];
-
-  for (const instance of cobaltInstances) {
-    try {
-      const payload = {
-        url: ytUrl,
-        videoQuality: "720",
-        downloadMode: type === "audio" ? "audio" : "auto",
-        audioFormat: "mp3"
-      };
-
-      const res = await axiosClient.post(`${instance}/`, payload, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        },
-        timeout: 8000
-      });
-
-      // Cobalt v10 returns { status: "tunnel" | "redirect", url: "..." }
-      if (res && res.data && (res.data.status === "tunnel" || res.data.status === "redirect" || res.data.status === "stream")) {
-        if (res.data.url) return res.data.url;
-      }
-    } catch (err) {
-      logError("COBALT_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
-    }
-  }
-  throw new Error("All Cobalt instances failed.");
-}
-
-async function tryInvidiousFallback(videoId, type) {
-  const instances = DYNAMIC_INVIDIOUS_INSTANCES.length > 0
-    ? DYNAMIC_INVIDIOUS_INSTANCES
-    : [
-      "https://invidious.projectsegfau.lt",
-      "https://yewtu.be",
-      "https://invidious.nerdvpn.de"
-    ]; // Fallback list
-
-  // Dinamik listeden hızlıca 5 tanesini dene (Performans için)
-  const instancesToTry = instances.slice(0, 5);
-
-  for (const instance of instancesToTry) {
-    try {
-      // Invidious proxy stream URL (local=true)
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3000 });
-      if (res && res.data && !res.data.error) {
-        let itag = null;
-        if (type === "audio") {
-          const streams = res.data.adaptiveFormats;
-          if (streams && Array.isArray(streams)) {
-            const m4a = streams.find(s => s.itag === "140" || (s.type && s.type.includes("audio/mp4")));
-            if (m4a) itag = m4a.itag || 140;
-          }
-        } else {
-          const streams = res.data.formatStreams;
-          if (streams && Array.isArray(streams)) {
-            const mp4_720 = streams.find(s => s.itag === "22");
-            const mp4_360 = streams.find(s => s.itag === "18");
-            if (mp4_720) itag = 22;
-            else if (mp4_360) itag = 18;
-          }
-        }
-
-        if (itag) {
-          const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
-          return proxyUrl;
-        }
-      }
-    } catch (err) {
-      logError("INVIDIOUS_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
-    }
-  }
-  throw new Error("All (Dynamic) Invidious instances failed.");
-}
-
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // == KESİN ÇÖZÜM: The Ultimate Proxy Ring'i ÖNCE KULLAN ==
-  // YouTube Railway IP'sini banladığı için direkt local bağlantı kurmak (yt-dlp) hep başarısız olur.
-  // Bu nedenle önce dinamik proxy sunucularını kullanacağız.
-
-  // 1. Dinamik Invidious Proxy Streaming
-  try {
-    const invidiousUrl = await tryInvidiousFallback(videoId, type);
-    if (invidiousUrl) {
-      logError("PROXY_SUCCESS", videoId, `Invidious API successful for ${type}.`);
-      stats.proxyFallbackSuccess++;
-      return invidiousUrl;
-    }
-  } catch (invidiousErr) {
-    logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
-  }
-
-  // 2. COBALT API v10
-  try {
-    const cobaltUrl = await tryCobaltFallback(videoId, type);
-    if (cobaltUrl) {
-      logError("PROXY_SUCCESS", videoId, `Cobalt API successful for ${type}.`);
-      stats.proxyFallbackSuccess++;
-      return cobaltUrl;
-    }
-  } catch (cobaltErr) {
-    logError("COBALT_FALLBACK_ERR", videoId, cobaltErr.message);
-  }
-
-  // Yalnızca Invidious ve Cobalt çökerse Piped'ı dene
-  try {
-    const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-    if (type === "audio") {
-      const streams = pipedRes.data.audioStreams;
-      if (!streams || !Array.isArray(streams) || streams.length === 0) {
-        throw new Error("No valid audioStreams array found");
-      }
-      const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-      if (best && best.url) {
-        logError("PROXY_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
-        stats.proxyFallbackSuccess++;
-        return best.url;
-      }
-    } else {
-      const streams = pipedRes.data.videoStreams;
-      if (!streams || !Array.isArray(streams) || streams.length === 0) {
-        throw new Error("No valid videoStreams array found");
-      }
-      const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-        streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
-        streams[0];
-      if (best && best.url) {
-        logError("PROXY_SUCCESS", videoId, `Piped API Fallback successful for video.`);
-        stats.proxyFallbackSuccess++;
-        return best.url;
-      }
-    }
-  } catch (pipedErr) {
-    logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
-  }
-
-  // == 4. SON ÇARE: Railway IP'sinden şansımızı deniyoruz (play-dl / yt-dlp) ==
-  logError("PROXY_FAIL_WAIT", videoId, "Tüm proxy'ler çöktü, Railway IP üzerinden yerel motorlar deneniyor...");
-  try {
-    const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    return await resolveStreamUrl(url, format, ua, countryClient);
-  } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, err.message);
-    stats.proxyFallbackFail++;
-    throw new Error("Tüm proxy ağları VE yerel motorlar başarısız oldu.");
-  }
+  // Eski üçüncü parti proxy ağları (Cobalt, Invidious) YouTube tarafından engellendi.
+  // Artık sadece doğrudan veya kendi rotating (residential) proxy'miz (PROXY_URL) ile yerel motoru (yt-dlp) çalıştırıyoruz.
+  const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  return await resolveStreamUrl(url, format, ua, countryClient);
 }
 
 const axiosClient = axios.create({
@@ -634,9 +470,7 @@ const axiosClient = axios.create({
   httpsAgent: new https.Agent({ keepAlive: true })
 });
 
-// Başlangıçta ve her 6 saatte bir listeyi yenile
-updateInvidiousInstances();
-setInterval(updateInvidiousInstances, 6 * 60 * 60 * 1000);
+// Başlangıçta ve her 6 saatte bir listeyi yenile (Kaldırıldı, artık Invidious kullanmıyoruz)
 
 const app = express();
 app.set("trust proxy", 1);
