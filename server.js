@@ -962,7 +962,6 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           noCheckCertificates: true,
           noWarnings: true,
           preferFreeFormats: false,
-          forceIpv6: true,
           addHeader: [
             "referer:https://www.youtube.com/",
             `user-agent:${ua}`

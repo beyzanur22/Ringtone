@@ -1,112 +1,111 @@
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/4126227e-9e81-41ab-85db-eb109a7541b6/vol_3vibbjo3yyghyg9v
-Starting Container
+Montaj hacmi: /var/lib/konteynerler/railwayapp/bağlama montajları/81c5a8f7-dc07-4419-bff2-b133d8151683/vol_3vibbjo3yyghyg9v
 🔑 PoToken Server başlatılıyor (port 4416)...
-✅ PoToken Server PID: 3 (npx)
-⚠️ PoToken Server başlatıldı ama kapandı
-🎵 Node.js uygulaması başlatılıyor...
-==================================================
-🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
-Proxy Pool: 0 adet
+✅ PoToken Sunucusu PID'si: 3 (npx)
+Başlangıç Konteyner
+ ⁇ ️ PoToken Server başlatıldı ama kapandı
+🎵 Node.js uygulamaları başlatılıyor...
+[dotenv@17.3.1] .env -- ucundan env (0) enjekte ediliyor: 🔐 Dotenvx ile şifreleyin: https://dotenvx.com
+[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
+=========================================
+🎵 Zil Sesi Arka Ucu v3.0 (PoToken) — Bağlantı Noktası 8080
+Redis: bağlı ✓
+Vekil Havuz: 0 adet
+OAuth: yok ✗
+Çerezler: yok ✗
+=========================================
 [Redis] Bağlantı başarılı
-Top50 cache hazır ✓
-[COBALT] Tüm discovery URL'leri başarısız, hardcoded listede kalıyor
-[PIPED] Instance listesi alınamadı: certificate has expired
-[PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
-[youtubei.js] OAuth ile deneniyor...
+[COBALT] instences.cobalt.best başarız: 404 durum koduyla istek başarısız oldu
+[COBALT] Toplam 4 aktif örneği
+[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
+Top50 önbellek hazır ✓
+[KUSURLU] 3 örnek bulundu
+[PIPED] Hardcoded 4 instance kullanılıyor
+[ÖN ÖNBELLEK] Top 20 şarkı arka planda indiriliyor...
+[PIPED] Örnek listeesi alınamadı: certificate has expired
+[ADIM-1] Davetsiz vekil deneniyor...
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
+[ADIM-2] Borulu deneniyor...
+[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
+[ADIM-3] Kobalt deneniyor...
+[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
+[KOBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
+[ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[yt-dlp] client=android_vr başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[REQ] 2026-03-26T07:06:09.132Z | GET /stream?videoId=HtVcltkn3HI | IP: 157.52.106.32 | Country: UNKNOWN
-[youtubei.js] OAuth ile deneniyor...
+[ADIM-5] yt-dlp: istemci=tv_gömülü
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-5] yt-dlp: istemci=ios
+[yt-dlp] client=ios başarısız: HATA: [youtube] RBaSiVjtKR4: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-1] Davetsiz vekil deneniyor...
+[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
+[ADIM-2] Borulu deneniyor...
+[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
+[ADIM-3] Kobalt deneniyor...
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
+[KOBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
+[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
+[ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=android_vr başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Cobalt deneniyor...
-[yt-dlp] client=ios başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[COBALT] https://cobalt.api.timelessnesses.me başarısız: self-signed certificate
-[COBALT] https://cobalt.tools başarısız: Request failed with status code 405
-[COBALT] https://api.cobalt.tools başarısız: Request failed with status code 400
-[FALLBACK] Invidious deneniyor...
+[ADIM-5] yt-dlp: istemci=tv_gömülü
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] e__YaECyqTI: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-5] yt-dlp: istemci=ios
+[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-1] Davetsiz vekil deneniyor...
+[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
+[ADIM-2] Borulu deneniyor...
+[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
+[ADIM-3] Kobalt deneniyor...
+[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
+[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
+[KOBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
+[ADIM-4] youtubei.js deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[ADIM-5] yt-dlp: istemci=tv_gömülü
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] eWiHX_xWa6Y: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-5] yt-dlp: istemci=ios
+[yt-dlp] client=ios başarısız: ERROR: [youtube] eWiHX_xWa6Y: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
+[ADIM-1] Davetsiz vekil deneniyor...
+[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
+[ADIM-2] Borulu deneniyor...
+[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
+[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
+[ADIM-3] Kobalt deneniyor...
+[KOBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
+[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
+[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
+[ADIM-4] youtubei.js deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[ADIM-5] yt-dlp: istemci=tv_gömülü
+[yt-dlp] client=tv_embedded başarısız: HATA: [youtube] IirESJ4AQlM: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessError ('[Errno 101] Network is unreac
+[ADIM-5] yt-dlp: istemci=ios
+[yt-dlp] client=ios başarısız: ERROR: [youtube] IirESJ4AQlM: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessError ('[Errno 101] Network is unreac
+[ADIM-1] Davetsiz vekil deneniyor...
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
+[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
 [INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 401
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Piped deneniyor...
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[yt-dlp] client=web başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Cobalt deneniyor...
-[COBALT] https://api.cobalt.tools başarısız: Request failed with status code 400
-[FALLBACK] Invidious deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[youtubei.js] OAuth ile deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[ADIM-2] Piped deneniyor...
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[2026-03-26T07:06:24.523Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=HtVcltkn3HI --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --extractor-args youtube:player_client=web
-ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=HtVcltkn3HI --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --extractor-args youtube:player_client=web
-ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[REQ] 2026-03-26T07:06:24.962Z | GET /stream?videoId=HtVcltkn3HI | IP: 157.52.106.32 | Country: UNKNOWN
-[yt-dlp] client=android_vr başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[REQ] 2026-03-26T07:06:25.158Z | GET /stream?videoId=HtVcltkn3HI | IP: 157.52.106.51 | Country: UNKNOWN
-[youtubei.js] OAuth ile deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Cobalt deneniyor...
-[COBALT] https://api.cobalt.tools başarısız: Request failed with status code 400
-[FALLBACK] Invidious deneniyor...
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[yt-dlp] client=web başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Cobalt deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[COBALT] https://cobalt.api.timelessnesses.me başarısız: self-signed certificate
-[FALLBACK] Invidious deneniyor...
+[ADIM-3] Cobalt deneniyor...
 [PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[FALLBACK] Piped deneniyor...
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[2026-03-26T07:06:38.334Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=HtVcltkn3HI --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --extractor-args youtube:player_client=web
-ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[2026-03-26T07:06:38.335Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=HtVcltkn3HI --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --extractor-args youtube:player_client=web
-ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=HtVcltkn3HI --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --extractor-args youtube:player_client=web
-ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[REQ] 2026-03-26T07:06:38.744Z | GET /stream?videoId=HtVcltkn3HI | IP: 157.52.106.51 | Country: UNKNOWN
-[youtubei.js] OAuth ile deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=tv_embedded, format=bestaudio/best
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
