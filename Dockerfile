@@ -10,9 +10,12 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp + PoToken provider plugin
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
       yt-dlp \
-      bgutil-ytdlp-pot-provider
+      bgutil-ytdlp-pot-provider && \
+    python3 -c "import bgutil_ytdlp_pot_provider; print('✅ PoToken provider module OK')" || \
+    echo "⚠️ PoToken provider import başarısız — pip3 ile tekrar deneniyor..." && \
+    pip3 install --no-cache-dir --break-system-packages bgutil-ytdlp-pot-provider || true
 
 # yt-dlp güncelle
 RUN yt-dlp --update || true

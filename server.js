@@ -173,6 +173,8 @@ const stats = {
   invidiousFail: 0,
   proxyFallbackSuccess: 0,
   proxyFallbackFail: 0,
+  genericApiSuccess: 0,
+  genericApiFail: 0,
   youtubeApiQuotaExceeded: 0,
   rateLimitHits: 0,
   totalRequests: 0,
@@ -410,9 +412,21 @@ async function resolveViaCobalt(videoId, type) {
         }
       }
 
-      // 400 hatası — payload sorunu olabilir, atla
-      if (res.status === 400 || res.status === 405) {
-        console.warn(`[COBALT] ${instance} → ${res.status}: ${JSON.stringify(res.data?.error || res.data).slice(0, 100)}`);
+      // 400 hatası — payload sorunu veya auth gerekli olabilir, atla
+      if (res.status === 400) {
+        const errData = JSON.stringify(res.data?.error || res.data || '').slice(0, 200);
+        // JWT auth gerekli — bloğa al
+        if (errData.includes('auth') || errData.includes('jwt')) {
+          console.warn(`[COBALT] ${instance} JWT auth gerektiriyor, bloklandı`);
+          cobaltBlockedInstances.add(instance);
+        } else {
+          console.warn(`[COBALT] ${instance} → ${res.status}: ${errData}`);
+        }
+        continue;
+      }
+      if (res.status === 405) {
+        console.warn(`[COBALT] ${instance} → 405 Method Not Allowed, bloklandı`);
+        cobaltBlockedInstances.add(instance);
         continue;
       }
 
@@ -585,8 +599,13 @@ setInterval(() => {
 }, 20 * 60 * 1000);
 
 function formatProxyUrl(target) {
-  if (target.startsWith('http')) return target;
-  return `http://${PROXY_USER}:${PROXY_PASS}@${target}`;
+  if (target.startsWith('http') || target.startsWith('socks')) return target;
+  // Residential proxy with auth
+  if (PROXY_USER && PROXY_PASS && PROXY_USER !== 'jtsuuwtv') {
+    return `http://${PROXY_USER}:${PROXY_PASS}@${target}`;
+  }
+  // Default: SOCKS5 proxy (free proxy listeleri genellikle SOCKS5)
+  return `socks5://${target}`;
 }
 
 function getRandomProxyUrl() {
@@ -674,14 +693,18 @@ async function refreshAlternativeInstances() {
     console.log(`[INVIDIOUS] ${invidiousInstances.length} instance bulundu`);
   } catch (e) {
     console.warn("[INVIDIOUS] Instance listesi alınamadı:", e.message);
-    // Hardcoded fallback instances
+    // Hardcoded fallback instances — 2026 Mart güncel
     if (invidiousInstances.length === 0) {
       invidiousInstances = [
-        "https://yewtu.be",
-        "https://vid.puffyan.us",
-        "https://invidious.snopyta.org",
         "https://inv.nadeko.net",
-        "https://invidious.nerdvpn.de"
+        "https://invidious.nerdvpn.de",
+        "https://invidious.jing.rocks",
+        "https://inv.tux.pizza",
+        "https://yewtu.be",
+        "https://invidious.privacyredirect.com",
+        "https://invidious.protokoll-11.de",
+        "https://invidious.materialio.us",
+        "https://iv.datura.network"
       ];
       console.log(`[INVIDIOUS] Hardcoded ${invidiousInstances.length} instance kullanılıyor`);
     }
@@ -703,9 +726,12 @@ async function refreshAlternativeInstances() {
     if (pipedInstances.length === 0) {
       pipedInstances = [
         "https://pipedapi.kavin.rocks",
+        "https://pipedapi.r4fo.com",
+        "https://pipedapi.in.projectsegfau.lt",
+        "https://api.piped.privacydev.net",
+        "https://pipedapi.adminforge.de",
         "https://pipedapi.tokhmi.xyz",
-        "https://pipedapi.moomoo.me",
-        "https://pipedapi.syncpundit.io"
+        "https://pipedapi.moomoo.me"
       ];
       console.log(`[PIPED] Hardcoded ${pipedInstances.length} instance kullanılıyor`);
     }
@@ -726,15 +752,29 @@ async function resolveViaInvidious(videoId, type) {
       const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
       
       // Önce URL'nin çalışıp çalışmadığını HEAD ile kontrol et
+      // Content-Type kontrolü: HTML dönerse reddet (eski bug fix)
       try {
         const headResp = await axios.head(proxyUrl, {
-          timeout: 8000,
+          timeout: 10000,
           headers: { 'User-Agent': getRandomUA() },
-          maxRedirects: 3,
+          maxRedirects: 5,
           validateStatus: (s) => s < 400
         });
         
+        const ct = (headResp.headers['content-type'] || '').toLowerCase();
+        // HTML dönüyorsa bu bir hata sayfası — atla
+        if (ct.includes('text/html') || ct.includes('text/plain')) {
+          console.warn(`[INVIDIOUS] ${instance} HTML/text döndü, atlanıyor (ct=${ct})`);
+          continue;
+        }
+        
         if (headResp.status === 200 || headResp.status === 206 || headResp.status === 302) {
+          // Content-Length kontrolü — 10KB altı muhtemelen hata
+          const cl = parseInt(headResp.headers['content-length'] || '0');
+          if (cl > 0 && cl < 10240) {
+            console.warn(`[INVIDIOUS] ${instance} çok küçük yanıt (${cl} bytes), atlanıyor`);
+            continue;
+          }
           console.log(`[INVIDIOUS] BAŞARILI (proxy URL) ✓ ${instance}`);
           stats.invidiousSuccess++;
           return proxyUrl;
@@ -787,7 +827,7 @@ async function resolveViaPiped(videoId, type) {
   for (const instance of shuffled.slice(0, 5)) {
     try {
       const resp = await axios.get(`${instance}/streams/${videoId}`, {
-        timeout: 8000,
+        timeout: 12000,
         headers: { 'User-Agent': getRandomUA() }
       });
       
@@ -857,10 +897,85 @@ async function initInnertube() {
 }
 initInnertube();
 
+// youtubei.js session'u her 30 dakikada bir yenile
+setInterval(() => {
+  console.log(`[youtubei.js] Periyodik session yenileme...`);
+  initInnertube().catch(() => {});
+}, 30 * 60 * 1000);
+
+// ============================================================
+// GENERIC API FALLBACK — 3. taraf dönüştürücü servisleri
+// ============================================================
+async function resolveViaGenericAPIs(videoId, type) {
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const isAudio = type === "audio";
+  
+  const apis = [
+    {
+      name: "AEMT",
+      url: `https://aemt.me/youtube?url=${encodeURIComponent(videoUrl)}`,
+      method: "GET",
+      extractUrl: (data) => {
+        if (isAudio) return data?.audio?.url || data?.result?.audio || data?.url;
+        return data?.video?.url || data?.result?.video || data?.url;
+      }
+    },
+    {
+      name: "BK9",
+      url: `https://api.bk9.site/yt/music?url=${encodeURIComponent(videoUrl)}`,
+      method: "GET",
+      extractUrl: (data) => data?.BK9?.url || data?.result?.url || data?.url || data?.download
+    },
+    {
+      name: "Ryzen",
+      url: `https://api.ryzendark.com/api/ytmp3?url=${encodeURIComponent(videoUrl)}`,
+      method: "GET",
+      extractUrl: (data) => data?.result?.url || data?.url || data?.download
+    }
+  ];
+
+  for (const api of apis) {
+    try {
+      console.log(`[GENERIC_API] ${api.name} deneniyor...`);
+      const res = await axios({
+        method: api.method,
+        url: api.url,
+        timeout: 15000,
+        headers: { 'User-Agent': getRandomUA() },
+        validateStatus: (s) => s < 500
+      });
+      
+      if (res.status === 200 && res.data) {
+        const url = api.extractUrl(res.data);
+        if (url && url.startsWith('http')) {
+          console.log(`[GENERIC_API] ${api.name} BAŞARILI ✓`);
+          return url;
+        }
+        // JSON içinde URL ara
+        const jsonStr = JSON.stringify(res.data);
+        const urlMatch = jsonStr.match(/https?:\/\/[^"]+googlevideo[^"]+/);
+        if (urlMatch) {
+          console.log(`[GENERIC_API] ${api.name} BAŞARILI (regex) ✓`);
+          return urlMatch[0];
+        }
+        // Herhangi bir http URL bul
+        const anyUrl = jsonStr.match(/https?:\/\/[^"]+\.(mp3|m4a|mp4|webm|ogg)[^"]*/i);
+        if (anyUrl) {
+          console.log(`[GENERIC_API] ${api.name} BAŞARILI (media regex) ✓`);
+          return anyUrl[0];
+        }
+      }
+    } catch (e) {
+      console.warn(`[GENERIC_API] ${api.name} başarısız: ${e.message?.slice(0, 80)}`);
+    }
+  }
+  return null;
+}
+
 // ============================================================
 // ANA STREAM URL ÇÖZÜCÜ — Proxy tabanlı motorlar önce
 // ============================================================
-// SİRALAMA: Invidious proxy → Piped → Cobalt → youtubei.js → yt-dlp
+// SİRALAMA: Invidious proxy → Piped → Cobalt → Generic API → youtubei.js → yt-dlp
 // En az fark edilebilir yöntemler başa, en riskli sona
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   const videoIdMatch = videoUrl.match(/v=([^&]+)/);
@@ -873,7 +988,19 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   }
 
   // ============ 1. ADIM: INVIDIOUS PROXY URL ============
-  // (IPTAL EDILDI: Cihaza sadece 2KB hata HTML'i indirttiği için kaldırıldı)
+  // Invidious proxy URL'leri instance üzerinden geçer — bizim IP'miz YouTube'a gitmez
+  // Content-Type ve Content-Length validasyonu ile yeniden aktif edildi
+  try {
+    console.log(`[ADIM-1] Invidious proxy deneniyor...`);
+    const invUrl = await resolveViaInvidious(videoId, type);
+    if (invUrl) {
+      console.log(`[RESOLVE] ✓ Invidious proxy ile çözüldü`);
+      return invUrl;
+    }
+  } catch (e) {
+    console.warn(`[ADIM-1] Invidious hatası:`, e.message?.slice(0, 100));
+    lastError = e;
+  }
 
   // ============ 2. ADIM: PIPED ============
   // Piped de proxy yapıyor — güvenli
@@ -900,6 +1027,20 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     }
   } catch (e) {
     console.warn(`[ADIM-3] Cobalt hatası:`, e.message?.slice(0, 100));
+    lastError = e;
+  }
+
+  // ============ 3.5. ADIM: GENERIC API ============
+  // 3. taraf dönüştürücü/indirici servisleri — IP bağımsız
+  try {
+    console.log(`[ADIM-3.5] Generic API'ler deneniyor...`);
+    const genericUrl = await resolveViaGenericAPIs(videoId, type);
+    if (genericUrl) {
+      console.log(`[RESOLVE] ✓ Generic API ile çözüldü`);
+      return genericUrl;
+    }
+  } catch (e) {
+    console.warn(`[ADIM-3.5] Generic API hatası:`, e.message?.slice(0, 100));
     lastError = e;
   }
 
@@ -952,21 +1093,20 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
   // ============ 5. ADIM: YT-DLP (SON ÇARE) ============
   // En yüksek ban riski — sadece diğerleri başarısız olduysa
-  // Sadece 2 güvenli client dene (tümünü deneme, dikkat çeker)
   if (Date.now() >= ytDlpCircuitBreakerUntil) {
-    const safeClients = ["ios", "tv_embedded", "android"]; // ios ve tv_embedded PoToken ile en iyi ikili
+    const safeClients = ["tv_embedded", "ios", "android_embedded"]; // En az ban riski taşıyan client'lar
     
     for (const client of safeClients) {
       let usedProxy = null;
       try {
-        // PoToken server'ın ısınması için küçük bir jitter/gecikme artırıldı
         await randomJitter(1000, 3000); 
 
         const opts = {
-          format: "bestaudio/best",
+          format: "ba/b",  // ba = bestaudio kısaltması — daha geniş format uyumu
           getUrl: true,
           noCheckCertificates: true,
           noWarnings: true,
+          noPlaylist: true,
           preferFreeFormats: false,
           addHeader: [
             "referer:https://www.youtube.com/",
@@ -984,13 +1124,17 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         usedProxy = getRandomProxyUrl();
         if (usedProxy) {
           opts.proxy = usedProxy;
-          const proxyDisplay = usedProxy.split('@')[1] || 'env_proxy';
+          const proxyDisplay = usedProxy.split('@')[1] || usedProxy.split('//')[1] || 'env_proxy';
           console.log(`[yt-dlp] Proxy: ${proxyDisplay}`);
         }
 
-        // PoToken Server explicitly passed to extractor
-        // Not: Bazı sürümlerde yt_pot_server, bazılarında pot_token_server kullanılır
-        opts.extractorArgs = `youtube:player_client=${client};pot_token_server=http://localhost:4416`;
+        // PoToken Server — sadece çalışıyorsa ekle
+        const potokenAvailable = process.env.POTOKEN_AVAILABLE !== "false";
+        if (potokenAvailable) {
+          opts.extractorArgs = `youtube:player_client=${client};pot_token_server=http://localhost:4416`;
+        } else {
+          opts.extractorArgs = `youtube:player_client=${client}`;
+        }
 
         console.log(`[ADIM-5] yt-dlp: client=${client}`);
         const result = await ytdlp(videoUrl, opts);
@@ -1024,11 +1168,11 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     console.warn(`[yt-dlp] Circuit breaker aktif, atlanıyor.`);
   }
 
-  throw lastError || new Error("Tüm motorlar başarısız oldu (Invidious, Piped, Cobalt, youtubei.js, yt-dlp)");
+  throw lastError || new Error("Tüm motorlar başarısız oldu (Invidious, Piped, Cobalt, Generic API, youtubei.js, yt-dlp)");
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  const format = type === "audio" ? "bestaudio/best" : "bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best";
+  const format = type === "audio" ? "ba/b" : "bv[ext=mp4]+ba/b";
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   return await resolveStreamUrl(url, format, ua, countryClient);
 }
@@ -1542,7 +1686,7 @@ app.get("/stream/video", async (req, res) => {
       // yt-dlp ile doğrudan indirme fallback
       const tempFile = localFile + ".tmp";
       const opts = {
-        format: 'best[ext=mp4]/best',
+        format: 'bv[ext=mp4]+ba/b',
         output: tempFile,
         noCheckCertificates: true,
         addHeader: [

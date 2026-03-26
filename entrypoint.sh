@@ -19,9 +19,24 @@ sleep 10
 # PoToken server kontrolü
 if kill -0 $POT_PID 2>/dev/null; then
   echo "✅ PoToken Server aktif ve çalışıyor"
+  export POTOKEN_AVAILABLE=true
 else
-  echo "⚠️ PoToken Server ÇÖKTÜ! Son 20 satır log:"
-  tail -n 20 /app/potoken.log
+  echo "⚠️ PoToken Server başlatılamadı veya durdu. Loglar kontrol edilmeli."
+  tail -n 20 /app/potoken.log 2>/dev/null || true
+  export POTOKEN_AVAILABLE=false
+  
+  # İkinci deneme — bazen ilk seferde başarısız olabiliyor
+  echo "🔄 PoToken Server ikinci kez deneniyor..."
+  bgutil-ytdlp-pot-provider server --port 4416 > /app/potoken.log 2>&1 &
+  POT_PID=$!
+  sleep 5
+  if kill -0 $POT_PID 2>/dev/null; then
+    echo "✅ PoToken Server ikinci denemede başarılı!"
+    export POTOKEN_AVAILABLE=true
+  else
+    echo "⚠️ PoToken Server başlatılamadı — PoToken'sız devam ediliyor"
+    export POTOKEN_AVAILABLE=false
+  fi
 fi
 
 echo "🎵 Node.js uygulaması başlatılıyor..."
