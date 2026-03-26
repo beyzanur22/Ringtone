@@ -1,20 +1,17 @@
 #!/bin/bash
 set -e
 
+export PATH=$PATH:/usr/local/bin:/root/.local/bin
+
 echo "🔑 PoToken Server başlatılıyor (port 4416)..."
 
-# Global paketi veya npx'i kullanarak başlat
-if command -v bgutil-ytdlp-pot-provider &> /dev/null; then
-  bgutil-ytdlp-pot-provider --port 4416 &
-  POT_PID=$!
-  echo "✅ PoToken Server başlatıldı (PID: $POT_PID)"
-else
-  npx bgutil-ytdlp-pot-provider --port 4416 &
-  POT_PID=$!
-  echo "✅ PoToken Server başlatıldı (npx PID: $POT_PID)"
-fi
+# Python modülü olarak 'server' komutuyla başlat
+# Browser işlemleri için xvfb-run kullanıyoruz
+xvfb-run -a python3 -m bgutil_ytdlp_pot_provider server --port 4416 &
+POT_PID=$!
+echo "✅ PoToken Server başlatıldı (PID: $POT_PID)"
 
-sleep 5
+sleep 8
 
 # PoToken server kontrolü
 if kill -0 $POT_PID 2>/dev/null; then

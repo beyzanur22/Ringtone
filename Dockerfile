@@ -1,8 +1,11 @@
 FROM node:20
 
-# System dependencies: Python, ffmpeg, curl
+# System dependencies: Python, ffmpeg, curl, Chromium and Puppeteer libs
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv ffmpeg curl && \
+    apt-get install -y python3 python3-pip python3-venv ffmpeg curl xvfb \
+    chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libasound2 libpangocairo-1.0-0 libpango-1.0-0 && \
     ln -s /usr/bin/python3 /usr/bin/python && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -10,9 +13,6 @@ RUN apt-get update && \
 RUN pip3 install --no-cache-dir --break-system-packages \
       yt-dlp \
       bgutil-ytdlp-pot-provider
-
-# PoToken HTTP Server — npm global ile kur (binary download yerine daha güvenilir)
-RUN npm install -g bgutil-ytdlp-pot-provider || true
 
 # yt-dlp güncelle
 RUN yt-dlp --update || true
