@@ -296,21 +296,36 @@ let cobaltInstances = [
 ];
 
 async function refreshCobaltInstances() {
-  try {
-    const res = await axios.get("https://instances.cobalt.best/api/instances", { timeout: 8000 });
-    if (res.data && Array.isArray(res.data)) {
-      const working = res.data
-        .filter(i => i.api_online === true && i.protocol === "https")
-        .map(i => i.api_url || `https://${i.api}`)
-        .slice(0, 10);
-      if (working.length > 0) {
-        cobaltInstances = working;
-        console.log(`[COBALT] ${cobaltInstances.length} aktif instance bulundu`);
+  // Birden fazla kaynak dene
+  const discoveryUrls = [
+    "https://instances.cobalt.best/api/instances",
+    "https://raw.githubusercontent.com/imputnet/cobalt/current/docs/instances.json"
+  ];
+  
+  for (const url of discoveryUrls) {
+    try {
+      const res = await axios.get(url, { timeout: 8000 });
+      if (res.data && Array.isArray(res.data)) {
+        const working = res.data
+          .filter(i => {
+            if (i.api_online === true) return true;
+            if (i.api_url || i.api) return true;
+            return false;
+          })
+          .map(i => i.api_url || (i.api ? `https://${i.api}` : null))
+          .filter(Boolean)
+          .slice(0, 10);
+        if (working.length > 0) {
+          cobaltInstances = working;
+          console.log(`[COBALT] ${cobaltInstances.length} aktif instance bulundu (${url})`);
+          return;
+        }
       }
+    } catch (e) {
+      // Sonraki URL'yi dene
     }
-  } catch (e) {
-    console.warn("[COBALT] Instance listesi alınamadı:", e.message);
   }
+  console.warn("[COBALT] Tüm discovery URL'leri başarısız, hardcoded listede kalıyor");
 }
 
 async function resolveViaCobalt(videoId, type) {
@@ -470,25 +485,52 @@ let invidiousInstances = [];
 let pipedInstances = [];
 
 async function refreshAlternativeInstances() {
-  // Invidious instances
+  // Invidious instances — health filtresini düşür, daha fazla instance bul
   try {
     const inv = await axios.get("https://api.invidious.io/instances.json?sort_by=health", { timeout: 10000 });
     invidiousInstances = inv.data
-      .filter(i => i[1].type === "https" && i[1].health > 80)
+      .filter(i => i[1] && i[1].type === "https")
       .map(i => i[1].uri)
-      .slice(0, 15);
-    console.log(`[INVIDIOUS] ${invidiousInstances.length} sağlıklı instance bulundu`);
+      .filter(Boolean)
+      .slice(0, 20);
+    console.log(`[INVIDIOUS] ${invidiousInstances.length} instance bulundu`);
   } catch (e) {
     console.warn("[INVIDIOUS] Instance listesi alınamadı:", e.message);
+    // Hardcoded fallback instances
+    if (invidiousInstances.length === 0) {
+      invidiousInstances = [
+        "https://yewtu.be",
+        "https://vid.puffyan.us",
+        "https://invidious.snopyta.org",
+        "https://inv.nadeko.net",
+        "https://invidious.nerdvpn.de"
+      ];
+      console.log(`[INVIDIOUS] Hardcoded ${invidiousInstances.length} instance kullanılıyor`);
+    }
   }
 
   // Piped instances
   try {
-    const piped = await axios.get("https://raw.githubusercontent.com/TeamPiped/Piped/main/public-instances.json", { timeout: 10000 });
-    pipedInstances = piped.data.map(i => i.api_url).slice(0, 15);
+    const piped = await axios.get("https://piped-instances.kavin.rocks/", { timeout: 10000 });
+    if (piped.data && Array.isArray(piped.data)) {
+      pipedInstances = piped.data
+        .filter(i => i.api_url)
+        .map(i => i.api_url)
+        .slice(0, 15);
+    }
     console.log(`[PIPED] ${pipedInstances.length} instance bulundu`);
   } catch (e) {
     console.warn("[PIPED] Instance listesi alınamadı:", e.message);
+    // Hardcoded fallback
+    if (pipedInstances.length === 0) {
+      pipedInstances = [
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.tokhmi.xyz",
+        "https://pipedapi.moomoo.me",
+        "https://pipedapi.syncpundit.io"
+      ];
+      console.log(`[PIPED] Hardcoded ${pipedInstances.length} instance kullanılıyor`);
+    }
   }
 }
 

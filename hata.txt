@@ -1,109 +1,112 @@
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+==================================================
+==================================================
+🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
+Redis: bağlı ✓
+Proxy Pool: 0 adet
+OAuth: yok ✗
+Cookies: yok ✗
+[Redis] Bağlantı başarılı
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/f089ee45-dcff-48d3-a821-7fdb2180235f/vol_3vibbjo3yyghyg9v
 Starting Container
-[youtubei.js] TV_EMBEDDED client ile başarıyla başlatıldı
-Top50 cache hazır (Redis).
-[REQ] 2026-03-25T12:59:23.143Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[youtubei.js] Başarısız: Streaming data not available
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[2026-03-25T12:59:31.083Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[REQ] 2026-03-25T12:59:39.274Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Deneniyor...
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[2026-03-25T12:59:46.872Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[2026-03-25T12:59:55.574Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-[REQ] 2026-03-25T12:59:57.776Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Deneniyor...
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[play-dl] Başarısız: While getting info from url
-[youtubei.js] Başarısız: Streaming data not available
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-[2026-03-25T13:00:05.657Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[REQ] 2026-03-25T13:00:14.332Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[youtubei.js] Başarısız: Streaming data not available
-[yt-dlp] Deneniyor: client=default, format=bestaudio
-[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=web, format=bestaudio
-[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[yt-dlp] Deneniyor: client=mweb, format=bestaudio
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
-ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
-[yt-dlp] client=mweb başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Othe
-[CIRCUIT_BREAKER] yt-dlp devre dışı bırakıldı.
-[2026-03-25T13:00:21.918Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=GCLD72wDLLU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=mweb
-[REQ] 2026-03-25T13:00:22.132Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Başarısız: While getting info from url
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[yt-dlp] Circuit breaker aktif, atlanıyor.
-STREAM ERROR: Tüm player client'lar ve play-dl başarısız oldu
-[REQ] 2026-03-25T13:00:25.253Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Başarısız: While getting info from url
-[youtubei.js] Başarısız: Streaming data not available
-[yt-dlp] Circuit breaker aktif, atlanıyor.
-[2026-03-25T13:00:27.652Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Tüm player client'lar ve play-dl başarısız oldu
-STREAM ERROR: Tüm player client'lar ve play-dl başarısız oldu
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] TV_EMBEDDED Deneniyor...
-STREAM ERROR: Tüm player client'lar ve play-dl başarısız oldu
-[REQ] 2026-03-25T13:00:32.834Z | GET /stream?videoId=GCLD72wDLLU | IP: 212.154.66.243 | Country: UNKNOWN
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] Başarısız: Streaming data not available
-[2026-03-25T13:00:35.248Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Tüm player client'lar ve play-dl başarısız oldu
-STREAM ERROR: Tüm player client'lar ve play-dl başarısız oldu
-[play-dl] Deneniyor...
-[play-dl] Başarısız: While getting info from url
-Sign in to confirm you’re not a bot
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[youtubei.js] Başarısız: Streaming data not available
-[yt-dlp] Circuit breaker aktif, atlanıyor.
-[2026-03-25T13:00:37.000Z] - [STREAM] - VideoID: GCLD72wDLLU - Error: Tüm player client'lar ve play-dl başarısız oldu
-STREAM ERROR: Tüm player client'lar ve play-dl başarısız oldu
-[play-dl] Deneniyor...
-[youtubei.js] TV_EMBEDDED Deneniyor...
-[play-dl] Başarısız: While getting info from url
+[COBALT] Instance listesi alınamadı: Request failed with status code 404
+[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
+Top50 cache hazır ✓
+[INVIDIOUS] 0 sağlıklı instance bulundu
+[PIPED] Instance listesi alınamadı: Request failed with status code 404
+[PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] client=web başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] client=web başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] client=ios başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=web başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=ios başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[FALLBACK] Cobalt deneniyor...
+[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=ios başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] client=web başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] OAuth ile deneniyor...
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=ios başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[FALLBACK] Cobalt deneniyor...
+[yt-dlp] client=web başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[REQ] 2026-03-26T06:44:19.784Z | GET /config | IP: 167.82.173.35 | Country: UNKNOWN
+[REQ] 2026-03-26T06:44:19.787Z | GET /blocked-channels | IP: 167.82.173.78 | Country: UNKNOWN
+[REQ] 2026-03-26T06:44:19.854Z | GET /top50 | IP: 167.82.173.81 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
+[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
+[yt-dlp] client=web_creator başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
+[yt-dlp] client=ios başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] client=web başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
