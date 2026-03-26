@@ -5,6 +5,5 @@ generate_oauth.js
 test_*.js
 yt_cache/
 proxies.txt
-cookies.txt
 error.log
 cache/

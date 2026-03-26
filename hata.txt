@@ -1,111 +1,112 @@
-Montaj hacmi: /var/lib/konteynerler/railwayapp/bağlama montajları/81c5a8f7-dc07-4419-bff2-b133d8151683/vol_3vibbjo3yyghyg9v
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/52bf12ce-de66-4460-9b20-c47e2bce4c58/vol_3vibbjo3yyghyg9v
 🔑 PoToken Server başlatılıyor (port 4416)...
-✅ PoToken Sunucusu PID'si: 3 (npx)
-Başlangıç Konteyner
- ⁇ ️ PoToken Server başlatıldı ama kapandı
-🎵 Node.js uygulamaları başlatılıyor...
-[dotenv@17.3.1] .env -- ucundan env (0) enjekte ediliyor: 🔐 Dotenvx ile şifreleyin: https://dotenvx.com
-[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
-=========================================
-🎵 Zil Sesi Arka Ucu v3.0 (PoToken) — Bağlantı Noktası 8080
-Redis: bağlı ✓
-Vekil Havuz: 0 adet
-OAuth: yok ✗
-Çerezler: yok ✗
-=========================================
-[Redis] Bağlantı başarılı
-[COBALT] instences.cobalt.best başarız: 404 durum koduyla istek başarısız oldu
-[COBALT] Toplam 4 aktif örneği
-[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
-Top50 önbellek hazır ✓
-[KUSURLU] 3 örnek bulundu
+✅ PoToken Server PID: 3 (npx)
+Starting Container
+⚠️ PoToken Server başlatıldı ama kapandı
+🎵 Node.js uygulaması başlatılıyor...
+==================================================
+Cookies: yok ✗
+[INVIDIOUS] Instance listesi alınamadı: 
+[INVIDIOUS] Hardcoded 5 instance kullanılıyor
+[COBALT] instances.cobalt.best başarısız: Request failed with status code 404
+[COBALT] Toplam 4 aktif instance
+Top50 cache hazır ✓
+[PIPED] Instance listesi alınamadı: certificate has expired
 [PIPED] Hardcoded 4 instance kullanılıyor
-[ÖN ÖNBELLEK] Top 20 şarkı arka planda indiriliyor...
-[PIPED] Örnek listeesi alınamadı: certificate has expired
-[ADIM-1] Davetsiz vekil deneniyor...
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
-[ADIM-2] Borulu deneniyor...
-[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
-[ADIM-3] Kobalt deneniyor...
-[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
-[KOBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: istemci=tv_gömülü
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-5] yt-dlp: istemci=ios
-[yt-dlp] client=ios başarısız: HATA: [youtube] RBaSiVjtKR4: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-1] Davetsiz vekil deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
-[ADIM-2] Borulu deneniyor...
-[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
-[ADIM-3] Kobalt deneniyor...
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
-[KOBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
-[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: istemci=tv_gömülü
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] e__YaECyqTI: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-5] yt-dlp: istemci=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-1] Davetsiz vekil deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
-[ADIM-2] Borulu deneniyor...
-[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
-[ADIM-3] Kobalt deneniyor...
-[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
-[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
-[KOBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: istemci=tv_gömülü
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] eWiHX_xWa6Y: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-5] yt-dlp: istemci=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] eWiHX_xWa6Y: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessed by TransportError ('[Errno 101] Network is unreac
-[ADIM-1] Davetsiz vekil deneniyor...
-[INVIDIOUS] https://yewtu.be başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
-[ADIM-2] Borulu deneniyor...
-[PIPED] https://pipedapi.syncpundit.io başarısız: 404 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.kavin.rocks başarısız: 403 durum koduyla istek başarısız oldu
-[PIPED] https://pipedapi.moomoo.me başarısız: 502 durum koduyla istek başarısız oldu
-[ADIM-3] Kobalt deneniyor...
-[KOBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: 530 durum koduyla istek başarısız oldu
-[COBALT] https://co.eepy.today → 400: {"kod":"error.api.fetch.fail","bağlam":{"service":"youtube"}}
-[COBALT] https://api.cobalt.tools → 400: {"kod":"error.api.auth.jwt.missing"}
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: istemci=tv_gömülü
-[yt-dlp] client=tv_embedded başarısız: HATA: [youtube] IirESJ4AQlM: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessError ('[Errno 101] Network is unreac
-[ADIM-5] yt-dlp: istemci=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] IirESJ4AQlM: API sayfası indirilemiyor: [Errno 101] Network is unreac (accessError ('[Errno 101] Network is unreac
-[ADIM-1] Davetsiz vekil deneniyor...
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: 401 durum koduyla istek başarısız oldu
-[INVIDIOUS] https://inv.nadeko.net başarısız: 403 durum koduyla istek başarısız oldu
+[PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
+[ADIM-1] Invidious proxy deneniyor...
 [INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[ADIM-2] Piped deneniyor...
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[ADIM-3] Cobalt deneniyor...
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_RBaSiVjtKR4.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_e__YaECyqTI.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-1] Invidious proxy deneniyor...
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_eWiHX_xWa6Y.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_IirESJ4AQlM.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_GCLD72wDLLU.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-1] Invidious proxy deneniyor...
+[ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[DISK_CACHE_ERR] audio_alUx2fAOE4A.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+AUDIO RESOLVED: AMk786WeXDE
+[REQ] 2026-03-26T08:31:15.603Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[ADIM-1] Invidious proxy deneniyor...
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[REQ] 2026-03-26T08:31:16.742Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[REQ] 2026-03-26T08:31:19.015Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[DISK_CACHE_ERR] audio_HtVcltkn3HI.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:31:20.105Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[REQ] 2026-03-26T08:31:21.176Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[REQ] 2026-03-26T08:31:22.312Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:31:23.444Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[REQ] 2026-03-26T08:31:24.516Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[DISK_CACHE_ERR] audio_0cBHeagy-S4.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:31:25.579Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-1] Invidious proxy deneniyor...
+[REQ] 2026-03-26T08:31:26.653Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[REQ] 2026-03-26T08:31:27.735Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[REQ] 2026-03-26T08:31:28.803Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[DISK_CACHE_ERR] audio_JJ9ta3gmNo0.m4a çok küçük (2920 bytes), siliniyor.
+AUDIO CACHE HIT: AMk786WeXDE
+[REQ] 2026-03-26T08:31:31.113Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
+[RESOLVE] ✓ Invidious proxy ile çözüldü
+[REQ] 2026-03-26T08:31:32.195Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:31:33.253Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[REQ] 2026-03-26T08:31:34.313Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
