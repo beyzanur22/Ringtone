@@ -687,7 +687,8 @@ app.get("/stream", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 10240) {
+      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
@@ -695,6 +696,7 @@ app.get("/stream", async (req, res) => {
         if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
         return res.sendFile(localFile);
       }
     }
@@ -782,7 +784,8 @@ app.get("/stream/video", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 10240) {
+      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
@@ -790,6 +793,7 @@ app.get("/stream/video", async (req, res) => {
         if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
         return res.sendFile(localFile);
       }
     }
@@ -902,7 +906,8 @@ app.get("/download/mp3", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 10240) {
+      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
@@ -910,6 +915,7 @@ app.get("/download/mp3", async (req, res) => {
         if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
         return res.sendFile(localFile);
       }
     }
@@ -975,7 +981,8 @@ app.get("/download/mp4", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 10240) {
+      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
@@ -983,6 +990,7 @@ app.get("/download/mp4", async (req, res) => {
         if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
         return res.sendFile(localFile);
       }
     }
