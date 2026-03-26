@@ -1,112 +1,111 @@
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/71893697-51ef-4c1c-9663-6cb89f169212/vol_3vibbjo3yyghyg9v
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/9e4a425e-3c62-486b-90e5-a70fffff1b95/vol_3vibbjo3yyghyg9v
+Starting Container
 🔑 PoToken Server başlatılıyor (port 4416)...
 ✅ PoToken Server PID: 3 (npx)
-Starting Container
+⚠️ PoToken Server başlatıldı ama kapandı
 🎵 Node.js uygulaması başlatılıyor...
-[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[INIT] Removed UTF-8 BOM from cookies.txt
+[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
 ==================================================
 🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
 Redis: bağlı ✓
 Proxy Pool: 0 adet
+OAuth: yok ✗
+Cookies: mevcut ✓
 ==================================================
+[Redis] Bağlantı başarılı
+[INVIDIOUS] Instance listesi alınamadı: 
+[INVIDIOUS] Hardcoded 5 instance kullanılıyor
+[COBALT] instances.cobalt.best başarısız: Request failed with status code 404
 [COBALT] Toplam 4 aktif instance
 [youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
 Top50 cache hazır ✓
-[INVIDIOUS] 3 instance bulundu
-[PIPED] Hardcoded 4 instance kullanılıyor
 [PIPED] Instance listesi alınamadı: certificate has expired
+[PIPED] Hardcoded 4 instance kullanılıyor
 [PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
-[ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[ADIM-2] Piped deneniyor...
 [PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[ADIM-3] Cobalt deneniyor...
+[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
 [COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
-[REQ] 2026-03-26T08:36:18.670Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
 [COBALT] https://cobalt.canine.tools → 405: ""
+[REQ] 2026-03-26T08:45:47.543Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
 [ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
 [ADIM-5] yt-dlp: client=tv_embedded
-[yt-dlp] client=tv_embedded başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
-ERROR: 'cookies.txt' does not look like a Netscape 
-[REQ] 2026-03-26T08:36:20.833Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
 [ADIM-5] yt-dlp: client=ios
-[REQ] 2026-03-26T08:36:21.962Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[REQ] 2026-03-26T08:45:53.085Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
-[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
-ERROR: 'cookies.txt' does not look like a Netscape 
-[REQ] 2026-03-26T08:36:23.029Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[REQ] 2026-03-26T08:45:54.194Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
+[REQ] 2026-03-26T08:45:55.265Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
-[REQ] 2026-03-26T08:36:25.169Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[REQ] 2026-03-26T08:36:26.280Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:45:56.333Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [ADIM-2] Piped deneniyor...
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-AUDIO CACHE HIT: AMk786WeXDE
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: client=tv_embedded
-[REQ] 2026-03-26T08:36:30.708Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-ERROR: 'cookies.txt' does not look like a Netscape 
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-5] yt-dlp: client=ios
-[REQ] 2026-03-26T08:36:32.928Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
-ERROR: 'cookies.txt' does not look like a Netscape 
-[REQ] 2026-03-26T08:36:33.991Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:36:35.073Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[ADIM-1] Invidious proxy deneniyor...
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:36:36.152Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[REQ] 2026-03-26T08:36:37.471Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[ADIM-2] Piped deneniyor...
-[REQ] 2026-03-26T08:36:38.633Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[REQ] 2026-03-26T08:45:57.389Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[REQ] 2026-03-26T08:36:39.754Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [ADIM-3] Cobalt deneniyor...
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [COBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
 [COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[ADIM-4] youtubei.js deneniyor...
+[REQ] 2026-03-26T08:45:58.465Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:36:41.893Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[ADIM-4] youtubei.js deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[REQ] 2026-03-26T08:45:59.521Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [ADIM-5] yt-dlp: client=tv_embedded
-ERROR: 'cookies.txt' does not look like a Netscape 
-[REQ] 2026-03-26T08:36:42.982Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-[yt-dlp] client=tv_embedded başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:46:00.632Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:46:01.696Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
-[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
-ERROR: 'cookies.txt' does not look like a Netscape 
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] e__YaECyqTI: Requested format is not available. Use --list-formats for a list of available formats
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:36:46.314Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[REQ] 2026-03-26T08:46:02.753Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-5] yt-dlp: client=ios
+[REQ] 2026-03-26T08:46:03.823Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-1] Invidious proxy deneniyor...
-[REQ] 2026-03-26T08:36:47.463Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[REQ] 2026-03-26T08:46:04.962Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
+[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: Requested format is not available. Use --list-formats for a list of available formats
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[REQ] 2026-03-26T08:36:48.571Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[REQ] 2026-03-26T08:46:06.116Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[ADIM-2] Piped deneniyor...
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[REQ] 2026-03-26T08:46:07.181Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-3] Cobalt deneniyor...
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
+AUDIO CACHE HIT: AMk786WeXDE
+[REQ] 2026-03-26T08:46:08.227Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
+[COBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
