@@ -294,6 +294,7 @@ function parseCookiesToHeader(cookiePath) {
 // Sonra COBALT_API_URL env variable'ını ayarlayın
 const SELF_HOSTED_COBALT = process.env.COBALT_API_URL || null;
 let cobaltInstances = [];
+const cobaltBlockedInstances = new Set(); // auth gerektiren veya bozuk instance'lar
 
 // Self-hosted instance'ı her zaman ilk sıraya koy
 if (SELF_HOSTED_COBALT) {
@@ -302,76 +303,134 @@ if (SELF_HOSTED_COBALT) {
 }
 
 async function refreshCobaltInstances() {
-  // Birden fazla kaynak dene
-  const discoveryUrls = [
-    "https://instances.cobalt.best/api/instances",
-    "https://raw.githubusercontent.com/imputnet/cobalt/current/docs/instances.json"
+  const discovered = [];
+  
+  // Kaynak 1: instances.cobalt.best (en güncel)
+  try {
+    const res = await axios.get("https://instances.cobalt.best/api/instances", { timeout: 10000 });
+    const data = res.data;
+    // Bu API bazen array, bazen {instances: []} döndürür
+    const list = Array.isArray(data) ? data : (data?.instances || data?.data || []);
+    for (const inst of list) {
+      const apiUrl = inst.api_url || inst.api || inst.url;
+      if (!apiUrl) continue;
+      const url = apiUrl.startsWith('http') ? apiUrl : `https://${apiUrl}`;
+      // Trailing slash temizle
+      const clean = url.replace(/\/+$/, '');
+      if (inst.api_online !== false && !cobaltBlockedInstances.has(clean)) {
+        discovered.push(clean);
+      }
+    }
+    if (discovered.length > 0) {
+      console.log(`[COBALT] instances.cobalt.best'den ${discovered.length} instance bulundu`);
+    }
+  } catch (e) {
+    console.warn(`[COBALT] instances.cobalt.best başarısız: ${e.message}`);
+  }
+
+  // Kaynak 2: Hardcoded güvenilir instance'lar
+  const hardcoded = [
+    "https://api.cobalt.tools",
+    "https://cobalt-api.kwiatekmiki.com",
+    "https://cobalt.canine.tools",
+    "https://co.eepy.today"
   ];
   
-  for (const url of discoveryUrls) {
-    try {
-      const res = await axios.get(url, { timeout: 8000 });
-      if (res.data && Array.isArray(res.data)) {
-        const working = res.data
-          .filter(i => {
-            if (i.api_online === true) return true;
-            if (i.api_url || i.api) return true;
-            return false;
-          })
-          .map(i => i.api_url || (i.api ? `https://${i.api}` : null))
-          .filter(Boolean)
-          .slice(0, 10);
-        if (working.length > 0) {
-          cobaltInstances = working;
-          console.log(`[COBALT] ${cobaltInstances.length} aktif instance bulundu (${url})`);
-          return;
-        }
-      }
-    } catch (e) {
-      // Sonraki URL'yi dene
+  for (const h of hardcoded) {
+    if (!discovered.includes(h) && !cobaltBlockedInstances.has(h)) {
+      discovered.push(h);
     }
   }
-  console.warn("[COBALT] Tüm discovery URL'leri başarısız, hardcoded listede kalıyor");
+
+  if (discovered.length > 0) {
+    // Self-hosted varsa başa koy
+    if (SELF_HOSTED_COBALT) {
+      cobaltInstances = [SELF_HOSTED_COBALT, ...discovered.filter(d => d !== SELF_HOSTED_COBALT)];
+    } else {
+      cobaltInstances = discovered;
+    }
+    console.log(`[COBALT] Toplam ${cobaltInstances.length} aktif instance`);
+  } else {
+    console.warn("[COBALT] Hiç instance bulunamadı, mevcut liste korunuyor");
+  }
 }
 
 async function resolveViaCobalt(videoId, type) {
   const isAudio = type === "audio";
-  const shuffled = [...cobaltInstances].sort(() => Math.random() - 0.5);
+  // Blocked olmayanları filtrele ve shuffle et
+  const available = cobaltInstances.filter(i => !cobaltBlockedInstances.has(i));
+  const shuffled = [...available].sort(() => Math.random() - 0.5);
 
-  for (const instance of shuffled.slice(0, 5)) {
+  for (const instance of shuffled.slice(0, 6)) {
     try {
       const payload = {
         url: `https://www.youtube.com/watch?v=${videoId}`,
         downloadMode: isAudio ? "audio" : "auto",
-        audioFormat: "best",
+        audioFormat: isAudio ? "best" : "mp3",
         youtubeVideoCodec: "h264",
-        videoQuality: "720"
+        videoQuality: "720",
+        youtubeHLS: false
+      };
+
+      const headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": getRandomUA()
       };
 
       const res = await axios.post(`${instance}/`, payload, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": getRandomUA()
-        },
-        timeout: 15000
+        headers,
+        timeout: 20000,
+        validateStatus: (s) => s < 500 // 4xx'leri de yakala
       });
 
-      if (res.data && res.data.url) {
+      // Auth gerekli — bu instance'ı blokla
+      if (res.status === 401 || res.status === 403) {
+        const errCode = res.data?.error?.code || '';
+        if (errCode.includes('auth') || res.status === 401) {
+          console.warn(`[COBALT] ${instance} auth gerektiriyor, bloklandı`);
+          cobaltBlockedInstances.add(instance);
+          continue;
+        }
+      }
+
+      // 400 hatası — payload sorunu olabilir, atla
+      if (res.status === 400 || res.status === 405) {
+        console.warn(`[COBALT] ${instance} → ${res.status}: ${JSON.stringify(res.data?.error || res.data).slice(0, 100)}`);
+        continue;
+      }
+
+      // Başarılı response
+      const data = res.data;
+      if (data && (data.status === "tunnel" || data.status === "redirect" || data.status === "local-processing") && data.url) {
+        console.log(`[COBALT] BAŞARILI ✓ instance=${instance} status=${data.status}`);
+        stats.cobaltSuccess++;
+        return data.url;
+      }
+      // Bazı eski instance'lar status olmadan url döndürür
+      if (data && data.url && !data.error) {
         console.log(`[COBALT] BAŞARILI ✓ instance=${instance}`);
         stats.cobaltSuccess++;
-        return res.data.url;
+        return data.url;
       }
-      if (res.data && res.data.status === "tunnel" && res.data.url) {
-        stats.cobaltSuccess++;
-        return res.data.url;
-      }
-      if (res.data && res.data.status === "redirect" && res.data.url) {
-        stats.cobaltSuccess++;
-        return res.data.url;
+      // Picker response (birden fazla format)
+      if (data && data.status === "picker" && data.picker && data.picker.length > 0) {
+        const pick = isAudio 
+          ? data.picker.find(p => p.type === 'audio') || data.picker[0]
+          : data.picker.find(p => p.type === 'video') || data.picker[0];
+        if (pick && pick.url) {
+          console.log(`[COBALT] BAŞARILI (picker) ✓ instance=${instance}`);
+          stats.cobaltSuccess++;
+          return pick.url;
+        }
       }
     } catch (e) {
-      console.warn(`[COBALT] ${instance} başarısız:`, e.message?.slice(0, 100));
+      const msg = e.response?.data?.error?.code || e.message || '';
+      console.warn(`[COBALT] ${instance} başarısız:`, msg.slice(0, 120));
+      // SSL hatası veya network hatası — geçici sorun, bloklama
+      if (msg.includes('self-signed') || msg.includes('certificate')) {
+        cobaltBlockedInstances.add(instance);
+      }
     }
   }
   stats.cobaltFail++;
@@ -416,11 +475,12 @@ function loadProxies() {
 
   // Kaynak 3: Tek PROXY_URL environment variable
   if (proxyList.length === 0 && process.env.PROXY_URL) {
+    proxyList.push(process.env.PROXY_URL);
     console.log(`[PROXY_POOL] PROXY_URL env'den fallback proxy ayarlandı`);
   }
 
   if (proxyList.length === 0) {
-    console.warn(`[PROXY_POOL] Hiç proxy bulunamadı — proxy'siz devam ediliyor`);
+    console.warn(`[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek`);
   }
 
   // Health map başlat
@@ -432,6 +492,81 @@ function loadProxies() {
   });
 }
 loadProxies();
+
+// Otomatik ücretsiz proxy keşfi
+async function autoFetchProxies() {
+  if (proxyList.length >= 3) return; // Yeterli proxy varsa atla
+  
+  const { SocksProxyAgent } = await import('socks-proxy-agent');
+  
+  const sources = [
+    "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt",
+    "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
+    "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt",
+    "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt"
+  ];
+  
+  const discovered = [];
+  
+  for (const source of sources) {
+    try {
+      const res = await axios.get(source, { timeout: 8000 });
+      const lines = res.data.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.match(/^\d+\.\d+\.\d+\.\d+:\d+$/));
+      
+      // Rastgele 15 tane seç (çok hızlı banlanabilirler)
+      const shuffled = lines.sort(() => Math.random() - 0.5).slice(0, 15);
+      
+      for (const proxy of shuffled) {
+        try {
+          const proxyUrl = `socks5://${proxy}`;
+          const httpsAgent = new SocksProxyAgent(proxyUrl);
+          
+          // Hızlı ping testi — YouTube'a bağlanabiliyor mu?
+          const check = await axios.get("https://www.youtube.com/", {
+            httpsAgent,
+            timeout: 5000,
+            validateStatus: () => true,
+            headers: { 'User-Agent': getRandomUA() }
+          });
+          
+          if (check.status === 200 || check.status === 302) {
+            discovered.push(proxyUrl);
+            if (discovered.length >= 3) break; // 3 çalışan proxy yeterli
+          }
+        } catch (e) {
+          // Bu proxy çalışmıyor, sonrakini dene
+        }
+      }
+      
+      if (discovered.length >= 3) break;
+    } catch (e) {
+      // Bu kaynak başarısız, sonrakini dene
+    }
+  }
+  
+  if (discovered.length > 0) {
+    for (const p of discovered) {
+      if (!proxyList.includes(p)) {
+        proxyList.push(p);
+        proxyHealth.set(p, { fails: 0, lastFail: 0, cooldownUntil: 0 });
+      }
+    }
+    healthyProxies = [...proxyList];
+    console.log(`[PROXY_POOL] Otomatik keşif: ${discovered.length} SOCKS5 proxy eklendi (toplam: ${proxyList.length})`);
+  } else {
+    console.warn(`[PROXY_POOL] Otomatik keşif başarısız — proxy'siz devam ediliyor`);
+  }
+}
+// İlk yüklemede proxy yoksa otomatik keşfet
+if (proxyList.length === 0) {
+  autoFetchProxies().catch(() => {});
+}
+// Her 20 dakikada proxy havuzunu yenile
+setInterval(() => {
+  if (proxyList.length < 3) autoFetchProxies().catch(() => {});
+}, 20 * 60 * 1000);
 
 function formatProxyUrl(target) {
   if (target.startsWith('http')) return target;
@@ -567,10 +702,34 @@ async function resolveViaInvidious(videoId, type) {
   // Shuffle instances
   const shuffled = [...invidiousInstances].sort(() => Math.random() - 0.5);
   
-  for (const instance of shuffled.slice(0, 5)) {
+  for (const instance of shuffled.slice(0, 7)) {
     try {
+      // Yöntem 1: Proxy/tunnel URL kullan (doğrudan YouTube URL'si yerine)
+      // Bu URL instance üzerinden proxy yapılır — YouTube IP engellemesi bypass edilir
+      const itag = isAudio ? "140" : "18"; // 140=m4a audio, 18=mp4 360p
+      const proxyUrl = `${instance}/latest_version?id=${videoId}&itag=${itag}&local=true`;
+      
+      // Önce URL'nin çalışıp çalışmadığını HEAD ile kontrol et
+      try {
+        const headResp = await axios.head(proxyUrl, {
+          timeout: 8000,
+          headers: { 'User-Agent': getRandomUA() },
+          maxRedirects: 3,
+          validateStatus: (s) => s < 400
+        });
+        
+        if (headResp.status === 200 || headResp.status === 206 || headResp.status === 302) {
+          console.log(`[INVIDIOUS] BAŞARILI (proxy URL) ✓ ${instance}`);
+          stats.invidiousSuccess++;
+          return proxyUrl;
+        }
+      } catch (headErr) {
+        // HEAD başarısız — API yöntemini dene
+      }
+
+      // Yöntem 2: API'den format listesi al, ama yine proxy URL oluştur
       const resp = await axios.get(`${instance}/api/v1/videos/${videoId}`, {
-        timeout: 8000,
+        timeout: 10000,
         headers: { 'User-Agent': getRandomUA() }
       });
       
@@ -588,10 +747,13 @@ async function resolveViaInvidious(videoId, type) {
           .find(f => (f.height || 0) <= 720) || formats[0];
       }
       
-      if (chosen && chosen.url) {
-        console.log(`[INVIDIOUS] BAŞARILI: ${instance} → ${chosen.type}`);
+      if (chosen) {
+        // Ham YouTube URL'si yerine instance proxy URL'si kullan
+        const chosenItag = chosen.itag || itag;
+        const tunnelUrl = `${instance}/latest_version?id=${videoId}&itag=${chosenItag}&local=true`;
+        console.log(`[INVIDIOUS] BAŞARILI (API→proxy) ✓ ${instance} → itag=${chosenItag}`);
         stats.invidiousSuccess++;
-        return chosen.url;
+        return tunnelUrl;
       }
     } catch (e) {
       console.warn(`[INVIDIOUS] ${instance} başarısız:`, e.message?.slice(0, 120));
@@ -680,77 +842,127 @@ async function initInnertube() {
 initInnertube();
 
 // ============================================================
-// ANA STREAM URL ÇÖZÜCÜ — Self-hosted Cobalt birincil motor
+// ANA STREAM URL ÇÖZÜCÜ — Proxy tabanlı motorlar önce
 // ============================================================
+// SİRALAMA: Invidious proxy → Piped → Cobalt → youtubei.js → yt-dlp
+// En az fark edilebilir yöntemler başa, en riskli sona
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   const videoIdMatch = videoUrl.match(/v=([^&]+)/);
   const videoId = videoIdMatch ? videoIdMatch[1] : null;
   const type = format.includes("audio") || format === "bestaudio" ? "audio" : "video";
+  let lastError = null;
 
-  // ============ 1. ADIM: COBALT (Self-hosted — EN GÜVENİLİR) ============
-  // Self-hosted Cobalt kendi PoToken'ını üretir, proxy/cookie gerekmez
-  if (videoId && SELF_HOSTED_COBALT) {
-    console.log(`[COBALT] Self-hosted instance deneniyor: ${SELF_HOSTED_COBALT}`);
-    const cobaltUrl = await resolveViaCobalt(videoId, type);
-    if (cobaltUrl) return cobaltUrl;
+  if (!videoId) {
+    throw new Error("Video ID bulunamadı");
   }
+
+  // ============ 1. ADIM: INVIDIOUS PROXY URL ============
+  // Instance üzerinden proxy — sunucu IP'si YouTube'a gitmez
+  try {
+    console.log(`[ADIM-1] Invidious proxy deneniyor...`);
+    const invUrl = await resolveViaInvidious(videoId, type);
+    if (invUrl) {
+      console.log(`[RESOLVE] ✓ Invidious proxy ile çözüldü`);
+      return invUrl;
+    }
+  } catch (e) {
+    console.warn(`[ADIM-1] Invidious hatası:`, e.message?.slice(0, 100));
+    lastError = e;
+  }
+
+  // ============ 2. ADIM: PIPED ============
+  // Piped de proxy yapıyor — güvenli
+  try {
+    console.log(`[ADIM-2] Piped deneniyor...`);
+    const pipedUrl = await resolveViaPiped(videoId, type);
+    if (pipedUrl) {
+      console.log(`[RESOLVE] ✓ Piped ile çözüldü`);
+      return pipedUrl;
+    }
+  } catch (e) {
+    console.warn(`[ADIM-2] Piped hatası:`, e.message?.slice(0, 100));
+    lastError = e;
+  }
+
+  // ============ 3. ADIM: COBALT API ============
+  // Bağımsız altyapı — kendi PoToken üretiyor
+  try {
+    console.log(`[ADIM-3] Cobalt deneniyor...`);
+    const cobaltUrl = await resolveViaCobalt(videoId, type);
+    if (cobaltUrl) {
+      console.log(`[RESOLVE] ✓ Cobalt ile çözüldü`);
+      return cobaltUrl;
+    }
+  } catch (e) {
+    console.warn(`[ADIM-3] Cobalt hatası:`, e.message?.slice(0, 100));
+    lastError = e;
+  }
+
+  // ============ 4. ADIM: YOUTUBEI.JS ============
+  // Doğrudan YouTube API — bot algılanma riski orta
   if (ytInnertube) {
     try {
-      console.log(`[youtubei.js] OAuth ile deneniyor...`);
-      if (videoId) {
-        const info = await ytInnertube.getBasicInfo(videoId);
+      console.log(`[ADIM-4] youtubei.js deneniyor...`);
+      const info = await ytInnertube.getBasicInfo(videoId);
 
-        const isAudio = format.includes("audio") || format === "bestaudio";
-        let pbFormat;
+      const isAudio = format.includes("audio") || format === "bestaudio";
+      let pbFormat;
+      
+      try {
+        pbFormat = isAudio
+          ? info.chooseFormat({ type: 'audio', quality: 'best' })
+          : info.chooseFormat({ type: 'video+audio', quality: '360p' });
+      } catch (fmtErr) {
+        console.warn(`[youtubei.js] Format seçim hatası: ${fmtErr.message}`);
+      }
+
+      if (pbFormat) {
+        let url = null;
         
-        try {
-          pbFormat = isAudio
-            ? info.chooseFormat({ type: 'audio', quality: 'best' })
-            : info.chooseFormat({ type: 'video+audio', quality: '360p' });
-        } catch (fmtErr) {
-          console.warn(`[youtubei.js] Format seçim hatası: ${fmtErr.message}`);
+        if (pbFormat.decipher) {
+          url = pbFormat.decipher(ytInnertube.session.player);
+        } else if (pbFormat.url) {
+          url = pbFormat.url;
         }
-
-        if (pbFormat) {
-          let url = null;
-          
-          if (pbFormat.decipher) {
-            url = pbFormat.decipher(ytInnertube.session.player);
-          } else if (pbFormat.url) {
-            url = pbFormat.url;
-          }
-          
-          if (url) {
-            console.log(`[youtubei.js] BAŞARILI ✓ format=${pbFormat.mime_type}`);
-            stats.innertubeSuccess++;
-            return url;
-          }
+        
+        if (url) {
+          console.log(`[RESOLVE] ✓ youtubei.js ile çözüldü — format=${pbFormat.mime_type}`);
+          stats.innertubeSuccess++;
+          return url;
         }
       }
     } catch (innertubeErr) {
-      console.warn(`[youtubei.js] Başarısız:`, innertubeErr.message?.slice(0, 150));
+      console.warn(`[ADIM-4] youtubei.js başarısız:`, innertubeErr.message?.slice(0, 150));
       stats.innertubeFail++;
+      lastError = innertubeErr;
+      
+      // Session bozulmuşsa yeniden başlat
+      if (innertubeErr.message?.includes('Streaming data not available') || 
+          innertubeErr.message?.includes('sign in')) {
+        console.log(`[youtubei.js] Session yeniden başlatılıyor...`);
+        initInnertube().catch(() => {});
+      }
     }
   }
 
-  // ============ 2. ADIM: yt-dlp (PoToken + Cookies + Proxy) ============
-  // bgutil-ytdlp-pot-provider plugin otomatik olarak PoToken üretir
-  let lastError = null;
+  // ============ 5. ADIM: YT-DLP (SON ÇARE) ============
+  // En yüksek ban riski — sadece diğerleri başarısız olduysa
+  // Sadece 2 güvenli client dene (tümünü deneme, dikkat çeker)
   if (Date.now() >= ytDlpCircuitBreakerUntil) {
-    let clientsToTry = [...PLAYER_CLIENTS];
-    if (countryClient && countryClient !== "default") {
-      clientsToTry = [countryClient, ...clientsToTry.filter(c => c !== countryClient)];
-    }
-
-    for (const client of clientsToTry) {
+    const safeClients = ["tv_embedded", "ios"]; // sadece en güvenli 2 client
+    
+    for (const client of safeClients) {
       let usedProxy = null;
       try {
+        await randomJitter(500, 2000); // yt-dlp öncesi ekstra bekleme
+
         const opts = {
           format: format,
           getUrl: true,
           noCheckCertificates: true,
           noWarnings: true,
           preferFreeFormats: false,
+          forceIpv6: true,
           addHeader: [
             "referer:https://www.youtube.com/",
             `user-agent:${ua}`
@@ -771,17 +983,14 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           console.log(`[yt-dlp] Proxy: ${proxyDisplay}`);
         }
 
-        // Player client ayarı — PoToken plugin ile web client en iyi sonucu verir
-        if (client !== "default") {
-          opts.extractorArgs = `youtube:player_client=${client}`;
-        }
+        opts.extractorArgs = `youtube:player_client=${client}`;
 
-        console.log(`[yt-dlp+PoToken] Deneniyor: client=${client}, format=${format}`);
+        console.log(`[ADIM-5] yt-dlp: client=${client}`);
         const result = await ytdlp(videoUrl, opts);
         const url = result.toString().trim().split('\n')[0];
 
         if (url && url.startsWith("http")) {
-          console.log(`[yt-dlp+PoToken] BAŞARILI ✓ client=${client}`);
+          console.log(`[RESOLVE] ✓ yt-dlp ile çözüldü — client=${client}`);
           ytDlpFailCount = 0;
           stats.ytDlpSuccess++;
           if (usedProxy) markProxySuccess(usedProxy);
@@ -808,28 +1017,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
     console.warn(`[yt-dlp] Circuit breaker aktif, atlanıyor.`);
   }
 
-  // ============ 3. ADIM: Cobalt API (Bağımsız altyapı) ============
-  if (videoId) {
-    const type = format.includes("audio") || format === "bestaudio" ? "audio" : "video";
-    console.log(`[FALLBACK] Cobalt deneniyor...`);
-    const cobaltUrl = await resolveViaCobalt(videoId, type);
-    if (cobaltUrl) return cobaltUrl;
-  }
-
-  // ============ 4. ADIM: Invidious/Piped (Son çare) ============
-  if (videoId) {
-    const type = format.includes("audio") || format === "bestaudio" ? "audio" : "video";
-    
-    console.log(`[FALLBACK] Invidious deneniyor...`);
-    const invUrl = await resolveViaInvidious(videoId, type);
-    if (invUrl) return invUrl;
-
-    console.log(`[FALLBACK] Piped deneniyor...`);
-    const pipedUrl = await resolveViaPiped(videoId, type);
-    if (pipedUrl) return pipedUrl;
-  }
-
-  throw lastError || new Error("Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)");
+  throw lastError || new Error("Tüm motorlar başarısız oldu (Invidious, Piped, Cobalt, youtubei.js, yt-dlp)");
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
