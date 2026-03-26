@@ -686,12 +686,17 @@ app.get("/stream", async (req, res) => {
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
     if (fs.existsSync(localFile)) {
-      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-
-      if (req.path.includes("download")) {
+      const stats = fs.statSync(localFile);
+      if (stats.size < 10240) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+        if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
-      return res.sendFile(localFile);
+        return res.sendFile(localFile);
+      }
     }
 
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
@@ -776,12 +781,17 @@ app.get("/stream/video", async (req, res) => {
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
     if (fs.existsSync(localFile)) {
-      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-
-      if (req.path.includes("download")) {
+      const stats = fs.statSync(localFile);
+      if (stats.size < 10240) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+        if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
-      return res.sendFile(localFile);
+        return res.sendFile(localFile);
+      }
     }
 
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
@@ -891,12 +901,17 @@ app.get("/download/mp3", async (req, res) => {
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
     if (fs.existsSync(localFile)) {
-      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-
-      if (req.path.includes("download")) {
+      const stats = fs.statSync(localFile);
+      if (stats.size < 10240) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+        if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
-      return res.sendFile(localFile);
+        return res.sendFile(localFile);
+      }
     }
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -959,12 +974,17 @@ app.get("/download/mp4", async (req, res) => {
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
     if (fs.existsSync(localFile)) {
-      console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-
-      if (req.path.includes("download")) {
+      const stats = fs.statSync(localFile);
+      if (stats.size < 10240) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
+        if (req.path.includes("download")) {
         res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
       }
-      return res.sendFile(localFile);
+        return res.sendFile(localFile);
+      }
     }
 
     const url = `https://www.youtube.com/watch?v=${videoId}`;
