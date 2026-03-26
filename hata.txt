@@ -1,54 +1,110 @@
-ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
-[REQ] 2026-03-26T10:17:02.955Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.28 | Country: UNKNOWN
-[ADIM-5] yt-dlp: client=android_embedded
-[REQ] 2026-03-26T10:17:03.865Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.44 | Country: UNKNOWN
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/55d88e1a-b056-434c-b535-29fb92473e67/vol_3vibbjo3yyghyg9v
+Starting Container
+🔑 PoToken Server başlatılıyor (port 4416)...
+✅ PoToken Server başlatıldı (PID: 4)
+⚠️ PoToken Server başlatılamadı veya durdu. Loglar kontrol edilmeli.
+/app/entrypoint.sh: line 13: bgutil-ytdlp-pot-provider: command not found
+🔄 PoToken Server ikinci kez deneniyor...
+⚠️ PoToken Server başlatılamadı — PoToken'sız devam ediliyor
+🎵 Node.js uygulaması başlatılıyor...
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
+[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
+==================================================
+🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
+Redis: bağlı ✓
+Proxy Pool: 0 adet
+OAuth: yok ✗
+Cookies: mevcut ✓
+==================================================
+[Redis] Bağlantı başarılı
+[INVIDIOUS] Instance listesi alınamadı: 
+[INVIDIOUS] Hardcoded 9 instance kullanılıyor
+[REQ] 2026-03-26T10:25:43.061Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.36 | Country: UNKNOWN
+[COBALT] instances.cobalt.best başarısız: Request failed with status code 404
+[COBALT] Toplam 4 aktif instance
+[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
+Top50 cache hazır ✓
+[PIPED] Instance listesi alınamadı: certificate has expired
+[PIPED] Hardcoded 7 instance kullanılıyor
+[PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
 [ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://invidious.materialio.us başarısız: Request failed with status code 500
+[INVIDIOUS] https://iv.datura.network başarısız: getaddrinfo ENOTFOUND iv.datura.network
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://invidious.privacyredirect.com başarısız: Request failed with status code 404
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[REQ] 2026-03-26T10:25:59.596Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.33 | Country: UNKNOWN
 [DEDUP] 10NPVnGekyw zaten çözümleniyor, bekleniyor...
-[yt-dlp] client=android_embedded başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[INVIDIOUS] https://inv.tux.pizza başarısız: timeout of 10000ms exceeded
 [INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[INVIDIOUS] https://invidious.privacyredirect.com başarısız: Request failed with status code 404
+[INVIDIOUS] https://inv.tux.pizza başarısız: timeout of 10000ms exceeded
+[INVIDIOUS] https://invidious.jing.rocks başarısız: getaddrinfo ENOTFOUND invidious.jing.rocks
+[INVIDIOUS] https://iv.datura.network başarısız: getaddrinfo ENOTFOUND iv.datura.network
+[INVIDIOUS] https://invidious.protokoll-11.de başarısız: getaddrinfo ENOTFOUND invidious.protokoll-11.de
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
 [ADIM-2] Piped deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[PIPED] https://api.piped.privacydev.net başarısız: getaddrinfo ENOTFOUND api.piped.privacydev.net
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[ADIM-2] Piped deneniyor...
+[PIPED] https://pipedapi.adminforge.de başarısız: getaddrinfo ENOTFOUND adminforge.destreams
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
 [PIPED] https://pipedapi.r4fo.com başarısız: getaddrinfo ENOTFOUND pipedapi.r4fo.com
-[ADIM-3] Cobalt deneniyor...
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[ADIM-2] Piped deneniyor...
 [PIPED] https://pipedapi.r4fo.com başarısız: getaddrinfo ENOTFOUND pipedapi.r4fo.com
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[ADIM-3.5] Generic API'ler deneniyor...
-[GENERIC_API] AEMT deneniyor...
-[GENERIC_API] AEMT başarısız: getaddrinfo ENOTFOUND aemt.me
-[GENERIC_API] BK9 deneniyor...
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[GENERIC_API] Ryzen deneniyor...
-[GENERIC_API] Ryzen başarısız: getaddrinfo ENOTFOUND api.ryzendark.com
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
 [ADIM-3] Cobalt deneniyor...
 [COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt.canine.tools → 405 Method Not Allowed, bloklandı
 [COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[ADIM-3] Cobalt deneniyor...
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[COBALT] https://api.cobalt.tools JWT auth gerektiriyor, bloklandı
 [ADIM-3.5] Generic API'ler deneniyor...
-[GENERIC_API] AEMT deneniyor...
-[GENERIC_API] AEMT başarısız: getaddrinfo ENOTFOUND aemt.me
-[GENERIC_API] BK9 deneniyor...
-[GENERIC_API] Ryzen deneniyor...
-[GENERIC_API] Ryzen başarısız: getaddrinfo ENOTFOUND api.ryzendark.com
+[GENERIC_API] https://co.wuk.sh/api/json deneniyor...
+[COBALT] https://api.cobalt.tools JWT auth gerektiriyor, bloklandı
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[GENERIC_API] https://co.wuk.sh/api/json başarısız: getaddrinfo ENOTFOUND co.wuk.sh
+[GENERIC_API] https://co.puk.sh/api/json deneniyor...
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
 [ADIM-4] youtubei.js deneniyor...
+[GENERIC_API] https://co.puk.sh/api/json başarısız: getaddrinfo ENOTFOUND co.puk.sh
+[GENERIC_API] https://co.wuk.sh/api/json başarısız: getaddrinfo ENOTFOUND co.wuk.sh
+[GENERIC_API] https://cobalt.ghoststeve.com/api/json başarısız: getaddrinfo ENOTFOUND cobalt.ghoststeve.com
+[GENERIC_API] https://cobalt.ghoststeve.com/api/json deneniyor...
+[GENERIC_API] https://co.puk.sh/api/json deneniyor...
+[ADIM-3.5] Generic API'ler deneniyor...
+[GENERIC_API] https://cobalt.ghoststeve.com/api/json başarısız: getaddrinfo ENOTFOUND cobalt.ghoststeve.com
+[GENERIC_API] https://co.puk.sh/api/json başarısız: getaddrinfo ENOTFOUND co.puk.sh
+[GENERIC_API] https://co.wuk.sh/api/json deneniyor...
+[ADIM-4] youtubei.js deneniyor...
+[GENERIC_API] https://cobalt.ghoststeve.com/api/json deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
 [youtubei.js] Format seçim hatası: Streaming data not available
 [ADIM-5] yt-dlp: client=tv_embedded
+[REQ] 2026-03-26T10:26:15.770Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.40 | Country: UNKNOWN
+[DEDUP] 10NPVnGekyw zaten çözümleniyor, bekleniyor...
 [ADIM-5] yt-dlp: client=tv_embedded
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] GCLD72wDLLU: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
 [ADIM-5] yt-dlp: client=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
 [ADIM-5] yt-dlp: client=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] GCLD72wDLLU: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=ios başarısız: ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
 [ADIM-5] yt-dlp: client=android_embedded
+[ADIM-5] yt-dlp: client=android_embedded
+[yt-dlp] client=android_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] client=android_embedded başarısız: ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[2026-03-26T10:26:23.188Z] - [STREAM] - VideoID: 10NPVnGekyw - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-03-26T10:26:23.193Z] - [STREAM] - VideoID: 10NPVnGekyw - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+[2026-03-26T10:26:23.192Z] - [STREAM] - VideoID: 10NPVnGekyw - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=10NPVnGekyw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-playlist --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0 --extractor-args youtube:player_client=android_embedded
+ERROR: [youtube] 10NPVnGekyw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[REQ] 2026-03-26T10:26:23.631Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.33 | Country: UNKNOWN
