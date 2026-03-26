@@ -1,7 +1,7 @@
 {
   "name": "ringtone-admin-backend",
-  "version": "3.0.0",
-  "description": "YouTube stream backend with PoToken support",
+  "version": "1.0.0",
+  "description": "YouTube stream backend",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -17,15 +17,11 @@
     "dotenv": "^17.3.1",
     "express": "^4.21.2",
     "express-rate-limit": "^8.2.1",
+    "https-proxy-agent": "^5.0.1",
     "ioredis": "^5.10.0",
     "p-queue": "^9.1.0",
-    "puppeteer": "^24.40.0",
-    "puppeteer-core": "^24.40.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "play-dl": "^1.9.7",
     "redis": "^5.11.0",
-    "socks-proxy-agent": "^9.0.0",
-    "youtubei.js": "^17.0.1",
     "yt-dlp-exec": "^1.0.2"
   }
 }

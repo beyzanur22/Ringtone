@@ -1,37 +1,22 @@
 FROM node:20
 
-# System dependencies: Python, ffmpeg, curl, Chromium and Puppeteer libs
+# Python, ffmpeg, yt-dlp ve deno (JS runtime) kur
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip python3-venv ffmpeg curl xvfb \
-    chromium libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
-    libasound2 libpangocairo-1.0-0 libpango-1.0-0 && \
+    apt-get install -y python3 python3-pip ffmpeg curl unzip && \
     ln -s /usr/bin/python3 /usr/bin/python && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    pip3 install --no-cache-dir yt-dlp --break-system-packages && \
+    curl -fsSL https://deno.land/install.sh | sh
 
-# yt-dlp + PoToken provider plugin
-RUN python3 -m pip install --no-cache-dir --break-system-packages yt-dlp bgutil-ytdlp-pot-provider || true
-
-# Download the standalone PoToken server binary (The pip package is only a plugin wrapper)
-RUN curl -L -o /usr/local/bin/bgutil-ytdlp-pot-provider https://github.com/BtbN/bgutil-ytdlp-pot-provider/releases/download/v1.1.0/bgutil-ytdlp-pot-provider-linux-amd64 && \
-    chmod +x /usr/local/bin/bgutil-ytdlp-pot-provider
-
-# yt-dlp güncelle
-RUN yt-dlp --update || true
+# Deno PATH'e ekle
+ENV DENO_DIR="/root/.deno"
+ENV PATH="${DENO_DIR}/bin:${PATH}"
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
-
 COPY . .
 
-# Cache dizini
-RUN mkdir -p /app/cache /app/yt_cache
-
-# Entrypoint'u çalıştırılabilir yap
-RUN chmod +x /app/entrypoint.sh 2>/dev/null || true
+RUN npm install
 
 EXPOSE 5000
 
-CMD ["bash", "/app/entrypoint.sh"]
+CMD ["node","server.js"]
