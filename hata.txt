@@ -1,112 +1,112 @@
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/52bf12ce-de66-4460-9b20-c47e2bce4c58/vol_3vibbjo3yyghyg9v
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/71893697-51ef-4c1c-9663-6cb89f169212/vol_3vibbjo3yyghyg9v
 🔑 PoToken Server başlatılıyor (port 4416)...
 ✅ PoToken Server PID: 3 (npx)
 Starting Container
-⚠️ PoToken Server başlatıldı ama kapandı
 🎵 Node.js uygulaması başlatılıyor...
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
 ==================================================
-Cookies: yok ✗
-[INVIDIOUS] Instance listesi alınamadı: 
-[INVIDIOUS] Hardcoded 5 instance kullanılıyor
-[COBALT] instances.cobalt.best başarısız: Request failed with status code 404
+🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
+Redis: bağlı ✓
+Proxy Pool: 0 adet
+==================================================
 [COBALT] Toplam 4 aktif instance
+[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
 Top50 cache hazır ✓
-[PIPED] Instance listesi alınamadı: certificate has expired
+[INVIDIOUS] 3 instance bulundu
 [PIPED] Hardcoded 4 instance kullanılıyor
+[PIPED] Instance listesi alınamadı: certificate has expired
 [PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
 [ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_RBaSiVjtKR4.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_e__YaECyqTI.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-1] Invidious proxy deneniyor...
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_eWiHX_xWa6Y.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_IirESJ4AQlM.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_GCLD72wDLLU.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-1] Invidious proxy deneniyor...
-[ADIM-1] Invidious proxy deneniyor...
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[DISK_CACHE_ERR] audio_alUx2fAOE4A.m4a çok küçük (2920 bytes), siliniyor.
 [INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-AUDIO RESOLVED: AMk786WeXDE
-[REQ] 2026-03-26T08:31:15.603Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[REQ] 2026-03-26T08:36:18.670Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[COBALT] https://cobalt.canine.tools → 405: ""
+[ADIM-4] youtubei.js deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[ADIM-5] yt-dlp: client=tv_embedded
+[yt-dlp] client=tv_embedded başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+ERROR: 'cookies.txt' does not look like a Netscape 
+[REQ] 2026-03-26T08:36:20.833Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-5] yt-dlp: client=ios
+[REQ] 2026-03-26T08:36:21.962Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+ERROR: 'cookies.txt' does not look like a Netscape 
+[REQ] 2026-03-26T08:36:23.029Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+AUDIO CACHE HIT: AMk786WeXDE
+[REQ] 2026-03-26T08:36:25.169Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[REQ] 2026-03-26T08:36:26.280Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[ADIM-2] Piped deneniyor...
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+AUDIO CACHE HIT: AMk786WeXDE
+[ADIM-4] youtubei.js deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[ADIM-5] yt-dlp: client=tv_embedded
+[REQ] 2026-03-26T08:36:30.708Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+ERROR: 'cookies.txt' does not look like a Netscape 
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[ADIM-5] yt-dlp: client=ios
+[REQ] 2026-03-26T08:36:32.928Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+ERROR: 'cookies.txt' does not look like a Netscape 
+[REQ] 2026-03-26T08:36:33.991Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:36:35.073Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [ADIM-1] Invidious proxy deneniyor...
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[REQ] 2026-03-26T08:36:36.152Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[REQ] 2026-03-26T08:31:16.742Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[REQ] 2026-03-26T08:36:37.471Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[REQ] 2026-03-26T08:31:19.015Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[DISK_CACHE_ERR] audio_HtVcltkn3HI.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:31:20.105Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-[REQ] 2026-03-26T08:31:21.176Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[REQ] 2026-03-26T08:31:22.312Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:31:23.444Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
 [INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[REQ] 2026-03-26T08:31:24.516Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[ADIM-2] Piped deneniyor...
+[REQ] 2026-03-26T08:36:38.633Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[DISK_CACHE_ERR] audio_0cBHeagy-S4.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:31:25.579Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[REQ] 2026-03-26T08:36:39.754Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[ADIM-3] Cobalt deneniyor...
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[COBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
+[ADIM-4] youtubei.js deneniyor...
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:36:41.893Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
+[ADIM-5] yt-dlp: client=tv_embedded
+ERROR: 'cookies.txt' does not look like a Netscape 
+[REQ] 2026-03-26T08:36:42.982Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+[yt-dlp] client=tv_embedded başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+AUDIO CACHE HIT: AMk786WeXDE
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+AUDIO CACHE HIT: AMk786WeXDE
+[yt-dlp] client=ios başarısız: WARNING: skipping cookie file entry due to invalid length 1: '\ufeff# Netscape HTTP Cookie File\n'
+ERROR: 'cookies.txt' does not look like a Netscape 
+[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
+[REQ] 2026-03-26T08:36:46.314Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
+AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [ADIM-1] Invidious proxy deneniyor...
-[REQ] 2026-03-26T08:31:26.653Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[REQ] 2026-03-26T08:31:27.735Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[REQ] 2026-03-26T08:31:28.803Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
+[REQ] 2026-03-26T08:36:47.463Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
 AUDIO CACHE HIT: AMk786WeXDE
 [DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[DISK_CACHE_ERR] audio_JJ9ta3gmNo0.m4a çok küçük (2920 bytes), siliniyor.
-AUDIO CACHE HIT: AMk786WeXDE
-[REQ] 2026-03-26T08:31:31.113Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
-[INVIDIOUS] https://vid.puffyan.us başarısız: Request failed with status code 502
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[INVIDIOUS] BAŞARILI (proxy URL) ✓ https://invidious.snopyta.org
-[RESOLVE] ✓ Invidious proxy ile çözüldü
-[REQ] 2026-03-26T08:31:32.195Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:31:33.253Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-[REQ] 2026-03-26T08:31:34.313Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.54 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[REQ] 2026-03-26T08:36:48.571Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN

@@ -14,6 +14,21 @@ const { Innertube, UniversalCache } = require("youtubei.js");
 const path = require("path");
 
 // ============================================================
+// FIX COOKIES.TXT BOM FOR YT-DLP
+// ============================================================
+if (fs.existsSync("cookies.txt")) {
+  try {
+    let cookieContent = fs.readFileSync("cookies.txt", "utf8");
+    if (cookieContent.charCodeAt(0) === 0xFEFF) {
+      fs.writeFileSync("cookies.txt", cookieContent.slice(1), "utf8");
+      console.log("[INIT] Removed UTF-8 BOM from cookies.txt");
+    }
+  } catch (err) {
+    console.warn("Could not sanitize cookies.txt:", err.message);
+  }
+}
+
+// ============================================================
 // GLOBAL ERROR HANDLERS — sunucu asla crash olmasın
 // ============================================================
 process.on('unhandledRejection', (reason, promise) => {
@@ -857,18 +872,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   }
 
   // ============ 1. ADIM: INVIDIOUS PROXY URL ============
-  // Instance üzerinden proxy — sunucu IP'si YouTube'a gitmez
-  try {
-    console.log(`[ADIM-1] Invidious proxy deneniyor...`);
-    const invUrl = await resolveViaInvidious(videoId, type);
-    if (invUrl) {
-      console.log(`[RESOLVE] ✓ Invidious proxy ile çözüldü`);
-      return invUrl;
-    }
-  } catch (e) {
-    console.warn(`[ADIM-1] Invidious hatası:`, e.message?.slice(0, 100));
-    lastError = e;
-  }
+  // (IPTAL EDILDI: Cihaza sadece 2KB hata HTML'i indirttiği için kaldırıldı)
 
   // ============ 2. ADIM: PIPED ============
   // Piped de proxy yapıyor — güvenli
