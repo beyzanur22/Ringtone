@@ -384,25 +384,46 @@ const PROXY_PASS = process.env.PROXY_PASS || "rk9mmw64wz5r";
 const PROXY_COOLDOWN = 10 * 60 * 1000; // 10 dakika soğuma süresi
 
 function loadProxies() {
+  // Kaynak 1: proxies.txt dosyası
   try {
     if (fs.existsSync("proxies.txt")) {
       const data = fs.readFileSync("proxies.txt", "utf-8");
-      proxyList = data.split('\n')
+      const fileProxies = data.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 5 && !line.startsWith('#'));
-      console.log(`[PROXY_POOL] ${proxyList.length} adet proxy yüklendi.`);
-      
-      // İlk başta hepsini healthy kabul et
-      healthyProxies = [...proxyList];
-      proxyList.forEach(p => {
-        if (!proxyHealth.has(p)) {
-          proxyHealth.set(p, { fails: 0, lastFail: 0, cooldownUntil: 0 });
-        }
-      });
+      if (fileProxies.length > 0) {
+        proxyList = fileProxies;
+        console.log(`[PROXY_POOL] proxies.txt'den ${proxyList.length} proxy yüklendi`);
+      }
     }
   } catch (e) {
     console.warn(`[PROXY_POOL] proxies.txt okunamadı: ${e.message}`);
   }
+
+  // Kaynak 2: PROXY_LIST environment variable (virgülle ayrılmış)
+  if (proxyList.length === 0 && process.env.PROXY_LIST) {
+    proxyList = process.env.PROXY_LIST.split(',')
+      .map(p => p.trim())
+      .filter(p => p.length > 5);
+    console.log(`[PROXY_POOL] PROXY_LIST env'den ${proxyList.length} proxy yüklendi`);
+  }
+
+  // Kaynak 3: Tek PROXY_URL environment variable
+  if (proxyList.length === 0 && process.env.PROXY_URL) {
+    console.log(`[PROXY_POOL] PROXY_URL env'den fallback proxy ayarlandı`);
+  }
+
+  if (proxyList.length === 0) {
+    console.warn(`[PROXY_POOL] Hiç proxy bulunamadı — proxy'siz devam ediliyor`);
+  }
+
+  // Health map başlat
+  healthyProxies = [...proxyList];
+  proxyList.forEach(p => {
+    if (!proxyHealth.has(p)) {
+      proxyHealth.set(p, { fails: 0, lastFail: 0, cooldownUntil: 0 });
+    }
+  });
 }
 loadProxies();
 
