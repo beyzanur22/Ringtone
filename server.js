@@ -56,7 +56,16 @@ async function downloadToCache(videoId, type, streamUrl) {
     });
 
     fs.renameSync(tempPath, filePath);
-    console.log(`[DISK_CACHE] Kaydedildi: ${fileName}`);
+    
+    // Final kontrol: Eğer dosya çok küçükse kaydetme, sil!
+    const stats = fs.statSync(filePath);
+    const minSize = type === "video" ? 1024 * 1024 : 100 * 1024;
+    if (stats.size < minSize) {
+      fs.unlinkSync(filePath);
+      throw new Error(`Download successful but file too small (${(stats.size/1024).toFixed(1)} KB) - likely bot detection.`);
+    }
+    
+    console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size/1024/1024).toFixed(2)} MB)`);
   } catch (err) {
     console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
