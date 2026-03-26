@@ -912,9 +912,9 @@ async function resolveViaGenericAPIs(videoId, type) {
   
   // Cobalt tabanlı ücretsiz ve auth istemeyen public instance'lar
   const fallbackInstances = [
-    "https://co.wuk.sh/api/json",
-    "https://co.puk.sh/api/json",
-    "https://cobalt.ghoststeve.com/api/json"
+    "https://cobalt.tux.pizza/api/json",
+    "https://cobalt.kellerstein.de/api/json",
+    "https://co.pussthecat.org/api/json"
   ];
 
   for (const url of fallbackInstances) {
