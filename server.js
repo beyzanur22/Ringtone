@@ -910,63 +910,38 @@ async function resolveViaGenericAPIs(videoId, type) {
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const isAudio = type === "audio";
   
-  const apis = [
-    {
-      name: "AEMT",
-      url: `https://aemt.me/youtube?url=${encodeURIComponent(videoUrl)}`,
-      method: "GET",
-      extractUrl: (data) => {
-        if (isAudio) return data?.audio?.url || data?.result?.audio || data?.url;
-        return data?.video?.url || data?.result?.video || data?.url;
-      }
-    },
-    {
-      name: "BK9",
-      url: `https://api.bk9.site/yt/music?url=${encodeURIComponent(videoUrl)}`,
-      method: "GET",
-      extractUrl: (data) => data?.BK9?.url || data?.result?.url || data?.url || data?.download
-    },
-    {
-      name: "Ryzen",
-      url: `https://api.ryzendark.com/api/ytmp3?url=${encodeURIComponent(videoUrl)}`,
-      method: "GET",
-      extractUrl: (data) => data?.result?.url || data?.url || data?.download
-    }
+  // Cobalt tabanlı ücretsiz ve auth istemeyen public instance'lar
+  const fallbackInstances = [
+    "https://co.wuk.sh/api/json",
+    "https://co.puk.sh/api/json",
+    "https://cobalt.ghoststeve.com/api/json"
   ];
 
-  for (const api of apis) {
+  for (const url of fallbackInstances) {
     try {
-      console.log(`[GENERIC_API] ${api.name} deneniyor...`);
-      const res = await axios({
-        method: api.method,
-        url: api.url,
+      console.log(`[GENERIC_API] ${url} deneniyor...`);
+      const res = await axios.post(url, {
+        url: videoUrl,
+        aFormat: "mp3",
+        isAudioOnly: isAudio,
+        vQuality: "360",
+        youtubeVideoCodec: "mp4"
+      }, {
         timeout: 15000,
-        headers: { 'User-Agent': getRandomUA() },
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': getRandomUA()
+        },
         validateStatus: (s) => s < 500
       });
       
-      if (res.status === 200 && res.data) {
-        const url = api.extractUrl(res.data);
-        if (url && url.startsWith('http')) {
-          console.log(`[GENERIC_API] ${api.name} BAŞARILI ✓`);
-          return url;
-        }
-        // JSON içinde URL ara
-        const jsonStr = JSON.stringify(res.data);
-        const urlMatch = jsonStr.match(/https?:\/\/[^"]+googlevideo[^"]+/);
-        if (urlMatch) {
-          console.log(`[GENERIC_API] ${api.name} BAŞARILI (regex) ✓`);
-          return urlMatch[0];
-        }
-        // Herhangi bir http URL bul
-        const anyUrl = jsonStr.match(/https?:\/\/[^"]+\.(mp3|m4a|mp4|webm|ogg)[^"]*/i);
-        if (anyUrl) {
-          console.log(`[GENERIC_API] ${api.name} BAŞARILI (media regex) ✓`);
-          return anyUrl[0];
-        }
+      if (res.status === 200 && res.data && res.data.url) {
+        console.log(`[GENERIC_API] Başarılı ✓ ${url}`);
+        return res.data.url;
       }
     } catch (e) {
-      console.warn(`[GENERIC_API] ${api.name} başarısız: ${e.message?.slice(0, 80)}`);
+      console.warn(`[GENERIC_API] ${url} başarısız: ${e.message?.slice(0, 80)}`);
     }
   }
   return null;
@@ -1102,7 +1077,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         await randomJitter(1000, 3000); 
 
         const opts = {
-          format: "ba/b",  // ba = bestaudio kısaltması — daha geniş format uyumu
+          format: "bestaudio/best",
           getUrl: true,
           noCheckCertificates: true,
           noWarnings: true,
@@ -1114,11 +1089,12 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           ]
         };
 
-        // Cookies
-        const useCookies = process.env.USE_COOKIES !== "false";
-        if (useCookies && fs.existsSync("cookies.txt")) {
-          opts.cookies = "cookies.txt";
-        }
+        // Cookies İPTAL: Yanmış veya eskimiş cookie'ler YouTube'un bot sayfasına (Sign in) yönlendirmesine sebep oluyor.
+        // Bu yüzden "Requested format is not available" hatası alınıyor. Cookieleri temizliyoruz.
+        // const useCookies = process.env.USE_COOKIES !== "false";
+        // if (useCookies && fs.existsSync("cookies.txt")) {
+        //   opts.cookies = "cookies.txt";
+        // }
 
         // Proxy rotasyonu
         usedProxy = getRandomProxyUrl();
@@ -1686,7 +1662,7 @@ app.get("/stream/video", async (req, res) => {
       // yt-dlp ile doğrudan indirme fallback
       const tempFile = localFile + ".tmp";
       const opts = {
-        format: 'bv[ext=mp4]+ba/b',
+        format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         output: tempFile,
         noCheckCertificates: true,
         addHeader: [
@@ -1694,9 +1670,10 @@ app.get("/stream/video", async (req, res) => {
           `user-agent:${ua}`
         ]
       };
-      if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
-        opts.cookies = "cookies.txt";
-      }
+      // Cookies kapalı: Yanmış cookie banı engellemek için
+      // if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
+      //   opts.cookies = "cookies.txt";
+      // }
 
       const activeProxy = getRandomProxyUrl();
       if (activeProxy) opts.proxy = activeProxy;

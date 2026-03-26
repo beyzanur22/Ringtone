@@ -1,112 +1,54 @@
-/usr/bin/python3: No module named bgutil_ytdlp_pot_provider
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/9109d173-8f63-42cf-a72c-221de8adddd9/vol_3vibbjo3yyghyg9v
-🎵 Node.js uygulaması başlatılıyor...
-⚠️ PoToken Server başlatılamadı veya durdu. Loglar kontrol edilmeli.
-[PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
-🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
-Redis: bağlı ✓
-Proxy Pool: 0 adet
-OAuth: yok ✗
-Cookies: mevcut ✓
-[Redis] Bağlantı başarılı
-[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
-Top50 cache hazır ✓
-[INVIDIOUS] Instance listesi alınamadı: 
-[REQ] 2026-03-26T09:08:54.632Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.39 | Country: UNKNOWN
-[PIPED] Instance listesi alınamadı: certificate has expired
-[PIPED] Hardcoded 4 instance kullanılıyor
+ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
+[REQ] 2026-03-26T10:17:02.955Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.28 | Country: UNKNOWN
+[ADIM-5] yt-dlp: client=android_embedded
+[REQ] 2026-03-26T10:17:03.865Z | GET /stream?videoId=10NPVnGekyw | IP: 157.52.106.44 | Country: UNKNOWN
+[ADIM-1] Invidious proxy deneniyor...
+[DEDUP] 10NPVnGekyw zaten çözümleniyor, bekleniyor...
+[yt-dlp] client=android_embedded başarısız: ERROR: [youtube] IirESJ4AQlM: Requested format is not available. Use --list-formats for a list of available formats
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[ADIM-1] Invidious proxy deneniyor...
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[INVIDIOUS] https://invidious.nerdvpn.de başarısız: Request failed with status code 401
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
 [ADIM-2] Piped deneniyor...
+[INVIDIOUS] https://inv.nadeko.net başarısız: Request failed with status code 403
+[PIPED] https://api.piped.privacydev.net başarısız: getaddrinfo ENOTFOUND api.piped.privacydev.net
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[PIPED] https://pipedapi.r4fo.com başarısız: getaddrinfo ENOTFOUND pipedapi.r4fo.com
 [ADIM-3] Cobalt deneniyor...
-[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[ADIM-2] Piped deneniyor...
-[COBALT] https://cobalt.canine.tools → 405: ""
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
 [COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[INVIDIOUS] https://yewtu.be başarısız: Request failed with status code 403
+[ADIM-2] Piped deneniyor...
+[PIPED] https://pipedapi.r4fo.com başarısız: getaddrinfo ENOTFOUND pipedapi.r4fo.com
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[ADIM-3.5] Generic API'ler deneniyor...
+[GENERIC_API] AEMT deneniyor...
+[GENERIC_API] AEMT başarısız: getaddrinfo ENOTFOUND aemt.me
+[GENERIC_API] BK9 deneniyor...
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[GENERIC_API] Ryzen deneniyor...
+[GENERIC_API] Ryzen başarısız: getaddrinfo ENOTFOUND api.ryzendark.com
 [ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [ADIM-3] Cobalt deneniyor...
 [COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[ADIM-3.5] Generic API'ler deneniyor...
+[GENERIC_API] AEMT deneniyor...
+[GENERIC_API] AEMT başarısız: getaddrinfo ENOTFOUND aemt.me
+[GENERIC_API] BK9 deneniyor...
+[GENERIC_API] Ryzen deneniyor...
+[GENERIC_API] Ryzen başarısız: getaddrinfo ENOTFOUND api.ryzendark.com
 [ADIM-4] youtubei.js deneniyor...
-[COBALT] https://cobalt.canine.tools → 405: ""
+[youtubei.js] Format seçim hatası: Streaming data not available
 [ADIM-5] yt-dlp: client=tv_embedded
-[REQ] 2026-03-26T09:08:59.574Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.35 | Country: UNKNOWN
 [ADIM-5] yt-dlp: client=tv_embedded
-[DEDUP] UQA0ta4aEwc zaten çözümleniyor, bekleniyor...
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
+[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] GCLD72wDLLU: Requested format is not available. Use --list-formats for a list of available formats
 [ADIM-5] yt-dlp: client=ios
+[yt-dlp] client=ios başarısız: ERROR: [youtube] 10NPVnGekyw: Requested format is not available. Use --list-formats for a list of available formats
 [ADIM-5] yt-dlp: client=ios
-[yt-dlp] client=ios başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
-[ADIM-5] yt-dlp: client=android
-[ADIM-5] yt-dlp: client=android
-[2026-03-26T09:09:06.124Z] - [STREAM] - VideoID: UQA0ta4aEwc - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[2026-03-26T09:09:06.129Z] - [STREAM] - VideoID: UQA0ta4aEwc - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-[yt-dlp] client=android başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[REQ] 2026-03-26T09:09:06.543Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.35 | Country: UNKNOWN
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[ADIM-3] Cobalt deneniyor...
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[youtubei.js] Format seçim hatası: Streaming data not available
-[COBALT] https://cobalt.canine.tools → 405: ""
-[ADIM-4] youtubei.js deneniyor...
-[ADIM-2] Piped deneniyor...
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[ADIM-5] yt-dlp: client=ios
-[yt-dlp] client=android başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[2026-03-26T09:09:16.957Z] - [STREAM] - VideoID: UQA0ta4aEwc - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[REQ] 2026-03-26T09:09:17.680Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.24 | Country: UNKNOWN
-[ADIM-2] Piped deneniyor...
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[yt-dlp] client=android başarısız: ERROR: [youtube] e__YaECyqTI: Requested format is not available. Use --list-formats for a list of available formats
-[ADIM-3] Cobalt deneniyor...
-[ADIM-4] youtubei.js deneniyor...
-[youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: client=tv_embedded
-[ADIM-2] Piped deneniyor...
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[ADIM-3] Cobalt deneniyor...
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
-[COBALT] https://cobalt.canine.tools → 405: ""
-[ADIM-5] yt-dlp: client=tv_embedded
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] eWiHX_xWa6Y: Requested format is not available. Use --list-formats for a list of available formats
-[yt-dlp] client=ios başarısız: ERROR: [youtube] eWiHX_xWa6Y: Requested format is not available. Use --list-formats for a list of available formats
-[2026-03-26T09:09:28.532Z] - [STREAM] - VideoID: UQA0ta4aEwc - Error: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-STREAM ERROR: Command failed with exit code 1: yt-dlp https://www.youtube.com/watch?v=UQA0ta4aEwc --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=android;pot_token_server=http://localhost:4416
-ERROR: [youtube] UQA0ta4aEwc: Requested format is not available. Use --list-formats for a list of available formats
-[REQ] 2026-03-26T09:09:28.936Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.24 | Country: UNKNOWN
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[yt-dlp] client=android başarısız: ERROR: [youtube] eWiHX_xWa6Y: Requested format is not available. Use --list-formats for a list of available formats
-[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 521
-[ADIM-3] Cobalt deneniyor...
-[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
-[COBALT] https://cobalt.canine.tools → 405: ""
-[ADIM-4] youtubei.js deneniyor...
-[REQ] 2026-03-26T09:09:33.846Z | GET /stream?videoId=UQA0ta4aEwc | IP: 157.52.106.54 | Country: UNKNOWN
+[yt-dlp] client=ios başarısız: ERROR: [youtube] GCLD72wDLLU: Requested format is not available. Use --list-formats for a list of available formats
+[ADIM-5] yt-dlp: client=android_embedded
