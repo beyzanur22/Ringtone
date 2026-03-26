@@ -953,7 +953,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   // En yüksek ban riski — sadece diğerleri başarısız olduysa
   // Sadece 2 güvenli client dene (tümünü deneme, dikkat çeker)
   if (Date.now() >= ytDlpCircuitBreakerUntil) {
-    const safeClients = ["tv_embedded", "ios"]; // sadece en güvenli 2 client
+    const safeClients = ["web", "mweb"]; // Standart web client'lar, DRM veya DASH hatası vermez
     
     for (const client of safeClients) {
       let usedProxy = null;
