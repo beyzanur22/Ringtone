@@ -1,26 +1,19 @@
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/9e4a425e-3c62-486b-90e5-a70fffff1b95/vol_3vibbjo3yyghyg9v
-Starting Container
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/6d9bb9e0-5b3f-453b-909a-48ce75614a20/vol_3vibbjo3yyghyg9v
 🔑 PoToken Server başlatılıyor (port 4416)...
 ✅ PoToken Server PID: 3 (npx)
+Starting Container
 ⚠️ PoToken Server başlatıldı ama kapandı
 🎵 Node.js uygulaması başlatılıyor...
-[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
-[INIT] Removed UTF-8 BOM from cookies.txt
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
 [PROXY_POOL] Hiç proxy bulunamadı — otomatik keşif denenecek
 ==================================================
 🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
-Redis: bağlı ✓
 Proxy Pool: 0 adet
 OAuth: yok ✗
-Cookies: mevcut ✓
-==================================================
-[Redis] Bağlantı başarılı
-[INVIDIOUS] Instance listesi alınamadı: 
+Top50 cache hazır ✓
 [INVIDIOUS] Hardcoded 5 instance kullanılıyor
 [COBALT] instances.cobalt.best başarısız: Request failed with status code 404
-[COBALT] Toplam 4 aktif instance
 [youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
-Top50 cache hazır ✓
 [PIPED] Instance listesi alınamadı: certificate has expired
 [PIPED] Hardcoded 4 instance kullanılıyor
 [PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
@@ -30,82 +23,54 @@ Top50 cache hazır ✓
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
 [ADIM-3] Cobalt deneniyor...
 [COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
 [COBALT] https://cobalt.canine.tools → 405: ""
-[REQ] 2026-03-26T08:45:47.543Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.26 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
 [COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
-[ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[ADIM-5] yt-dlp: client=tv_embedded
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
-[ADIM-5] yt-dlp: client=ios
-[REQ] 2026-03-26T08:45:53.085Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[REQ] 2026-03-26T08:45:54.194Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
-[REQ] 2026-03-26T08:45:55.265Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:45:56.333Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[ADIM-2] Piped deneniyor...
+[REQ] 2026-03-26T08:52:37.334Z | GET /stream?videoId=WK_PlcL8Tzo | IP: 157.52.106.34 | Country: UNKNOWN
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[REQ] 2026-03-26T08:45:57.389Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[ADIM-3] Cobalt deneniyor...
+[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
+[ADIM-5] yt-dlp: client=web
+[youtubei.js] Format seçim hatası: Streaming data not available
+[ADIM-5] yt-dlp: client=web
+[ADIM-5] yt-dlp: client=mweb
+[DEDUP] WK_PlcL8Tzo zaten çözümleniyor, bekleniyor...
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] RBaSiVjtKR4: Requested format is not available. Use --list-formats for a list of available formats
+[REQ] 2026-03-26T08:52:49.229Z | GET /stream?videoId=WK_PlcL8Tzo | IP: 157.52.106.22 | Country: UNKNOWN
+[ADIM-2] Piped deneniyor...
+[ADIM-2] Piped deneniyor...
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
+[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
+[PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
+[COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
 [COBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
 [COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
 [COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-[REQ] 2026-03-26T08:45:58.465Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
 [COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt.canine.tools → 405: ""
 [ADIM-4] youtubei.js deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[REQ] 2026-03-26T08:45:59.521Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[ADIM-5] yt-dlp: client=tv_embedded
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:46:00.632Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:46:01.696Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[yt-dlp] client=tv_embedded başarısız: ERROR: [youtube] e__YaECyqTI: Requested format is not available. Use --list-formats for a list of available formats
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-AUDIO CACHE HIT: AMk786WeXDE
-[REQ] 2026-03-26T08:46:02.753Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-5] yt-dlp: client=ios
-[REQ] 2026-03-26T08:46:03.823Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:46:04.962Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: Requested format is not available. Use --list-formats for a list of available formats
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[REQ] 2026-03-26T08:46:06.116Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[ADIM-2] Piped deneniyor...
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[PIPED] https://pipedapi.moomoo.me başarısız: Request failed with status code 502
-[REQ] 2026-03-26T08:46:07.181Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-AUDIO CACHE HIT: AMk786WeXDE
-[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
-[DISK_CACHE_ERR] audio_AMk786WeXDE.m4a çok küçük (2920 bytes), siliniyor.
-[ADIM-3] Cobalt deneniyor...
+[ADIM-5] yt-dlp: client=web
+[yt-dlp] client=web başarısız: ERROR: [youtube] WK_PlcL8Tzo: Requested format is not available. Use --list-formats for a list of available formats
+[ADIM-5] yt-dlp: client=mweb
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] WK_PlcL8Tzo: Requested format is not available. Use --list-formats for a list of available formats
+STREAM ERROR: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=WK_PlcL8Tzo --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 --cookies cookies.txt --extractor-args youtube:player_client=mweb
+ERROR: [youtube] WK_PlcL8Tzo: Requested format is not available. Use --list-formats for a list of available formats
 [PIPED] https://pipedapi.kavin.rocks başarısız: Request failed with status code 403
-[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[ADIM-3] Cobalt deneniyor...
+[PIPED] https://pipedapi.syncpundit.io başarısız: Request failed with status code 404
 [COBALT] https://api.cobalt.tools → 400: {"code":"error.api.auth.jwt.missing"}
-AUDIO CACHE HIT: AMk786WeXDE
-[REQ] 2026-03-26T08:46:08.227Z | GET /stream?videoId=AMk786WeXDE | IP: 157.52.106.51 | Country: UNKNOWN
-[COBALT] https://cobalt.canine.tools → 405: ""
 [COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[COBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://cobalt.canine.tools → 405: ""
+[COBALT] https://co.eepy.today → 400: {"code":"error.api.fetch.fail","context":{"service":"youtube"}}
+[COBALT] https://cobalt-api.kwiatekmiki.com başarısız: Request failed with status code 530
+[ADIM-5] yt-dlp: client=web
+[ADIM-5] yt-dlp: client=web
+[ADIM-5] yt-dlp: client=mweb
+[yt-dlp] client=mweb başarısız: ERROR: [youtube] eWiHX_xWa6Y: Requested format is not available. Use --list-formats for a list of available formats
+ERROR: [youtube] WK_PlcL8Tzo: Requested format is not available. Use --list-formats for a list of available formats

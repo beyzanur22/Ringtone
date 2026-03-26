@@ -3,28 +3,24 @@ set -e
 
 echo "🔑 PoToken Server başlatılıyor (port 4416)..."
 
-# bgutil-ytdlp-pot-provider HTTP server'ı arka planda çalıştır
-# Önce npx ile dene, sonra global kurulumu
+# Global paketi veya npx'i kullanarak başlat
 if command -v bgutil-ytdlp-pot-provider &> /dev/null; then
   bgutil-ytdlp-pot-provider --port 4416 &
   POT_PID=$!
-  echo "✅ PoToken Server PID: $POT_PID (global)"
-  sleep 2
-elif npx bgutil-ytdlp-pot-provider --port 4416 &> /dev/null & then
-  POT_PID=$!
-  echo "✅ PoToken Server PID: $POT_PID (npx)"
-  sleep 3
+  echo "✅ PoToken Server başlatıldı (PID: $POT_PID)"
 else
-  echo "⚠️ PoToken server başlatılamadı — tv_embedded/android_vr client'larla devam ediliyor"
+  npx bgutil-ytdlp-pot-provider --port 4416 &
+  POT_PID=$!
+  echo "✅ PoToken Server başlatıldı (npx PID: $POT_PID)"
 fi
 
+sleep 5
+
 # PoToken server kontrolü
-if [ ! -z "$POT_PID" ]; then
-  if kill -0 $POT_PID 2>/dev/null; then
-    echo "✅ PoToken Server çalışıyor"
-  else
-    echo "⚠️ PoToken Server başlatıldı ama kapandı"
-  fi
+if kill -0 $POT_PID 2>/dev/null; then
+  echo "✅ PoToken Server aktif ve çalışıyor"
+else
+  echo "⚠️ PoToken Server başlatılamadı veya durdu. Loglar kontrol edilmeli."
 fi
 
 echo "🎵 Node.js uygulaması başlatılıyor..."

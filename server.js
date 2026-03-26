@@ -953,7 +953,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   // En yüksek ban riski — sadece diğerleri başarısız olduysa
   // Sadece 2 güvenli client dene (tümünü deneme, dikkat çeker)
   if (Date.now() >= ytDlpCircuitBreakerUntil) {
-    const safeClients = ["web", "mweb"]; // Standart web client'lar, DRM veya DASH hatası vermez
+    const safeClients = ["tv_embedded", "ios", "android"]; // PoToken ile en güvenli client'lar
     
     for (const client of safeClients) {
       let usedProxy = null;
@@ -986,7 +986,8 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           console.log(`[yt-dlp] Proxy: ${proxyDisplay}`);
         }
 
-        opts.extractorArgs = `youtube:player_client=${client}`;
+        // PoToken Server explicitly passed to extractor
+        opts.extractorArgs = `youtube:player_client=${client};pot_token_server=http://localhost:4416`;
 
         console.log(`[ADIM-5] yt-dlp: client=${client}`);
         const result = await ytdlp(videoUrl, opts);
