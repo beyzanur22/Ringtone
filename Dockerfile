@@ -11,21 +11,10 @@ RUN pip3 install --no-cache-dir --break-system-packages \
       yt-dlp \
       bgutil-ytdlp-pot-provider
 
-# PoToken HTTP Server kurulumu (Rust binary — tek dosya, hızlı)
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "amd64" ]; then \
-      curl -fsSL -o /usr/local/bin/pot-server \
-        "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/pot_provider-linux-x64" && \
-      chmod +x /usr/local/bin/pot-server; \
-    elif [ "$ARCH" = "arm64" ]; then \
-      curl -fsSL -o /usr/local/bin/pot-server \
-        "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/pot_provider-linux-arm64" && \
-      chmod +x /usr/local/bin/pot-server; \
-    else \
-      echo "PoToken server: unsupported arch $ARCH"; \
-    fi
+# PoToken HTTP Server — npm global ile kur (binary download yerine daha güvenilir)
+RUN npm install -g bgutil-ytdlp-pot-provider || true
 
-# yt-dlp güncellemesi
+# yt-dlp güncelle
 RUN yt-dlp --update || true
 
 WORKDIR /app
@@ -38,10 +27,9 @@ COPY . .
 # Cache dizini
 RUN mkdir -p /app/cache /app/yt_cache
 
-# Entrypoint dosyasını çalıştırılabilir yap
+# Entrypoint'u çalıştırılabilir yap
 RUN chmod +x /app/entrypoint.sh 2>/dev/null || true
 
 EXPOSE 5000
 
-# PoToken server + Node.js birlikte başlat
 CMD ["bash", "/app/entrypoint.sh"]

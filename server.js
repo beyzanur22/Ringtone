@@ -257,9 +257,9 @@ const randomJitter = async (min = 300, max = 1200) => {
 // ============================================================
 // YT-DLP CLIENT SIRALAMASI
 // ============================================================
-// web_creator ve mweb datacenter IP'lerde en iyi sonuç verir
-// ios client imza gerektirmez, bazen bypass eder
-const PLAYER_CLIENTS = ["web_creator", "mweb", "ios", "web"];
+// web_creator ve mweb datacenter IP'lerde PoToken gerektirir
+// tv_embedded ve android_vr PoToken GEREKTİRMEZ — önce bunları dene
+const PLAYER_CLIENTS = ["tv_embedded", "android_vr", "ios", "web_creator", "mweb", "web"];
 
 // ============================================================
 // COOKIE YÖNETİMİ
@@ -365,7 +365,7 @@ async function resolveViaCobalt(videoId, type) {
         return res.data.url;
       }
     } catch (e) {
-      // Sessizce devam
+      console.warn(`[COBALT] ${instance} başarısız:`, e.message?.slice(0, 100));
     }
   }
   stats.cobaltFail++;
@@ -588,7 +588,7 @@ async function resolveViaInvidious(videoId, type) {
         return chosen.url;
       }
     } catch (e) {
-      // Sessizce devam et
+      console.warn(`[INVIDIOUS] ${instance} başarısız:`, e.message?.slice(0, 120));
     }
   }
   
@@ -626,7 +626,7 @@ async function resolveViaPiped(videoId, type) {
         return chosen.url;
       }
     } catch (e) {
-      // Sessizce devam et
+      console.warn(`[PIPED] ${instance} başarısız:`, e.message?.slice(0, 120));
     }
   }
   

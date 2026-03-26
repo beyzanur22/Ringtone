@@ -1,112 +1,111 @@
-[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
-==================================================
-==================================================
-🎵 Ringtone Backend v3.0 (PoToken) — Port 8080
-Redis: bağlı ✓
-Proxy Pool: 0 adet
-OAuth: yok ✗
-Cookies: yok ✗
-[Redis] Bağlantı başarılı
-Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/f089ee45-dcff-48d3-a821-7fdb2180235f/vol_3vibbjo3yyghyg9v
-Starting Container
-[COBALT] Instance listesi alınamadı: Request failed with status code 404
-[youtubei.js] oauth_credentials.json bulunamadı, anonim modda başlatılıyor
-Top50 cache hazır ✓
-[INVIDIOUS] 0 sağlıklı instance bulundu
-[PIPED] Instance listesi alınamadı: Request failed with status code 404
-[PRE-CACHE] Top 20 şarkı arka planda indiriliyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:37.320Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:38.703Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[FALLBACK] Cobalt deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:40.595Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:40.764Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=ios başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] RBaSiVjtKR4: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Cobalt deneniyor...
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:42.318Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:44.710Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Cobalt deneniyor...
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:46.104Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:46.273Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:47.841Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:48.245Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] e__YaECyqTI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Cobalt deneniyor...
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:49.957Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:50.282Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:51.477Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:51.851Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=web başarısız: ERROR: [youtube] eWiHX_xWa6Y: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Cobalt deneniyor...
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:52.895Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:53.064Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
+[youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
+[2026-03-26T06:53:54.163Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:53:55.563Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=ios başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
-[yt-dlp] client=web başarısız: ERROR: [youtube] IirESJ4AQlM: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[2026-03-26T06:53:56.867Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
+[REQ] 2026-03-26T06:53:57.181Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=ios başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] GCLD72wDLLU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
-[youtubei.js] OAuth ile deneniyor...
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[FALLBACK] Cobalt deneniyor...
-[yt-dlp] client=web başarısız: ERROR: [youtube] alUx2fAOE4A: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[FALLBACK] Invidious deneniyor...
-[FALLBACK] Piped deneniyor...
-[REQ] 2026-03-26T06:44:19.784Z | GET /config | IP: 167.82.173.35 | Country: UNKNOWN
-[REQ] 2026-03-26T06:44:19.787Z | GET /blocked-channels | IP: 167.82.173.78 | Country: UNKNOWN
-[REQ] 2026-03-26T06:44:19.854Z | GET /top50 | IP: 167.82.173.81 | Country: UNKNOWN
+[2026-03-26T06:53:58.213Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:54:00.608Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
 [youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
-[yt-dlp+PoToken] Deneniyor: client=web_creator, format=bestaudio/best
-[yt-dlp+PoToken] Deneniyor: client=mweb, format=bestaudio/best
-[yt-dlp] client=web_creator başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp] client=mweb başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=ios, format=bestaudio/best
-[yt-dlp] client=ios başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
-[yt-dlp+PoToken] Deneniyor: client=web, format=bestaudio/best
-[yt-dlp] client=web başarısız: ERROR: [youtube] HtVcltkn3HI: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github
+[yt-dlp] Circuit breaker aktif, atlanıyor.
 [FALLBACK] Cobalt deneniyor...
 [FALLBACK] Invidious deneniyor...
 [FALLBACK] Piped deneniyor...
+[2026-03-26T06:54:02.006Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+[REQ] 2026-03-26T06:54:02.321Z | GET /stream?videoId=HtVcltkn3HI | IP: 167.82.173.74 | Country: UNKNOWN
+[youtubei.js] OAuth ile deneniyor...
 [youtubei.js] Format seçim hatası: Streaming data not available
+[yt-dlp] Circuit breaker aktif, atlanıyor.
+[FALLBACK] Cobalt deneniyor...
+[FALLBACK] Invidious deneniyor...
+[FALLBACK] Piped deneniyor...
+[2026-03-26T06:54:03.471Z] - [STREAM] - VideoID: HtVcltkn3HI - Error: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
+STREAM ERROR: Tüm motorlar başarısız oldu (youtubei.js, yt-dlp+PoToken, Cobalt, Invidious, Piped)
