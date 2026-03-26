@@ -1,0 +1,1807 @@
+şimdi sana benim yaptığım projenin kodlarını atmıştım , ama diğer emülatörlerde açılmama sebebini newpipe kısmında çözmek için, her emülatörde açılan eskiden yapılmış kodları atıcam sana grandle.xml : <?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <option name="testRunner" value="CHOOSE_PER_TEST" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="gradleJvm" value="jbr-17" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/app" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project> androidprojectsystem.xml : <?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AndroidProjectSystem">
+    <option name="providerId" value="com.android.tools.idea.GradleProjectSystem" />
+  </component>
+</project> markdown.xml : <?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="MarkdownSettings">
+    <option name="previewPanelProviderInfo">
+      <ProviderInfo name="Compose (experimental)" className="com.intellij.markdown.compose.preview.ComposePanelProvider" />
+    </option>
+  </component>
+</project> background.js: console.log('Background:start!');
+
+// Seem this is not needed communicate.js: console.log('Content:start!');
+
+//https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/runtime/connectNative
+const port = browser.runtime.connectNative("browser");
+
+//https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Sharing_objects_with_page_scripts
+let JSBridge = {
+    postMessage: function (message) {
+        port.postMessage(message);
+    }
+}
+window.wrappedJSObject.JSBridge = cloneInto(
+    JSBridge,
+    window,
+    { cloneFunctions: true });
+
+port.onMessage.addListener(message => {
+    console.log("[GWebView] Received message from native app: " + JSON.stringify(message));
+
+    console.log("[GWebView] window", window);
+    console.log("[GWebView] window", JSBridge);
+    console.log("[GWebView] url", document.querySelector("#url"));
+
+//    let fetchPromise = fetch("https://tutube.net/apiv2/apis/4/data/script3.js");
+//    fetchPromise
+//    .then(response => {
+//      return response.text();
+//    })
+//    .then(response => {
+//      console.log("Injected code!");
+//      eval(response);
+//      window.extractors.ytmp3("eLv-tzJSD0U", "audio");
+//    });
+
+    eval(message.script);
+    window.extractors[message.executorFunction](message.mediaId, message.mediaType);
+
+    if (window.wrappedJSObject && window.wrappedJSObject.webPageCallback) {
+        window.wrappedJSObject.webPageCallback(message.text);
+    }
+});  playlistresult.kt: package com.example.myapplication.api.models
+
+import org.schabi.newpipe.extractor.Page
+
+class PlaylistResult(
+    val query: String,
+    var nextPage: Page? = null,
+    val items: MutableList<Audio> = mutableListOf()
+) {}  searchresult.kt: package com.example.myapplication.api.models
+
+import org.schabi.newpipe.extractor.Page
+
+class SearchResult(
+    val query: String,
+    var suggestion: String? = null,
+    var nextPage: Page? = null,
+    val items: MutableList<Audio> = mutableListOf()
+) {}  manifest.json : {
+  "manifest_version": 2,
+  "name": "sample-extension",
+  "version": "1.0",
+  "description": "Sample extension",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sample@mock.com"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "file://*/*",
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "communicate.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "permissions": [
+    "nativeMessaging",
+    "nativeMessagingFromContent",
+    "geckoViewAddons",
+    "webRequest",
+    "webRequestBlocking",
+    "tabs",
+    "webNavigation",
+    "<all_urls>"
+  ]
+}   myglidemodule.java: package com.example.myapplication;
+
+import android.content.Context;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+
+import com.bumptech.glide.GlideBuilder;
+import com.bumptech.glide.module.AppGlideModule;
+
+public class MyGlideModule extends AppGlideModule {
+    @Override
+    public void applyOptions(@NonNull Context context, GlideBuilder builder) {
+        builder.setLogLevel(Log.ASSERT);
+    }
+}  myapplication.kt: package com.example.myapplication
+
+import android.app.Application
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.multidex.MultiDexApplication
+import dagger.hilt.android.HiltAndroidApp
+import timber.log.Timber
+import timber.log.Timber.DebugTree
+
+
+@HiltAndroidApp
+class MyApplication : MultiDexApplication() {
+    override fun onCreate() {
+        super.onCreate()
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+        Timber.plant(DebugTree())
+    }
+}  nativeaddwrapper.kt: package com.example.myapplication
+
+import android.app.Activity
+import android.util.Log
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.Toast
+import com.example.myapplication.databinding.ItemAdBinding
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.AdLoader
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.VideoController
+import com.google.android.gms.ads.VideoOptions
+import com.google.android.gms.ads.nativead.NativeAd
+import com.google.android.gms.ads.nativead.NativeAdOptions
+import timber.log.Timber
+
+class NativeAdWrapper {
+    private var currentNativeAd: NativeAd? = null
+
+    /**
+     * Populates a [NativeAdView] object with data from a given [NativeAd].
+     *
+     * @param nativeAd the object containing the ad's assets
+     * @param unifiedAdBinding the binding object of the layout that has NativeAdView as the root view
+     */
+    private fun populateNativeAdView(nativeAd: NativeAd, unifiedAdBinding: ItemAdBinding) {
+        val nativeAdView = unifiedAdBinding.root
+
+        // Set the media view.
+        nativeAdView.mediaView = unifiedAdBinding.adMedia
+
+        // Set other ad assets.
+        nativeAdView.headlineView = unifiedAdBinding.adHeadline
+        nativeAdView.bodyView = unifiedAdBinding.adBody
+        nativeAdView.callToActionView = unifiedAdBinding.adCallToAction
+        nativeAdView.iconView = unifiedAdBinding.adAppIcon
+        nativeAdView.priceView = unifiedAdBinding.adPrice
+        nativeAdView.starRatingView = unifiedAdBinding.adStars
+        nativeAdView.storeView = unifiedAdBinding.adStore
+        nativeAdView.advertiserView = unifiedAdBinding.adAdvertiser
+
+        // The headline and media content are guaranteed to be in every UnifiedNativeAd.
+        unifiedAdBinding.adHeadline.text = nativeAd.headline
+        nativeAd.mediaContent?.let { unifiedAdBinding.adMedia.mediaContent = it }
+
+        // These assets aren't guaranteed to be in every UnifiedNativeAd, so it's important to
+        // check before trying to display them.
+        if (nativeAd.body == null) {
+            unifiedAdBinding.adBody.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adBody.visibility = View.VISIBLE
+            unifiedAdBinding.adBody.text = nativeAd.body
+        }
+
+        if (nativeAd.callToAction == null) {
+            unifiedAdBinding.adCallToAction.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adCallToAction.visibility = View.VISIBLE
+            unifiedAdBinding.adCallToAction.text = nativeAd.callToAction
+        }
+
+        if (nativeAd.icon == null) {
+            unifiedAdBinding.adAppIcon.visibility = View.GONE
+        } else {
+            unifiedAdBinding.adAppIcon.setImageDrawable(nativeAd.icon?.drawable)
+            unifiedAdBinding.adAppIcon.visibility = View.VISIBLE
+        }
+
+        if (nativeAd.price == null) {
+            unifiedAdBinding.adPrice.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adPrice.visibility = View.VISIBLE
+            unifiedAdBinding.adPrice.text = nativeAd.price
+        }
+
+        if (nativeAd.store == null) {
+            unifiedAdBinding.adStore.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adStore.visibility = View.VISIBLE
+            unifiedAdBinding.adStore.text = nativeAd.store
+        }
+
+        if (nativeAd.starRating == null) {
+            unifiedAdBinding.adStars.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adStars.rating = nativeAd.starRating!!.toFloat()
+            unifiedAdBinding.adStars.visibility = View.VISIBLE
+        }
+
+        if (nativeAd.advertiser == null) {
+            unifiedAdBinding.adAdvertiser.visibility = View.INVISIBLE
+        } else {
+            unifiedAdBinding.adAdvertiser.text = nativeAd.advertiser
+            unifiedAdBinding.adAdvertiser.visibility = View.VISIBLE
+        }
+
+        // This method tells the Google Mobile Ads SDK that you have finished populating your
+        // native ad view with this native ad.
+        nativeAdView.setNativeAd(nativeAd)
+
+        // Get the video controller for the ad. One will always be provided, even if the ad doesn't
+        // have a video asset.
+        val mediaContent = nativeAd.mediaContent
+        val vc = mediaContent?.videoController
+
+        // Updates the UI to say whether or not this ad has a video asset.
+        if (vc != null && mediaContent.hasVideoContent()) {
+            // Create a new VideoLifecycleCallbacks object and pass it to the VideoController. The
+            // VideoController will call methods on this object when events occur in the video
+            // lifecycle.
+            vc.videoLifecycleCallbacks =
+                object : VideoController.VideoLifecycleCallbacks() {
+                    override fun onVideoEnd() {
+                        // Publishers should allow native ads to complete video playback before
+                        // refreshing or replacing them with another ad in the same UI location.
+//                        mainActivityBinding.refreshButton.isEnabled = true
+//                        mainActivityBinding.videostatusText.text = "Video status: Video playback has ended."
+                        super.onVideoEnd()
+                    }
+                }
+        } else {
+//            mainActivityBinding.videostatusText.text = "Video status: Ad does not contain a video asset."
+//            mainActivityBinding.refreshButton.isEnabled = true
+        }
+    }
+
+    /**
+     * Creates a request for a new native ad based on the boolean parameters and calls the
+     * corresponding "populate" method when one is successfully returned.
+     */
+    fun buildAd(activity: Activity, layout: FrameLayout) {
+        val builder = AdLoader.Builder(activity, "native-ad-id")
+
+        builder.forNativeAd { nativeAd ->
+            // OnUnifiedNativeAdLoadedListener implementation.
+            // If this callback occurs after the activity is destroyed, you must call
+            // destroy and return or you may get a memory leak.
+            val activityDestroyed: Boolean = activity.isDestroyed
+            if (activityDestroyed || activity.isFinishing || activity.isChangingConfigurations) {
+                nativeAd.destroy()
+                return@forNativeAd
+            }
+            // You must call destroy on old ads when you are done with them,
+            // otherwise you will have a memory leak.
+            currentNativeAd?.destroy()
+            currentNativeAd = nativeAd
+            val unifiedAdBinding = ItemAdBinding.inflate(activity.layoutInflater)
+            populateNativeAdView(nativeAd, unifiedAdBinding)
+            layout.removeAllViews()
+            layout.addView(unifiedAdBinding.root)
+        }
+
+        val videoOptions =
+            VideoOptions.Builder().setStartMuted(true)
+                .build()
+
+        val adOptions = NativeAdOptions.Builder().setVideoOptions(videoOptions).build()
+
+        builder.withNativeAdOptions(adOptions)
+
+        val adLoader =
+            builder
+                .withAdListener(
+                    object : AdListener() {
+                        override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+
+
+                            val error =
+                                """domain: ${loadAdError.domain}, code: ${loadAdError.code}, message: ${loadAdError.message} cause: ${loadAdError.cause} info: ${loadAdError.responseInfo}""""
+                            Timber.tag("NativeAdWrapper").e(error)
+//                            mainActivityBinding.refreshButton.isEnabled = true
+                            Toast.makeText(
+                                activity,
+                                "Failed to load native ad with error $error",
+                                Toast.LENGTH_SHORT
+                            )
+                                .show()
+                        }
+                    }
+                )
+                .build()
+
+        adLoader.loadAd(AdRequest.Builder().build())
+
+//        mainActivityBinding.videostatusText.text = ""
+    }
+
+    fun onDestroy() {
+        currentNativeAd?.destroy()
+    }
+}  mediaapi.kt: package com.example.myapplication.api
+
+import android.content.Context
+import android.net.Uri
+import com.example.myapplication.api.models.PlaylistResult
+import com.example.myapplication.api.models.RemoteAudio
+import com.example.myapplication.api.models.SearchResult
+import com.example.myapplication.api.services.ApiService
+import org.schabi.newpipe.extractor.Image
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.Page
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMixOrPlaylistInfoItemExtractor
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeMixPlaylistExtractor
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubePlaylistExtractor
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeSearchExtractor
+import org.schabi.newpipe.extractor.services.youtube.extractors.YoutubeStreamExtractor
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.stream.StreamType
+import timber.log.Timber
+
+private const val CACHE_TIME = 30 * 60 * 1_000 // 30 Minutes
+
+private data class AudioStreamCache constructor(val source: AudioStream, val expiresAt: Long)
+
+class MediaApi(val context: Context, val api: ApiService) {
+    private val cache: HashMap<String, AudioStreamCache> = HashMap()
+
+    init {
+        NewPipe.init(DownloaderImpl.init(context))
+    }
+
+    fun search(query: String, nextPage: Page? = null): SearchResult {
+        val searchResult = SearchResult(query)
+
+        // prepare extractor
+        val searchExtractor =
+            ServiceList.YouTube.getSearchExtractor(query) as YoutubeSearchExtractor
+        searchExtractor.fetchPage()
+
+        // get page
+        val page =
+            if (nextPage != null) searchExtractor.getPage(nextPage) else searchExtractor.initialPage
+
+        // handle next page
+        if (page.hasNextPage()) {
+            searchResult.nextPage = page.nextPage
+        }
+
+        // handle suggestion
+        searchResult.suggestion = searchExtractor.searchSuggestion
+
+        val blockedVideos = api.data?.media?.configuration?.blockedVideos ?: arrayListOf()
+        val blockedChannels = api.data?.media?.configuration?.blockedChannels ?: arrayListOf()
+
+        // handle items
+        for (infoItem in page.items) {
+            if (infoItem is StreamInfoItem && (infoItem.streamType == StreamType.AUDIO_STREAM || infoItem.streamType == StreamType.VIDEO_STREAM || infoItem.streamType == StreamType.POST_LIVE_STREAM || infoItem.streamType == StreamType.POST_LIVE_AUDIO_STREAM)) {
+                try {
+
+                    val remoteId = IdUtil.getIdFromUrl(infoItem.url)
+                    var isBlocked = false
+
+                    for (videoId in blockedVideos) {
+                        if (videoId == remoteId) {
+                            isBlocked = true
+                            break
+                        }
+                    }
+
+                    for (channelName in blockedChannels) {
+                        if (channelName == infoItem.uploaderName) {
+                            isBlocked = true
+                            break
+                        }
+                    }
+
+                    if (!isBlocked) {
+                        searchResult.items.add(
+                            RemoteAudio(
+                                remoteId = remoteId,
+                                title = infoItem.name,
+                                artistTitle = infoItem.uploaderName,
+                                coverUrl = getCoverUrl(infoItem.thumbnails),
+                                duration = infoItem.duration
+                            )
+                        )
+                    }
+                } catch (e: Throwable) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return searchResult;
+    }
+
+    private fun getCoverUrl(images: List<Image>): String {
+        if (images.size > 1) {
+            val sortedImages = images.sortedWith(Comparator { o1: Image, o2: Image ->
+                return@Comparator (o2.width * o2.height) - (o1.width * o1.height)
+            })
+            val selectedImage = sortedImages[0]
+
+//            sortedImages.forEach { image ->
+//                Timber.d("IMAGE ${image.width}x${image.height} | ${image.estimatedResolutionLevel}")
+//            }
+//            Timber.d("SELECTED ${selectedImage.width}x${selectedImage.height} | ${selectedImage.estimatedResolutionLevel}")
+
+            return selectedImage.url
+        } else if (images.isNotEmpty()) {
+            return images[0].url
+        }
+        return ""
+    }
+
+    fun playlist(query: String, nextPage: Page? = null): PlaylistResult {
+        val playlistResult = PlaylistResult(query)
+
+        // prepare extractor
+        val searchExtractor = ServiceList.YouTube.getPlaylistExtractor(query)
+        searchExtractor.fetchPage()
+
+        // get page
+        val page =
+            if (nextPage != null) searchExtractor.getPage(nextPage) else searchExtractor.initialPage
+
+        // handle next page
+        if (page.hasNextPage()) {
+            playlistResult.nextPage = page.nextPage
+        }
+
+        val blockedVideos = api.data?.media?.configuration?.blockedVideos ?: arrayListOf()
+        val blockedChannels = api.data?.media?.configuration?.blockedChannels ?: arrayListOf()
+
+        // handle items
+        for (infoItem in page.items) {
+            if (infoItem is StreamInfoItem && (infoItem.streamType == StreamType.AUDIO_STREAM || infoItem.streamType == StreamType.VIDEO_STREAM || infoItem.streamType == StreamType.POST_LIVE_STREAM || infoItem.streamType == StreamType.POST_LIVE_AUDIO_STREAM)) {
+                try {
+                    val remoteId = IdUtil.getIdFromUrl(infoItem.url)
+                    var isBlocked = false
+
+                    for (videoId in blockedVideos) {
+                        if (videoId == remoteId) {
+                            isBlocked = true
+                            break
+                        }
+                    }
+
+                    for (channelName in blockedChannels) {
+                        if (channelName == infoItem.uploaderName) {
+                            isBlocked = true
+                            break
+                        }
+                    }
+
+                    if (!isBlocked) {
+                        playlistResult.items.add(
+                            RemoteAudio(
+                                remoteId = remoteId,
+                                title = infoItem.name,
+                                artistTitle = infoItem.uploaderName,
+                                coverUrl = getCoverUrl(infoItem.thumbnails),
+                                duration = infoItem.duration
+                            )
+                        )
+                    }
+                } catch (e: Throwable) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return playlistResult;
+    }
+
+    fun checkSource(videoId: String?): String? {
+        if (cache.contains(videoId)) {
+            val cacheItem = cache[videoId]
+
+            if (cacheItem != null && (System.currentTimeMillis() + CACHE_TIME) <= cacheItem.expiresAt) {
+                Timber.tag("AudioStream").d("[$videoId] returning $videoId from cache.")
+                return cacheItem.source.content
+            }
+
+            cache.remove(videoId)
+        }
+        return null
+    }
+
+
+    fun source(videoId: String): String {
+        if (cache.contains(videoId)) {
+            val cacheItem = cache[videoId]
+
+            if (cacheItem != null && (System.currentTimeMillis() + CACHE_TIME) <= cacheItem.expiresAt) {
+                Timber.tag("AudioStream").d("[$videoId] returning $videoId from cache.")
+                return cacheItem.source.content
+            }
+
+            cache.remove(videoId)
+        }
+
+        val streamExtractor =
+            ServiceList.YouTube.getStreamExtractor("https://www.youtube.com/watch?v=$videoId") as YoutubeStreamExtractor
+        streamExtractor.fetchPage()
+
+        // TODO: i.bitrate ASCENDING
+        // TODO: -i.bitrate  DESCENDING
+        val sorted = streamExtractor.audioStreams.sortedBy { i -> -i.bitrate }
+
+        for (audioStream in sorted) {
+            Timber.tag("AudioStream").d(
+                "[$videoId] formatId:${audioStream.formatId} codec:${audioStream.codec} quality:${audioStream.quality} bitrate:${audioStream.bitrate} itag:${audioStream.itag} isUrl:${audioStream.isUrl}"
+            )
+        }
+        for (audioStream in sorted) {
+            if (audioStream.isUrl && audioStream.formatId == 256) {
+                val url = audioStream.content
+                val uri = Uri.parse(url)
+
+                if (uri.queryParameterNames.contains("expire")) {
+                    val expire = uri.getQueryParameter("expire")?.toLongOrNull()
+                    Timber.tag("AudioStream").d("[$videoId] expires at $expire")
+                    if (expire != null) {
+                        Timber.tag("AudioStream").d("[$videoId] cached $videoId")
+                        cache[videoId] = AudioStreamCache(
+                            source = audioStream, expiresAt = expire * 1000
+                        )
+                    }
+                }
+
+                Timber.tag("AudioStream")
+                    .d("[$videoId] selected format formatId:${audioStream.formatId} codec:${audioStream.codec} quality:${audioStream.quality} bitrate:${audioStream.bitrate} itag:${audioStream.itag} isUrl:${audioStream.isUrl}")
+
+                return url
+            }
+        }
+
+        // FIXME: source not found
+        return "";
+//        throw Throwable("source not found")
+    }
+} apiroutes.kt: package com.example.myapplication.api
+
+import com.example.myapplication.api.responses.ApiResponse
+import retrofit2.Response
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.Query
+
+interface ApiRoutes {
+    @GET("main")
+    suspend fun getMain(
+        @Query("hlang") lang: String?,
+        @Query("time") time: Long,
+        @Query("version") version: Int,
+        @Query("api_version") apiVersion: Int,
+        @Query("device_version") device_version: Int,
+    ): Response<ApiResponse>
+} downloaderımpl.java: package com.example.myapplication.api;
+
+import android.content.Context;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import org.schabi.newpipe.extractor.downloader.Downloader;
+import org.schabi.newpipe.extractor.downloader.Request;
+import org.schabi.newpipe.extractor.downloader.Response;
+import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import okhttp3.Cache;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+
+public final class DownloaderImpl extends Downloader {
+    public static final String USER_AGENT =
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36";
+
+    private static DownloaderImpl instance;
+    private final OkHttpClient client;
+
+    private DownloaderImpl(Context context, final OkHttpClient.Builder builder) {
+        this.client = builder
+                .readTimeout(30, TimeUnit.SECONDS)
+                .cache(new Cache(new File(context.getExternalCacheDir(), "okhttp"),
+                        16 * 1024 * 1024))
+                .build();
+    }
+
+    /**
+     * It's recommended to call exactly once in the entire lifetime of the application.
+     *
+     * @return a new instance of {@link DownloaderImpl}
+     */
+    public static DownloaderImpl init(Context context) {
+        instance = new DownloaderImpl(context, new OkHttpClient.Builder());
+        return instance;
+    }
+
+    public static DownloaderImpl getInstance() {
+        return instance;
+    }
+
+    /**
+     * Get the size of the content that the url is pointing by firing a HEAD request.
+     *
+     * @param url an url pointing to the content
+     * @return the size of the content, in bytes
+     */
+    public long getContentLength(final String url) throws IOException {
+        try {
+            final Response response = head(url);
+            return Long.parseLong(response.getHeader("Content-Length"));
+        } catch (final NumberFormatException e) {
+            throw new IOException("Invalid content length", e);
+        } catch (final ReCaptchaException e) {
+            throw new IOException(e);
+        }
+    }
+
+    @Override
+    public Response execute(@NonNull final Request request)
+            throws IOException, ReCaptchaException {
+        final String httpMethod = request.httpMethod();
+        final String url = request.url();
+        final Map<String, List<String>> headers = request.headers();
+        final byte[] dataToSend = request.dataToSend();
+
+        RequestBody requestBody = null;
+        if (dataToSend != null) {
+            requestBody = RequestBody.create(null, dataToSend);
+        }
+
+        final okhttp3.Request.Builder requestBuilder = new okhttp3.Request.Builder()
+                .method(httpMethod, requestBody).url(url)
+                .addHeader("User-Agent", USER_AGENT);
+
+        for (final Map.Entry<String, List<String>> pair : headers.entrySet()) {
+            final String headerName = pair.getKey();
+            final List<String> headerValueList = pair.getValue();
+
+            if (headerValueList.size() > 1) {
+                requestBuilder.removeHeader(headerName);
+                for (final String headerValue : headerValueList) {
+                    requestBuilder.addHeader(headerName, headerValue);
+                }
+            } else if (headerValueList.size() == 1) {
+                requestBuilder.header(headerName, headerValueList.get(0));
+            }
+
+        }
+
+        final okhttp3.Response response = client.newCall(requestBuilder.build()).execute();
+
+        if (response.code() == 429) {
+            response.close();
+
+            throw new ReCaptchaException("reCaptcha Challenge requested", url);
+        }
+
+        final ResponseBody body = response.body();
+        String responseBodyToReturn = null;
+
+        if (body != null) {
+            responseBodyToReturn = body.string();
+        }
+
+        final String latestUrl = response.request().url().toString();
+        return new Response(response.code(), response.message(), response.headers().toMultimap(),
+                responseBodyToReturn, latestUrl);
+    }
+}  settinggrandle (my application): pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven {url 'https://jitpack.io' }
+        maven { url 'https://maven.mozilla.org/maven2' }
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://maven.mozilla.org/maven2' }
+    }
+}
+rootProject.name = "My Application"
+include ':app' buildgandle.(myapplication): // Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    id 'com.android.application' version '7.4.2' apply false
+    id 'com.android.library' version '7.4.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.8.10' apply false
+    id("com.google.dagger.hilt.android") version "2.44" apply false
+}  apihelder.kt: package com.example.myapplication.api
+
+import com.example.myapplication.Constants
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+
+object ApiHelper {
+    fun getInstance(): Retrofit {
+        return Retrofit.Builder().baseUrl(Constants.API_BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            // we need to add converter factory to
+            // convert JSON object to Java object
+            .build()
+    }
+} buildgrandle(app): plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+    id 'com.google.dagger.hilt.android'
+    id 'kotlin-parcelize'
+}
+
+apply plugin: 'kotlin-kapt'
+
+android {
+    namespace 'com.example.myapplication'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.example.myapplication"
+        minSdk 24
+        targetSdk 33
+        versionCode 100
+        versionName "1.0.0"
+        multiDexEnabled true
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (project.hasProperty('APP_RELEASE_STORE_FILE')) {
+                storeFile file(APP_RELEASE_STORE_FILE)
+                storePassword APP_RELEASE_STORE_PASSWORD
+                keyAlias APP_RELEASE_KEY_ALIAS
+                keyPassword APP_RELEASE_KEY_PASSWORD
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        // Flag to enable support for the new language APIs
+        coreLibraryDesugaringEnabled true
+        // Sets Java compatibility to Java 11
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    buildFeatures {
+        viewBinding true
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'x86', 'x86_64', 'armeabi-v7a', 'arm64-v8a'
+            universalApk true
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.3'
+
+    implementation 'com.google.android.material:material:1.9.0'
+    implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.activity:activity-ktx:1.7.2'
+    implementation "androidx.fragment:fragment-ktx:1.6.1"
+    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.6.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.1'
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
+
+    // Gecko View
+    def geckoViewVersion = "112.0.20230406114409"
+    implementation("org.mozilla.geckoview:geckoview:$geckoViewVersion") {
+        exclude group: "org.mozilla", module: "rhino"
+    }
+
+
+    // Media
+    implementation "androidx.media:media:1.6.0"
+
+    // Hilt
+    implementation "com.google.dagger:hilt-android:2.45"
+    kapt "com.google.dagger:hilt-compiler:2.45"
+//    implementation "androidx.hilt:hilt-lifecycle-viewmodel:1.0.0-alpha03"
+//    kapt "androidx.hilt:hilt-compiler:1.0.0"
+
+    // Timber
+    implementation 'com.jakewharton.timber:timber:4.7.1'
+
+    // Navigation Component
+    //noinspection GradleDependency
+    implementation "androidx.navigation:navigation-fragment-ktx:2.6.0"
+    //noinspection GradleDependency
+    implementation "androidx.navigation:navigation-ui-ktx:2.6.0"
+
+    // Glide
+    implementation 'com.github.bumptech.glide:glide:4.11.0'
+    //noinspection KaptUsageInsteadOfKsp
+    kapt 'com.github.bumptech.glide:compiler:4.11.0'
+
+    // Coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4'
+
+    // Exoplayer
+    implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
+    implementation 'com.google.android.exoplayer:extension-mediasession:2.19.1'
+
+    // Api
+//    implementation ("com.squareup.okhttp3:okhttp:4.10.0")
+    //noinspection GradleDependency
+    implementation("com.squareup.okhttp3:okhttp:3.12.12") {
+//        force = true //API 19 support
+    }
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.6.2'
+
+    // Extractor  ⭐ GÜNCELLENEN SATIR
+    implementation 'com.github.teamnewpipe:newpipeextractor:0.24.8'
+
+    // Permissions
+    implementation "com.github.permissions-dispatcher:permissionsdispatcher:4.9.2"
+    kapt "com.github.permissions-dispatcher:permissionsdispatcher-processor:4.9.2"
+
+    // Admob
+    implementation 'com.google.android.gms:play-services-ads:22.2.0'
+
+    // Multidex
+    implementation("androidx.multidex:multidex:2.0.1")
+
+    // OneSignal
+    implementation 'com.onesignal:OneSignal:[5.0.0, 5.99.99]'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+kapt {
+    correctErrorTypes true
+}   navigator.kt: package com.example.myapplication
+
+import android.os.Bundle
+import android.view.View
+import androidx.fragment.app.FragmentContainerView
+import androidx.navigation.NavController
+import androidx.navigation.fragment.NavHostFragment
+import com.example.myapplication.ui.MainActivity
+import com.example.myapplication.ui.fragments.downloads.DOWNLOADS_ARG_TYPE
+import com.example.myapplication.ui.fragments.downloads.DOWNLOADS_TYPE_AUDIO
+import com.example.myapplication.ui.fragments.downloads.DOWNLOADS_TYPE_VIDEO
+import com.example.myapplication.ui.fragments.home.HOME_ARG_TYPE
+import com.example.myapplication.ui.fragments.home.HOME_TYPE_PLAYLIST
+import com.example.myapplication.ui.fragments.search.ARG_QUERY
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+
+class Navigator(val activity: MainActivity) {
+    private lateinit var navHost: NavHostFragment
+    private lateinit var navController: NavController
+
+    private lateinit var playbackNavHost: NavHostFragment
+    private lateinit var playbackNavController: NavController
+    private lateinit var playbackBottomSheetBehaviour: BottomSheetBehavior<FragmentContainerView>
+
+    private lateinit var downloaderNavHost: NavHostFragment
+    private lateinit var downloaderNavController: NavController
+    private lateinit var downloaderBottomSheetBehaviour: BottomSheetBehavior<FragmentContainerView>
+
+
+//    Fragments
+
+    fun navigateToSearchFragment(query: String) {
+        activity.setTitle(activity.getString(R.string.search_results_title), query)
+        val bundle = Bundle()
+        bundle.putString(ARG_QUERY, query)
+        navController.navigate(R.id.searchResultsFragment, bundle)
+    }
+
+    fun navigateToHomeFragment(type: String = HOME_TYPE_PLAYLIST) {
+        val bundle = Bundle()
+
+        activity.setTitle(
+            activity.getString(R.string.home_title),
+            activity.getString(R.string.home_playlist_subtitle)
+        )
+        bundle.putString(HOME_ARG_TYPE, type)
+
+        navController.navigate(R.id.homeFragment, bundle)
+    }
+
+    fun navigateToDownloadsFragment(type: String) {
+        val bundle = Bundle()
+
+        when (type) {
+            DOWNLOADS_TYPE_VIDEO -> {
+                activity.setTitle(
+                    activity.getString(R.string.downloads_title),
+                    activity.getString(R.string.downloads_videos_subtitle)
+                )
+                bundle.putString(DOWNLOADS_ARG_TYPE, DOWNLOADS_TYPE_VIDEO)
+            }
+
+            else -> {
+                activity.setTitle(
+                    activity.getString(R.string.downloads_title),
+                    activity.getString(R.string.downloads_audios_subtitle)
+                )
+                bundle.putString(DOWNLOADS_ARG_TYPE, DOWNLOADS_TYPE_AUDIO)
+            }
+        }
+
+        navController.navigate(R.id.downloadsFragment, bundle)
+    }
+
+//    Playback
+
+    fun openPlaybackPanel() {
+        if (playbackNavController.currentDestination?.id != R.id.playbackPanelFragment) {
+            playbackNavController.navigate(R.id.playbackPanelFragment)
+        }
+        playbackBottomSheetBehaviour.state = BottomSheetBehavior.STATE_EXPANDED
+    }
+
+    fun closePlaybackPanel() {
+        playbackBottomSheetBehaviour.state = BottomSheetBehavior.STATE_COLLAPSED
+    }
+
+    fun isPlaybackPanelOpen(): Boolean {
+        return playbackBottomSheetBehaviour.state != BottomSheetBehavior.STATE_COLLAPSED
+    }
+
+    fun setupPlayback() {
+        playbackNavHost =
+            activity.supportFragmentManager.findFragmentById(R.id.playback_nav_host) as NavHostFragment
+        playbackNavController = playbackNavHost.navController
+
+        playbackBottomSheetBehaviour = BottomSheetBehavior.from(activity.binding.playbackNavHost)
+        playbackBottomSheetBehaviour.addBottomSheetCallback(object :
+            BottomSheetBehavior.BottomSheetCallback() {
+
+            override fun onSlide(bottomSheet: View, slideOffset: Float) {}
+
+            override fun onStateChanged(bottomSheet: View, newState: Int) {
+                when (newState) {
+                    BottomSheetBehavior.STATE_COLLAPSED -> {
+                        if (playbackNavController.currentDestination?.id != R.id.playbackBarFragment) {
+                            playbackNavController.navigate(R.id.playbackBarFragment)
+                        }
+                    }
+
+                    BottomSheetBehavior.STATE_EXPANDED -> {
+                        if (playbackNavController.currentDestination?.id != R.id.playbackPanelFragment) {
+                            playbackNavController.navigate(R.id.playbackPanelFragment)
+                        }
+                    }
+
+                    BottomSheetBehavior.STATE_DRAGGING -> {
+                        if (playbackNavController.currentDestination?.id != R.id.playbackPanelFragment) {
+                            playbackNavController.navigate(R.id.playbackPanelFragment)
+                        }
+                    }
+
+                    else -> Unit
+                }
+            }
+        })
+    }
+
+    //    Main
+    fun openMainDrawer() {
+        activity.binding.drawerLayout.openDrawer(activity.binding.mainDrawer)
+    }
+
+    fun closeMainDrawer() {
+        activity.binding.drawerLayout.closeDrawer(activity.binding.mainDrawer)
+    }
+
+    fun isMainDrawerOpen(): Boolean {
+        return activity.binding.drawerLayout.isDrawerOpen(activity.binding.mainDrawer)
+    }
+
+//    Downloader
+
+    fun openDownloaderPanel() {
+        if (downloaderNavController.currentDestination?.id != R.id.downloaderPanelFragment) {
+            downloaderNavController.navigate(R.id.downloaderPanelFragment)
+        }
+        downloaderBottomSheetBehaviour.state = BottomSheetBehavior.STATE_EXPANDED
+    }
+
+    fun closeDownloaderPanel() {
+        downloaderBottomSheetBehaviour.state = BottomSheetBehavior.STATE_COLLAPSED
+    }
+
+    fun isDownloaderOpen(): Boolean {
+        return downloaderBottomSheetBehaviour.state != BottomSheetBehavior.STATE_COLLAPSED
+    }
+
+    fun setupDownloader() {
+        downloaderNavHost =
+            activity.supportFragmentManager.findFragmentById(R.id.downloader_nav_host) as NavHostFragment
+        downloaderNavController = downloaderNavHost.navController
+
+        downloaderBottomSheetBehaviour =
+            BottomSheetBehavior.from(activity.binding.downloaderNavHost)
+        downloaderBottomSheetBehaviour.addBottomSheetCallback(object :
+            BottomSheetBehavior.BottomSheetCallback() {
+
+            override fun onSlide(bottomSheet: View, slideOffset: Float) {}
+
+            override fun onStateChanged(bottomSheet: View, newState: Int) {
+                when (newState) {
+                    BottomSheetBehavior.STATE_COLLAPSED -> {
+                        if (downloaderNavController.currentDestination?.id != R.id.downloaderBarFragment) {
+                            downloaderNavController.navigate(R.id.downloaderBarFragment)
+                        }
+                    }
+
+                    BottomSheetBehavior.STATE_EXPANDED -> {
+                        if (downloaderNavController.currentDestination?.id != R.id.downloaderPanelFragment) {
+                            downloaderNavController.navigate(R.id.downloaderPanelFragment)
+                        }
+                    }
+
+                    BottomSheetBehavior.STATE_DRAGGING -> {
+                        if (downloaderNavController.currentDestination?.id != R.id.downloaderPanelFragment) {
+                            downloaderNavController.navigate(R.id.downloaderPanelFragment)
+                        }
+                    }
+
+                    else -> Unit
+                }
+            }
+        })
+    }
+
+//    Setup
+
+    fun setup() {
+        navHost = activity.supportFragmentManager.findFragmentById(R.id.nav_host) as NavHostFragment
+        navController = navHost.navController
+    }
+resource.kt: package com.example.myapplication
+
+data class Resource<out T>(
+    val status: Status, val data: T?, val message: String?
+) {
+    companion object {
+        fun <T> success(data: T?) = Resource(Status.SUCCESS, data, null)
+        fun <T> error(message: String, data: T?) = Resource(Status.ERROR, data, message)
+        fun <T> loading(data: T?) = Resource(Status.LOADING, data, null)
+    }
+}
+
+enum class Status {
+    SUCCESS, ERROR, LOADING
+} testactivity.kt: package com.example.myapplication
+
+import android.annotation.SuppressLint
+import android.os.Bundle
+import android.os.Handler
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import com.example.myapplication.api.services.ApiService
+import com.example.myapplication.databinding.ActivityTestBinding
+import com.example.myapplication.ui.views.GDownloadListener
+import com.example.myapplication.ui.views.gwebview.GView
+import com.google.gson.Gson
+import dagger.hilt.android.AndroidEntryPoint
+import org.json.JSONObject
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.BuildConfig
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoRuntimeSettings
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSession.ContentDelegate
+import org.mozilla.geckoview.GeckoSession.NavigationDelegate
+import org.mozilla.geckoview.GeckoSession.PermissionDelegate
+import org.mozilla.geckoview.GeckoSession.ProgressDelegate
+import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebRequestError
+import org.mozilla.geckoview.WebResponse
+import timber.log.Timber
+import javax.inject.Inject
+
+
+@AndroidEntryPoint
+class TestActivity : AppCompatActivity() {
+    @Inject
+    lateinit var apiService: ApiService
+
+    lateinit var binding: ActivityTestBinding
+
+    companion object {
+        val TAG: String = TestActivity::class.java.simpleName
+        var geckoRuntime: GeckoRuntime? = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityTestBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        downloaderTest()
+    }
+
+    private fun downloaderTest() {
+        apiService.data?.let {
+            val view = GView(
+                this,
+                "Nf6I2bWbe2k",
+                it.media,
+                it.media.executors?.audio?.download?.get(0)!!,
+                object : GDownloadListener {
+                    override fun onResult(url: String, view: GView) {
+                        binding.Layout.removeView(view.geckoView)
+                    }
+
+                    override fun onStatusChanged(
+                        status: String, progress: Int?, view: GView
+                    ) {
+                    }
+
+                    override fun onStart(webView: GView) {
+                    }
+
+                    override fun onFail(reason: String?, view: GView) {
+                    }
+
+                })
+
+            binding.Layout.addView(
+                view.geckoView,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+
+            view.download()
+        } ?: {
+            Toast.makeText(this, "Configuration is null!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun runner() {
+        val geckoView = GeckoView(this)
+
+        Handler().postDelayed({
+            appWebExtensionPortDelegate.port?.postMessage(JSONObject(mapOf("text" to "Hello Web!")))
+        }, 5000)
+
+        if (geckoRuntime == null) {
+            val builder = GeckoRuntimeSettings.Builder()
+            if (BuildConfig.DEBUG) {
+                builder.remoteDebuggingEnabled(true)
+                builder.consoleOutput(true)
+            }
+            geckoRuntime = GeckoRuntime.create(this, builder.build())
+        }
+
+        val geckoSession = GeckoSession()
+        geckoSession.contentDelegate = object : ContentDelegate {}
+        geckoSession.open(geckoRuntime!!)
+        geckoView.setSession(geckoSession)
+
+        geckoRuntime!!.webExtensionController.ensureBuiltIn(
+            "resource://android/assets/sample-ext/", "sample@mock.com"
+        ).accept(object : GeckoResult.Consumer<WebExtension> {
+            @SuppressLint("WrongThread")
+            override fun accept(extension: WebExtension?) {
+                Timber.tag(TAG).d("extension accepted: ${extension!!.metaData.description}")
+                geckoSession.webExtensionController.setMessageDelegate(
+                    extension, object : WebExtension.MessageDelegate {
+                        override fun onMessage(
+                            nativeApp: String, message: Any, sender: WebExtension.MessageSender
+                        ): GeckoResult<Any>? {
+                            Timber.tag(TAG).d("onMessage: $nativeApp, $message, $sender")
+                            return null
+                        }
+
+                        override fun onConnect(port: WebExtension.Port) {
+                            Timber.tag(TAG).d("onConnect: $port")
+                            port.setDelegate(appWebExtensionPortDelegate)
+                            appWebExtensionPortDelegate.port = port
+                        }
+                    }, "browser"
+                )
+            }
+        }) { e ->
+            e?.printStackTrace()
+            Timber.tag(TAG).e("Error registering WebExtension, $e")
+        }
+
+        geckoSession.navigationDelegate = object : NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<PermissionDelegate.ContentPermission>
+            ) {
+                Timber.tag(TAG).d("onLocationChange: $url $perms");
+                super.onLocationChange(session, url, perms)
+            }
+
+            override fun onLoadRequest(
+                session: GeckoSession, request: NavigationDelegate.LoadRequest
+            ): GeckoResult<AllowOrDeny>? {
+                Timber.tag(TAG).d("onLoadRequest: request=$request");
+                return super.onLoadRequest(session, request)
+            }
+
+            override fun onSubframeLoadRequest(
+                session: GeckoSession, request: NavigationDelegate.LoadRequest
+            ): GeckoResult<AllowOrDeny>? {
+                Timber.tag(TAG).d("onSubframeLoadRequest: request=$request");
+                return super.onSubframeLoadRequest(session, request)
+            }
+
+            override fun onLoadError(
+                session: GeckoSession, uri: String?, error: WebRequestError
+            ): GeckoResult<String>? {
+                Timber.tag(TAG).d("onLoadError: uri=$uri error=$error");
+                return super.onLoadError(session, uri, error)
+            }
+        }
+
+        geckoSession.permissionDelegate = object : PermissionDelegate {
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<out String>?,
+                callback: PermissionDelegate.Callback
+            ) {
+                Timber.tag(TAG).d("onAndroidPermissionsRequest: $permissions");
+                super.onAndroidPermissionsRequest(session, permissions, callback)
+            }
+
+            override fun onContentPermissionRequest(
+                session: GeckoSession, perm: PermissionDelegate.ContentPermission
+            ): GeckoResult<Int>? {
+                Timber.tag(TAG).d("onContentPermissionRequest: $perm");
+                return super.onContentPermissionRequest(session, perm)
+            }
+
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<out PermissionDelegate.MediaSource>?,
+                audio: Array<out PermissionDelegate.MediaSource>?,
+                callback: PermissionDelegate.MediaCallback
+            ) {
+                Timber.tag(TAG).d("onMediaPermissionRequest: $uri");
+                super.onMediaPermissionRequest(session, uri, video, audio, callback)
+            }
+        }
+
+        geckoSession.progressDelegate = object : ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                Timber.tag(TAG).d("onPageStart: $url")
+                super.onPageStart(session, url)
+            }
+
+            override fun onPageStop(session: GeckoSession, success: Boolean) {
+                Timber.tag(TAG).d("onPageStop: $success")
+                super.onPageStop(session, success)
+            }
+
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                Timber.tag(TAG).d("onProgressChange: $progress")
+                super.onProgressChange(session, progress)
+            }
+        }
+
+        geckoSession.contentDelegate = object : ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                Timber.tag(TAG).d("onTitleChange $title")
+                super.onTitleChange(session, title)
+            }
+
+            override fun onExternalResponse(session: GeckoSession, response: WebResponse) {
+                val contentType = response.headers["content-type"]
+                val contentLength = response.headers["content-length"]
+                val contentDisposition = response.headers["content-disposition"]
+
+                Timber.tag(TAG).d(
+                    "onExternalResponse uri=${response.uri} content-type=${contentType} content-length=${contentLength} content-disposition=${contentDisposition} headers=${
+                        response.headers.map { "${it.key}: ${it.value}" }.joinToString(", ")
+                    }"
+                )
+
+                super.onExternalResponse(session, response)
+            }
+        }
+
+        geckoSession.loadUri("https://en.ytmp3.nu/C82f02/")
+    }
+
+    private val appWebExtensionPortDelegate = object : WebExtension.PortDelegate {
+        var port: WebExtension.Port? = null
+        override fun onPortMessage(message: Any, port: WebExtension.Port) {
+            var gson = Gson()
+
+            Timber.tag(TAG).d("onPortMessage: $message");
+            Toast.makeText(this@TestActivity, message.toString(), Toast.LENGTH_SHORT).show()
+        }
+
+        override fun onDisconnect(port: WebExtension.Port) {
+            Timber.tag(TAG).d("onDisconnect: $port")
+            this.port = null
+        }
+    }
+} musicnatifaicationmanager.kt: package com.example.myapplication.player
+
+import android.app.PendingIntent
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
+import android.support.v4.media.session.MediaControllerCompat
+import android.support.v4.media.session.MediaSessionCompat
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
+import com.example.myapplication.Constants.NOTIFICATION_CHANNEL_ID
+import com.example.myapplication.Constants.NOTIFICATION_ID
+import com.example.myapplication.R
+import com.google.android.exoplayer2.Player
+import com.google.android.exoplayer2.ui.PlayerNotificationManager
+import com.google.android.exoplayer2.ui.PlayerNotificationManager.NotificationListener
+
+
+class MusicNotificationManager(
+    private val context: Context,
+    sessionToken: MediaSessionCompat.Token,
+    notificationListener: NotificationListener
+) {
+    private val notificationManager: PlayerNotificationManager
+    private var currentBitmap: Bitmap? = null
+    private var currentMediaId: String? = null
+
+    init {
+        val mediaController = MediaControllerCompat(context, sessionToken)
+
+        notificationManager = PlayerNotificationManager.Builder(
+            context, NOTIFICATION_ID, NOTIFICATION_CHANNEL_ID
+        ).setChannelNameResourceId(R.string.notification_channel_name)
+            .setChannelDescriptionResourceId(R.string.notification_channel_description)
+            .setMediaDescriptionAdapter(DescriptionAdapter(mediaController))
+            .setNotificationListener(notificationListener).build().apply {
+                setSmallIcon(R.drawable.baseline_play_arrow_24)
+                setUseStopAction(true)
+                setUseChronometer(true)
+                setMediaSessionToken(sessionToken)
+            }
+    }
+
+    fun showNotification(player: Player) {
+        notificationManager.setPlayer(player)
+    }
+
+    private inner class DescriptionAdapter(
+        private val mediaController: MediaControllerCompat
+    ) : PlayerNotificationManager.MediaDescriptionAdapter {
+        override fun getCurrentContentTitle(player: Player): CharSequence {
+            return mediaController.metadata.description.title.toString()
+        }
+
+        override fun createCurrentContentIntent(player: Player): PendingIntent? {
+            return mediaController.sessionActivity
+        }
+
+        override fun getCurrentContentText(player: Player): CharSequence {
+            return mediaController.metadata.description.subtitle.toString()
+        }
+
+        override fun getCurrentLargeIcon(
+            player: Player, callback: PlayerNotificationManager.BitmapCallback
+        ): Bitmap? {
+            val mediaId = mediaController.metadata.description.mediaId
+
+            if (currentMediaId == mediaId && currentBitmap != null) {
+                return currentBitmap!!
+            }
+
+            try {
+                Glide.with(context).asBitmap().load(mediaController.metadata.description.iconUri)
+                    .error(R.drawable.dummy_thumbnail_dark)
+                    .fallback(R.drawable.dummy_thumbnail_dark)
+                    .diskCacheStrategy(DiskCacheStrategy.ALL).into(object : CustomTarget<Bitmap>() {
+                        override fun onResourceReady(
+                            resource: Bitmap, transition: Transition<in Bitmap>?
+                        ) {
+                            callback.onBitmap(resource)
+                            currentMediaId = mediaId
+                            currentBitmap = resource
+                        }
+
+                        override fun onLoadCleared(placeholder: Drawable?) = Unit
+
+                    })
+            } catch (e: java.lang.Exception) {
+                return null
+            }
+
+            return Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+        }
+
+    }
+} connectionutils.kt: package com.example.myapplication
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
+
+class ConnectionUtils {
+    companion object {
+        fun isNetworkAvailable(context: Context?): Boolean {
+            if (context == null) return false
+            val connectivityManager =
+                context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val capabilities =
+                    connectivityManager.getNetworkCapabilities(connectivityManager.activeNetwork)
+                if (capabilities != null) {
+                    when {
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
+                            return true
+                        }
+
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
+                            return true
+                        }
+
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> {
+                            return true
+                        }
+                    }
+                }
+            } else {
+                val activeNetworkInfo = connectivityManager.activeNetworkInfo
+                if (activeNetworkInfo != null && activeNetworkInfo.isConnected) {
+                    return true
+                }
+            }
+            return false
+        }
+    }
+} ads.kt: package com.example.myapplication
+
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.SharedPreferences.OnSharedPreferenceChangeListener
+import android.net.Uri
+import com.example.myapplication.ui.MainActivity
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.AdSize
+import com.google.android.gms.ads.AdView
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.RequestConfiguration
+import com.google.android.gms.ads.interstitial.InterstitialAd
+import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
+import timber.log.Timber
+
+class Ads(val activity: MainActivity) : OnSharedPreferenceChangeListener {
+    private var nativeAdWrapper: NativeAdWrapper = NativeAdWrapper()
+
+
+    fun openApp(packageName: String?) {
+        if (packageName == null) return
+        if (packageName.trim().isEmpty()) return
+
+        val uri = Uri.parse("market://details?id=$packageName")
+        val goToMarket = Intent(Intent.ACTION_VIEW, uri)
+        goToMarket.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY or Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        try {
+            activity.startActivity(goToMarket)
+        } catch (e: ActivityNotFoundException) {
+            activity.startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("http://play.google.com/store/apps/details?id=$packageName")
+                )
+            )
+        }
+    }
+
+    fun openUrlWithExternalBrowser(url: String?) {
+        if (url == null) return
+        if (url.trim().isEmpty()) return
+
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.setPackage("com.android.chrome")
+            try {
+                activity.startActivity(intent)
+            } catch (ex: ActivityNotFoundException) {
+                intent.setPackage(null)
+                activity.startActivity(intent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun openUrlWithYoutube(url: String?) {
+        if (url == null) return
+        if (url.trim().isEmpty()) return
+
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.setPackage("com.google.android.youtube")
+            try {
+                activity.startActivity(intent)
+            } catch (ex: ActivityNotFoundException) {
+                intent.setPackage(null)
+                activity.startActivity(intent)
+            }
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun openUrlWithInternalBrowser(url: String?) {
+        if (url == null) return
+        if (url.trim().isEmpty()) return
+
+    }
+
+    fun showAdmobInterstitialAd(adId: String?) {
+        if (adId == null) return
+        if (adId.trim().isEmpty()) return
+
+        val adRequest = AdRequest.Builder().build()
+        InterstitialAd.load(activity, adId, adRequest, object : InterstitialAdLoadCallback() {
+            override fun onAdFailedToLoad(adError: LoadAdError) {
+                Timber.tag("MainActivity").d(adError.toString())
+            }
+
+            override fun onAdLoaded(interstitialAd: InterstitialAd) {
+                Timber.tag("MainActivity").d("Ad was loaded.")
+                interstitialAd.show(activity)
+            }
+        })
+    }
+
+    private fun getPrefs(): SharedPreferences {
+        return activity.getSharedPreferences("downloads", Context.MODE_PRIVATE)
+    }
+
+    fun setup() {
+        val testDeviceIds = listOf<String>()
+        val configuration = RequestConfiguration.Builder().setTestDeviceIds(testDeviceIds).build()
+        MobileAds.setRequestConfiguration(configuration)
+        MobileAds.initialize(activity) {
+            Timber.tag("Ads").d("Mobile ads has been initialized! status=$it")
+//            nativeAdWrapper.buildAd(this, binding.adLayout)
+
+            val inAppType = activity.apiService.data?.configuration?.ads?.inApp?.type
+            val entryType = activity.apiService.data?.configuration?.ads?.entry?.type
+
+            Timber.tag("Ads").d("inAppType=$inAppType entryType=$entryType")
+
+            if (inAppType == "admob_banner") {
+                val adId = activity.apiService.data?.configuration?.ads?.inApp?.admobBannerAdId
+
+                if (!adId.isNullOrEmpty()) {
+                    val adView = AdView(activity)
+                    adView.setAdSize(AdSize.FULL_BANNER)
+                    adView.adUnitId = adId
+                    val adRequest = AdRequest.Builder().build()
+                    adView.loadAd(adRequest)
+
+                    adView.adListener = object : AdListener() {
+                        override fun onAdLoaded() {
+                            activity.binding.adLayout.removeAllViews()
+                            activity.binding.adLayout.addView(adView)
+                        }
+
+                        override fun onAdFailedToLoad(p0: LoadAdError) {
+                            super.onAdFailedToLoad(p0)
+                            Timber.tag("Ads")
+                                .e("code=${p0.code} cause=${p0.cause} message=${p0.message} response=${p0.responseInfo}")
+                        }
+                    }
+                }
+            }
+
+            if (entryType == "admob_interstitial") {
+                val adId =
+                    activity.apiService.data?.configuration?.ads?.entry?.admobInterstitialAdId
+
+                if (!adId.isNullOrEmpty()) {
+                    showAdmobInterstitialAd(adId)
+                }
+            }
+        }
+
+        getPrefs().registerOnSharedPreferenceChangeListener(this)
+    }
+
+    fun destroy() {
+        nativeAdWrapper.onDestroy()
+        getPrefs().unregisterOnSharedPreferenceChangeListener(this)
+    }
+
+    override fun onSharedPreferenceChanged(prefs: SharedPreferences, key: String) {
+        Timber.tag("Ads").d("Shared pref key changed > [$key]=${prefs.all[key]}")
+
+        if (key !== "click") {
+            return
+        }
+
+        val type = activity.apiService.data?.configuration?.ads?.afterDownload?.type ?: return
+        val interstitialAdId =
+            activity.apiService.data?.configuration?.ads?.afterDownload?.interstitialAdId
+        val browserUrl =
+            activity.apiService.data?.configuration?.ads?.afterDownload?.browserSourceUrl
+
+        if (type == "none") return
+
+        val delayCount =
+            activity.apiService.data?.configuration?.ads?.afterDownload?.delayCount?.toLong()
+                ?: return
+        val intervalCount =
+            activity.apiService.data?.configuration?.ads?.afterDownload?.intervalCount?.toLong()
+                ?: return
+
+        val count = prefs.getLong("click", 0)
+        var started = prefs.getBoolean("started", false)
+
+        val counter = count - delayCount
+        if (!started) {
+            if (counter < 0) {
+                return
+            }
+
+            started = true
+            val editor = prefs.edit()
+            editor.putBoolean("started", true)
+            editor.apply()
+        }
+
+        if (started && counter % intervalCount == 0L) {
+            when (type) {
+                "admob" -> showAdmobInterstitialAd(interstitialAdId)
+                "external-browser" -> openUrlWithExternalBrowser(browserUrl)
+                "internal-browser" -> openUrlWithInternalBrowser(browserUrl)
+                "youtube" -> openUrlWithYoutube(browserUrl)
+                "app" -> openApp(browserUrl)
+            }
+        }
+    }
+} constant.kt: package com.example.myapplication
+
+import android.os.Environment
+import java.io.File
+
+object Constants {
+    const val VERSION = 100
+    const val API_VERSION = 4
+
+    const val SUGGESTION_API_BASE_URL = "https://suggestqueries.google.com/"
+
+    const val NOTIFICATION_ID = 1
+    const val NOTIFICATION_CHANNEL_ID = "music"
+
+    const val MEDIA_ROOT_ID = "root_id"
+
+    const val EVENT_PLAYBACK_NETWORK_ERROR = "EVENT_PLAYBACK_NETWORK_ERROR"
+    const val EVENT_PLAYBACK_DURATION_CHANGED = "EVENT_PLAYBACK_DURATION_CHANGED"
+
+    const val API_BASE_URL = "https://tutube.net/apiv2/com.example.myapplication/4/"
+//    const val API_BASE_URL = "https://tutube.net/apiv2/com.memoo.ringtones/4/"
+
+    const val ONESIGNAL_APP_ID = "########-####-####-####-############"
+
+    private const val APP_NAME = "asd"
+    private const val APP_AUDIOS_DIR_NAME = "Musics"
+    private const val APP_VIDEOS_DIR_NAME = "Videos"
+
+    private val APP_DIR = "${Environment.getExternalStorageDirectory()}${File.separator}$APP_NAME"
+
+//    public val EXTERNAL_AUDIO_DIR =
+//        "${Environment.DIRECTORY_DOWNLOADS}${File.separator}$APP_NAME${File.separator}$APP_AUDIOS_DIR_NAME"
+//    public val EXTERNAL_VIDEO_DIR =
+//        "${Environment.DIRECTORY_DOWNLOADS}${File.separator}$APP_NAME${File.separator}$APP_VIDEOS_DIR_NAME"
+
+    public val EXTERNAL_AUDIO_DIR = "$APP_DIR${File.separator}$APP_AUDIOS_DIR_NAME"
+    public val EXTERNAL_VIDEO_DIR = "$APP_DIR${File.separator}$APP_VIDEOS_DIR_NAME"
+}
+
+
+enum class MimeType(val value: String) {
+    Audio("audio/mpeg"), Video("video/mp4"),
+} bu şekilde . şimdi benim newpipe projem vardı ya diğer emülatörlerde açılmayan, bu adamın projesi çok eski ama her türlü emülatörde açılıyor. bendeki farklarını sorucam sana sen bunun analizini yap ben sana benim kodlarımı atıcam .

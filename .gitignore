@@ -1,2 +1,10 @@
 node_modules
 .env
+oauth_credentials.json
+generate_oauth.js
+test_*.js
+yt_cache/
+proxies.txt
+cookies.txt
+error.log
+cache/

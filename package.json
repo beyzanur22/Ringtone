@@ -1,7 +1,7 @@
 {
   "name": "ringtone-admin-backend",
-  "version": "1.0.0",
-  "description": "YouTube stream backend",
+  "version": "3.0.0",
+  "description": "YouTube stream backend with PoToken support",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -18,7 +18,6 @@
     "express-rate-limit": "^8.2.1",
     "ioredis": "^5.10.0",
     "p-queue": "^9.1.0",
-    "play-dl": "^1.9.7",
     "redis": "^5.11.0",
     "youtubei.js": "^17.0.1",
     "yt-dlp-exec": "^1.0.2"

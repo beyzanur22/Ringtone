@@ -13,8 +13,11 @@ services:
       - USE_COOKIES=true
     volumes:
       - ./cookies.txt:/app/cookies.txt:ro
+      - ./oauth_credentials.json:/app/oauth_credentials.json
+      - ./proxies.txt:/app/proxies.txt:ro
       - ./blockedChannels.json:/app/blockedChannels.json
       - ./config.json:/app/config.json
+      - cache_data:/app/cache
     depends_on:
       - redis
 
@@ -29,3 +32,4 @@ services:
 
 volumes:
   redis_data:
+  cache_data:
