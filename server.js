@@ -287,13 +287,19 @@ function parseCookiesToHeader(cookiePath) {
 }
 
 // ============================================================
-// COBALT COMMUNITY INSTANCES
+// COBALT — Self-hosted instance birincil motor
 // ============================================================
-let cobaltInstances = [
-  "https://cobalt.api.timelessnesses.me",
-  "https://cobalt.tools",
-  "https://api.cobalt.tools"
-];
+// Railway'de kendi Cobalt instance'ınızı deploy edin:
+// https://railway.com/template/cobalt
+// Sonra COBALT_API_URL env variable'ını ayarlayın
+const SELF_HOSTED_COBALT = process.env.COBALT_API_URL || null;
+let cobaltInstances = [];
+
+// Self-hosted instance'ı her zaman ilk sıraya koy
+if (SELF_HOSTED_COBALT) {
+  cobaltInstances.unshift(SELF_HOSTED_COBALT);
+  console.log(`[COBALT] Self-hosted instance: ${SELF_HOSTED_COBALT}`);
+}
 
 async function refreshCobaltInstances() {
   // Birden fazla kaynak dene
@@ -674,13 +680,20 @@ async function initInnertube() {
 initInnertube();
 
 // ============================================================
-// ANA STREAM URL ÇÖZÜCÜ — 4 katmanlı fallback (PoToken destekli)
+// ANA STREAM URL ÇÖZÜCÜ — Self-hosted Cobalt birincil motor
 // ============================================================
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   const videoIdMatch = videoUrl.match(/v=([^&]+)/);
   const videoId = videoIdMatch ? videoIdMatch[1] : null;
-  
-  // ============ 1. ADIM: youtubei.js (OAuth — EN GÜVENİLİR) ============
+  const type = format.includes("audio") || format === "bestaudio" ? "audio" : "video";
+
+  // ============ 1. ADIM: COBALT (Self-hosted — EN GÜVENİLİR) ============
+  // Self-hosted Cobalt kendi PoToken'ını üretir, proxy/cookie gerekmez
+  if (videoId && SELF_HOSTED_COBALT) {
+    console.log(`[COBALT] Self-hosted instance deneniyor: ${SELF_HOSTED_COBALT}`);
+    const cobaltUrl = await resolveViaCobalt(videoId, type);
+    if (cobaltUrl) return cobaltUrl;
+  }
   if (ytInnertube) {
     try {
       console.log(`[youtubei.js] OAuth ile deneniyor...`);
