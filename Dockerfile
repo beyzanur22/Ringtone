@@ -1,14 +1,10 @@
-FROM jim60105/yt-dlp:pot AS pot-provider
-
 FROM node:20
 
-# PoToken-destekli yt-dlp'yi kopyala
-COPY --from=pot-provider /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
-
-# Python ve ffmpeg kur
+# Python, ffmpeg ve yt-dlp + PoToken plugin kur
 RUN apt-get update && \
-    apt-get install -y python3 ffmpeg && \
+    apt-get install -y python3 python3-pip ffmpeg && \
     ln -s /usr/bin/python3 /usr/bin/python && \
+    pip3 install --no-cache-dir --break-system-packages yt-dlp bgutil-ytdlp-pot-provider && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
