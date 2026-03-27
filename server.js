@@ -20,7 +20,11 @@ let yt = null;
 async function initYoutubei() {
   try {
     const cache = new UniversalCache(false);
-    yt = await Innertube.create({ cache, generate_session_locally: true });
+    yt = await Innertube.create({ 
+      cache, 
+      generate_session_locally: true,
+      client_type: 'TV'
+    });
     
     let creds = null;
     if (process.env.YT_OAUTH_JSON) {
@@ -59,7 +63,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB limit
 const downloadingFiles = new Set();
 
-async function downloadToCache(videoId, type, streamUrl) {
+async function downloadToCache(videoId, type, streamUrl, ua = null) {
   const ext = type === "audio" ? "m4a" : "mp4";
   const fileName = `${type}_${videoId}.${ext}`;
   const filePath = path.join(CACHE_DIR, fileName);
@@ -69,11 +73,17 @@ async function downloadToCache(videoId, type, streamUrl) {
 
   downloadingFiles.add(fileName);
   try {
+    const headers = {
+      "Referer": "https://www.youtube.com/"
+    };
+    if (ua) headers["User-Agent"] = ua;
+
     const response = await axios({
       method: 'GET',
       url: streamUrl,
       responseType: 'stream',
-      timeout: 60000,
+      timeout: 120000,
+      headers: headers,
       validateStatus: (status) => status >= 200 && status < 400
     });
 
@@ -825,7 +835,7 @@ app.get("/stream", async (req, res) => {
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
     }
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
@@ -921,7 +931,7 @@ app.get("/stream/video", async (req, res) => {
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
     }
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
@@ -1024,7 +1034,7 @@ app.get("/download/mp3", async (req, res) => {
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
     }
 
   } catch (err) {
@@ -1099,7 +1109,7 @@ app.get("/download/mp4", async (req, res) => {
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl).catch(e => { });
+      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
     }
 
   } catch (err) {
