@@ -309,7 +309,8 @@ function ytdlpDirectDownload(videoId, type) {
       "--no-playlist",
       "--no-part",
       "--retries", "3",
-      "--socket-timeout", "30"
+      "--socket-timeout", "30",
+      "--remote-components", "ejs:github"
     ];
 
     // Cookies ekle
