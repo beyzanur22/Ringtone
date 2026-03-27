@@ -11,6 +11,29 @@ const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 
 const PQueue = require("p-queue").default;
+const { Innertube, UniversalCache } = require("youtubei.js");
+
+/* =========================
+   YOUTUBEI.JS OAUTH2 SETUP
+========================= */
+let yt = null;
+async function initYoutubei() {
+  try {
+    const cache = new UniversalCache(false);
+    yt = await Innertube.create({ cache, generate_session_locally: true });
+    
+    if (fs.existsSync('oauth_credentials.json')) {
+      const creds = JSON.parse(fs.readFileSync('oauth_credentials.json', 'utf-8'));
+      await yt.session.signIn(creds);
+      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı!");
+    } else {
+      console.warn("[YOUTUBEI] oauth_credentials.json bulunamadı, anonim modda çalışıyor.");
+    }
+  } catch (err) {
+    console.error("[YOUTUBEI] Başlatma Hatası:", err.message);
+  }
+}
+initYoutubei();
 
 const queue = new PQueue({
   concurrency: 2,      // aynı anda max 2 işlem
@@ -216,6 +239,24 @@ const randomJitter = async () => {
 // Fallback player client stratejisi: default → android → mweb → web → ios
 const PLAYER_CLIENTS = ["default", "android", "mweb", "web", "ios"];
 
+async function resolveWithYoutubei(videoId, type) {
+  if (!yt) throw new Error("Youtubei initialized değil");
+  
+  console.log(`[YOUTUBEI] Çözümleniyor: ${videoId} (${type})`);
+  const info = await yt.getBasicInfo(videoId);
+  const format = info.chooseFormat({ 
+    type: type === "audio" ? "audio" : "video", 
+    quality: "best",
+    format: "mp4"
+  });
+  
+  if (format && format.url) {
+    console.log(`[YOUTUBEI] Başarılı!`);
+    return format.url;
+  }
+  throw new Error("Youtubei uygun format bulamadı");
+}
+
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
     throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
@@ -354,6 +395,17 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
+  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session)
+  try {
+    const oauthUrl = await resolveWithYoutubei(videoId, type);
+    if (oauthUrl) {
+      console.log(`[AUTH_SUCCESS] ${videoId} çözümlendi (OAuth2)`);
+      return oauthUrl;
+    }
+  } catch (oauthErr) {
+    console.warn(`[AUTH_FALLBACK] OAuth2 başarısız: ${oauthErr.message}`);
+  }
+
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
