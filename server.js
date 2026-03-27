@@ -276,6 +276,85 @@ async function resolveWithYoutubei(videoId, type) {
   throw new Error("Youtubei uygun format bulamadı");
 }
 
+/* =========================
+   YT-DLP DIRECT DOWNLOAD
+   yt-dlp'nin kendisi indirir (PoToken ile)
+========================= */
+const { execFile } = require("child_process");
+
+function ytdlpDirectDownload(videoId, type) {
+  return new Promise((resolve, reject) => {
+    const ext = type === "audio" ? "m4a" : "mp4";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
+    const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
+    const tempFile = outputFile + ".ytdl";
+    
+    if (fs.existsSync(outputFile)) {
+      const stats = fs.statSync(outputFile);
+      const minSize = type === "video" ? 1024 * 1024 : 100 * 1024;
+      if (stats.size >= minSize) {
+        console.log(`[YTDL_DIRECT] Cache hit: ${outputFile}`);
+        return resolve(outputFile);
+      }
+      fs.unlinkSync(outputFile);
+    }
+
+    const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" : 
+                      fs.existsSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp") ? "/app/node_modules/yt-dlp-exec/bin/yt-dlp" : "yt-dlp";
+
+    const args = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-f", format,
+      "-o", tempFile,
+      "--no-playlist",
+      "--no-part",
+      "--retries", "3",
+      "--socket-timeout", "30"
+    ];
+
+    // Cookies ekle
+    if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
+      args.push("--cookies", "cookies.txt");
+    }
+
+    // Proxy ekle
+    if (process.env.PROXY_URL) {
+      args.push("--proxy", process.env.PROXY_URL);
+    }
+
+    console.log(`[YTDL_DIRECT] İndiriliyor: ${videoId} (${type})`);
+    
+    const proc = execFile(ytdlpBin, args, { 
+      timeout: 120000,
+      maxBuffer: 10 * 1024 * 1024
+    }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[YTDL_DIRECT] Hata: ${stderr || error.message}`);
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        return reject(new Error(`yt-dlp direct download failed: ${error.message}`));
+      }
+
+      // Dosya boyutu kontrolü
+      if (!fs.existsSync(tempFile)) {
+        return reject(new Error("yt-dlp dosya oluşturamadı"));
+      }
+      
+      const stats = fs.statSync(tempFile);
+      const minSize = type === "video" ? 500 * 1024 : 50 * 1024; // 500KB video, 50KB audio min
+      
+      if (stats.size < minSize) {
+        fs.unlinkSync(tempFile);
+        return reject(new Error(`İndirilen dosya çok küçük (${(stats.size/1024).toFixed(1)} KB) - bot detection`));
+      }
+
+      // Başarılı! Temp'ten asıl dosyaya taşı
+      fs.renameSync(tempFile, outputFile);
+      console.log(`[YTDL_DIRECT] Başarılı: ${outputFile} (${(stats.size/1024/1024).toFixed(2)} MB)`);
+      resolve(outputFile);
+    });
+  });
+}
+
 async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   if (Date.now() < ytDlpCircuitBreakerUntil) {
     throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
@@ -855,7 +934,7 @@ app.get("/stream", async (req, res) => {
 });
 
 
-// VIDEO STREAM (MP4)
+// VIDEO STREAM (MP4) - yt-dlp direct download öncelikli
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -863,71 +942,61 @@ app.get("/stream/video", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
-    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const typeStr = "video";
+    const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
+    // 1. Disk cache kontrolü
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
-      if (stats.size < minSize) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+      if (stats.size < 1024 * 1024) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-        if (req.path.includes("download")) {
-        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
-      }
-        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        console.log(`[DISK_CACHE_HIT] Serving local video for`, videoId);
+        res.setHeader("Content-Type", "video/mp4");
         return res.sendFile(localFile);
       }
     }
 
+    // 2. yt-dlp DIRECT DOWNLOAD (PoToken ile - asıl çözüm)
+    try {
+      console.log(`[STREAM_VIDEO] yt-dlp direct download deneniyor: ${videoId}`);
+      const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
+      
+      if (downloadedFile && fs.existsSync(downloadedFile)) {
+        console.log(`[STREAM_VIDEO] Direct download başarılı, sunuluyor: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        return res.sendFile(downloadedFile);
+      }
+    } catch (directErr) {
+      console.warn(`[STREAM_VIDEO] Direct download başarısız: ${directErr.message}`);
+    }
+
+    // 3. Eski yöntem fallback (URL çıkar + axios ile indir)
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
+    const ua = getRandomUA();
 
-    const cacheKey = `stream:video:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
-    let streamUrl, ua;
-
-    if (cachedData && cachedData.url) {
-      streamUrl = cachedData.url;
-      ua = cachedData.ua || getRandomUA();
-      console.log("VIDEO CACHE HIT:", videoId);
-    } else {
-      ua = getRandomUA();
-      // Queue ile sıralı çalıştır
-      streamUrl = await queue.add(async () => {
-        await randomJitter();
-        return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
-      await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
-      console.log("VIDEO CACHE SAVE:", videoId);
-    }
+    const streamUrl = await queue.add(async () => {
+      await randomJitter();
+      return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
+    });
 
     let response;
-    try {
-      const headersOptions = {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      };
-      if (req.headers.range) headersOptions["Range"] = req.headers.range;
+    const headersOptions = {
+      "User-Agent": ua,
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-      response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        validateStatus: (status) => status < 400
-      });
-    } catch (fetchErr) {
-      if (fetchErr.response && fetchErr.response.status === 403) {
-        // Cache temizle
-        if (redis) redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
-      }
-      throw fetchErr;
-    }
+    response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: headersOptions,
+      validateStatus: (status) => status < 400
+    });
 
     res.status(response.status);
     if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
@@ -937,9 +1006,6 @@ app.get("/stream/video", async (req, res) => {
 
     response.data.pipe(res);
 
-    if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
-    }
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
     console.error("VIDEO STREAM ERROR:", err.message);
@@ -1051,7 +1117,7 @@ app.get("/download/mp3", async (req, res) => {
   }
 });
 
-//mp4 
+//mp4 - yt-dlp direct download öncelikli
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -1060,31 +1126,40 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
-    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const typeStr = "video";
+    const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
+    // 1. Disk cache kontrolü
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
-      if (stats.size < minSize) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+      if (stats.size < 1024 * 1024) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-        if (req.path.includes("download")) {
-        res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
-      }
-        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        console.log(`[DISK_CACHE_HIT] Serving local video for`, videoId);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
         return res.sendFile(localFile);
       }
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    // 2. yt-dlp DIRECT DOWNLOAD (PoToken ile)
+    try {
+      console.log(`[DOWNLOAD_MP4] yt-dlp direct download deneniyor: ${videoId}`);
+      const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
+      
+      if (downloadedFile && fs.existsSync(downloadedFile)) {
+        console.log(`[DOWNLOAD_MP4] Direct download başarılı: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+        return res.sendFile(downloadedFile);
+      }
+    } catch (directErr) {
+      console.warn(`[DOWNLOAD_MP4] Direct download başarısız: ${directErr.message}`);
+    }
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=video.mp4");
-
+    // 3. Eski yöntem fallback
     const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -1098,11 +1173,14 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+
     const response = await axios({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
-      timeout: 20000,
+      timeout: 60000,
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
@@ -1114,10 +1192,6 @@ app.get("/download/mp4", async (req, res) => {
     }
 
     response.data.pipe(res);
-
-    if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
-    }
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);
