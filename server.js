@@ -308,6 +308,8 @@ function ytdlpDirectDownload(videoId, type) {
       "-o", tempFile,
       "--no-playlist",
       "--no-part",
+      "--no-mtime",
+      "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30",
       "--remote-components", "ejs:github"
