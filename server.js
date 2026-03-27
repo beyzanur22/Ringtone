@@ -62,7 +62,31 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10 GB limit
+const MAX_CACHE_SIZE = 500 * 1024 * 1024; // 500MB limit (Railway ephemeral disk için ideal)
+
+function checkDiskSpaceAndCleanup() {
+  try {
+    if (!fs.existsSync(CACHE_DIR)) return;
+    const files = fs.readdirSync(CACHE_DIR).map(f => {
+      const p = path.join(CACHE_DIR, f);
+      return { path: p, stat: fs.statSync(p) };
+    });
+
+    const totalSize = files.reduce((acc, f) => acc + f.stat.size, 0);
+    if (totalSize > MAX_CACHE_SIZE) {
+      console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024).toFixed(1)} MB). Temizleniyor...`);
+      files.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
+      let deletedSize = 0;
+      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.7);
+      for (const file of files) {
+        if (deletedSize >= targetToDelete) break;
+        try { fs.unlinkSync(file.path); deletedSize += file.stat.size; } catch (e) {}
+      }
+      console.log(`[DISK_CLEANUP] ${(deletedSize / 1024 / 1024).toFixed(1)} MB yer açıldı.`);
+    }
+  } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
+}
+setInterval(checkDiskSpaceAndCleanup, 5 * 60 * 1000); // 5 dakikada bir kontrol
 const downloadingFiles = new Set();
 
 async function downloadToCache(videoId, type, streamUrl, ua = null) {

@@ -1,21 +1,27 @@
 #!/bin/bash
 
-# Port 4416'yı temizle (eğer önceden kalmışsa)
+# Port 4416'yı temizle
 fuser -k 4416/tcp 2>/dev/null || true
 
-# PoToken HTTP sunucusunu başlat ve loglarını dosyaya yaz
+# Disk Alanı Temizliği (KRİTİK: Railway ephemeral disk dolabiliyor)
+echo "[STARTUP] Disk alanı temizleniyor..."
+rm -rf /app/cache/*
+mkdir -p /app/cache
+
+# PoToken HTTP sunucusunu başlat
 echo "[STARTUP] PoToken sunucusu başlatılıyor (port 4416)..."
+# Modül adını kontrol et (bgutil-ytdlp-pot-provider vs bgutil_ytdlp_pot_provider)
 nohup python3 -m bgutil_ytdlp_pot_provider serve --port 4416 > pot_server.log 2>&1 &
 POT_PID=$!
 
 # Sunucunun başlamasını bekle ve ping atarak kontrol et
 echo "[STARTUP] Sunucunun hazır olması bekleniyor..."
-for i in {1..10}; do
+for i in {1..15}; do
     if curl -s http://127.0.0.1:4416/ping > /dev/null; then
         echo "[STARTUP] PoToken sunucusu HAZIR (Ping OK)"
         break
     fi
-    echo "[STARTUP] Bekleniyor... ($i/10)"
+    echo "[STARTUP] Bekleniyor... ($i/15)"
     sleep 2
 done
 
