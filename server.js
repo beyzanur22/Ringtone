@@ -22,12 +22,19 @@ async function initYoutubei() {
     const cache = new UniversalCache(false);
     yt = await Innertube.create({ cache, generate_session_locally: true });
     
-    if (fs.existsSync('oauth_credentials.json')) {
-      const creds = JSON.parse(fs.readFileSync('oauth_credentials.json', 'utf-8'));
+    let creds = null;
+    if (process.env.YT_OAUTH_JSON) {
+      creds = JSON.parse(process.env.YT_OAUTH_JSON);
+      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı! (Env Var)");
+    } else if (fs.existsSync('oauth_credentials.json')) {
+      creds = JSON.parse(fs.readFileSync('oauth_credentials.json', 'utf-8'));
+      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı! (File)");
+    }
+
+    if (creds) {
       await yt.session.signIn(creds);
-      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı!");
     } else {
-      console.warn("[YOUTUBEI] oauth_credentials.json bulunamadı, anonim modda çalışıyor.");
+      console.warn("[YOUTUBEI] OAuth kimlik bilgisi bulunamadı, anonim modda çalışıyor.");
     }
   } catch (err) {
     console.error("[YOUTUBEI] Başlatma Hatası:", err.message);
