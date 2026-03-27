@@ -300,11 +300,81 @@ async function resolveWithYoutubei(videoId, type) {
   throw new Error("Youtubei uygun format bulamadı");
 }
 
-/* =========================
-   YT-DLP DIRECT DOWNLOAD
-   yt-dlp'nin kendisi indirir (PoToken ile)
-========================= */
-const { execFile } = require("child_process");
+const { execFile, spawn } = require("child_process");
+
+function ytdlpStream(videoId, type, req, res) {
+  return new Promise((resolve, reject) => {
+    const ext = type === "audio" ? "m4a" : "mp4";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
+    const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
+    const tempFile = outputFile + ".pipe.tmp";
+
+    const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" : 
+                      fs.existsSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp") ? "/app/node_modules/yt-dlp-exec/bin/yt-dlp" : "yt-dlp";
+
+    const args = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-f", format,
+      "-o", "-", 
+      "--no-playlist",
+      "--no-part",
+      "--no-mtime",
+      "--concurrent-fragments", "1",
+      "--remote-components", "ejs:github",
+      "--quiet", "--no-warnings"
+    ];
+
+    if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
+      args.push("--cookies", "cookies.txt");
+    }
+    if (process.env.PROXY_URL) {
+      args.push("--proxy", process.env.PROXY_URL);
+    }
+
+    console.log(`[YTDL_STREAM] Başlatılıyor: ${videoId} (${type})`);
+    
+    const ytdlpProc = spawn(ytdlpBin, args);
+
+    res.setHeader("Content-Type", type === "video" ? "video/mp4" : "audio/m4a");
+    if (type === "video") res.setHeader("Accept-Ranges", "bytes");
+
+    ytdlpProc.stdout.pipe(res);
+
+    const cacheWriter = fs.createWriteStream(tempFile);
+    ytdlpProc.stdout.pipe(cacheWriter);
+
+    ytdlpProc.stderr.on("data", (data) => {
+      const msg = data.toString();
+      if (msg.includes("ERROR")) console.error(`[YTDL_STREAM] Hata: ${msg}`);
+    });
+
+    ytdlpProc.on("close", (code) => {
+      cacheWriter.end();
+      if (code === 0) {
+        console.log(`[YTDL_STREAM] Başarıyla tamamlandı: ${videoId}`);
+        if (fs.existsSync(tempFile)) {
+          const stats = fs.statSync(tempFile);
+          if (stats.size > (type === "video" ? 1024*1024 : 100*1024)) {
+            fs.renameSync(tempFile, outputFile);
+          } else {
+            fs.unlinkSync(tempFile);
+          }
+        }
+        resolve();
+      } else {
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        if (!res.headersSent) res.status(500).send("Streaming failed");
+        reject(new Error(`yt-dlp exited with code ${code}`));
+      }
+    });
+
+    req.on("close", () => {
+      if (ytdlpProc) ytdlpProc.kill();
+      cacheWriter.end();
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+    });
+  });
+}
 
 function ytdlpDirectDownload(videoId, type) {
   return new Promise((resolve, reject) => {
@@ -986,9 +1056,16 @@ app.get("/stream/video", async (req, res) => {
       }
     }
 
-    // 2. yt-dlp DIRECT DOWNLOAD (PoToken ile - asıl çözüm)
+    // 2. yt-dlp STREAM (INSTANT PLAY)
     try {
-      console.log(`[STREAM_VIDEO] yt-dlp direct download deneniyor: ${videoId}`);
+      console.log(`[STREAM_VIDEO] Instant streaming başlatılıyor: ${videoId}`);
+      return await queue.add(() => ytdlpStream(videoId, "video", req, res));
+    } catch (streamErr) {
+      console.warn(`[STREAM_VIDEO] Instant streaming başarısız, fallback deneniyor: ${streamErr.message}`);
+    }
+
+    // 3. Fallback: Direct Download (Eğer streaming bir şekilde fail olursa)
+    try {
       const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
       
       if (downloadedFile && fs.existsSync(downloadedFile)) {
@@ -1171,9 +1248,17 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. yt-dlp DIRECT DOWNLOAD (PoToken ile)
+    // 2. yt-dlp STREAM (INSTANT DOWNLOAD)
     try {
-      console.log(`[DOWNLOAD_MP4] yt-dlp direct download deneniyor: ${videoId}`);
+      console.log(`[DOWNLOAD_MP4] Instant streaming (download) başlatılıyor: ${videoId}`);
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+      return await queue.add(() => ytdlpStream(videoId, "video", req, res));
+    } catch (streamErr) {
+      console.warn(`[DOWNLOAD_MP4] Instant streaming başarısız, fallback deneniyor: ${streamErr.message}`);
+    }
+
+    // 3. Fallback: Direct Download
+    try {
       const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
       
       if (downloadedFile && fs.existsSync(downloadedFile)) {
