@@ -1,21 +1,22 @@
+FROM jim60105/yt-dlp:pot AS pot-provider
+
 FROM node:20
 
-# Python, ffmpeg, yt-dlp ve deno (JS runtime) kur
-RUN apt-get update && \
-    apt-get install -y python3 python3-pip ffmpeg curl unzip && \
-    ln -s /usr/bin/python3 /usr/bin/python && \
-    pip3 install --no-cache-dir yt-dlp --break-system-packages && \
-    curl -fsSL https://deno.land/install.sh | sh
+# PoToken-destekli yt-dlp'yi kopyala
+COPY --from=pot-provider /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
 
-# Deno PATH'e ekle
-ENV DENO_DIR="/root/.deno"
-ENV PATH="${DENO_DIR}/bin:${PATH}"
+# Python ve ffmpeg kur
+RUN apt-get update && \
+    apt-get install -y python3 ffmpeg && \
+    ln -s /usr/bin/python3 /usr/bin/python && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY . .
-
+COPY package*.json ./
 RUN npm install
+
+COPY . .
 
 EXPOSE 5000
 

@@ -5,6 +5,8 @@ const http = require("http");
 const https = require("https");
 const express = require("express");
 const ytdlp = require("yt-dlp-exec");
+// PoToken: sistem yt-dlp binary'sini kullan (Docker'dan gelir)
+const YT_DLP_PATH = process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
 const cors = require("cors");
 const fs = require("fs");
 const rateLimit = require("express-rate-limit");
@@ -303,13 +305,18 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         opts.cookies = "cookies.txt";
       }
 
+      // Proxy desteği
+      if (process.env.PROXY_URL) {
+        opts.proxy = process.env.PROXY_URL;
+      }
+
       // "default" = yt-dlp kendi seçsin
       if (client !== "default") {
         opts.extractorArgs = `youtube:player_client=${client}`;
       }
 
       console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
-      const result = await ytdlp(videoUrl, opts);
+      const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
       const url = result.toString().trim();
 
       if (url && url.startsWith("http")) {
