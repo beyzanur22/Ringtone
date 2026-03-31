@@ -1023,10 +1023,14 @@ app.get("/stream", async (req, res) => {
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
     console.error("STREAM ERROR:", err.message);
-    res.status(500).json({
-      error: "Streaming failed",
-      message: err.message
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Streaming failed",
+        message: err.message
+      });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -1062,6 +1066,7 @@ app.get("/stream/video", async (req, res) => {
       return await queue.add(() => ytdlpStream(videoId, "video", req, res));
     } catch (streamErr) {
       console.warn(`[STREAM_VIDEO] Instant streaming başarısız, fallback deneniyor: ${streamErr.message}`);
+      if (res.headersSent) throw streamErr;
     }
 
     // 3. Fallback: Direct Download (Eğer streaming bir şekilde fail olursa)
@@ -1113,7 +1118,11 @@ app.get("/stream/video", async (req, res) => {
   } catch (err) {
     logError("STREAM_VIDEO", req.query.videoId, err.message);
     console.error("VIDEO STREAM ERROR:", err.message);
-    res.status(500).json({ error: "Video streaming failed" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Video streaming failed" });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -1217,7 +1226,11 @@ app.get("/download/mp3", async (req, res) => {
   } catch (err) {
     logError("DOWNLOAD_MP3", req.query.videoId, err.message);
     console.error("MP3 ERROR:", err.message);
-    res.status(500).json({ error: "Audio download failed" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Audio download failed" });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -1255,6 +1268,7 @@ app.get("/download/mp4", async (req, res) => {
       return await queue.add(() => ytdlpStream(videoId, "video", req, res));
     } catch (streamErr) {
       console.warn(`[DOWNLOAD_MP4] Instant streaming başarısız, fallback deneniyor: ${streamErr.message}`);
+      if (res.headersSent) throw streamErr;
     }
 
     // 3. Fallback: Direct Download
@@ -1308,7 +1322,11 @@ app.get("/download/mp4", async (req, res) => {
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);
     console.error("MP4 ERROR:", err.message);
-    res.status(500).json({ error: "MP4 download failed" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "MP4 download failed" });
+    } else {
+      res.end();
+    }
   }
 });
 
