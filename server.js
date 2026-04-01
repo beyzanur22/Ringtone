@@ -313,7 +313,7 @@ const { execFile, spawn } = require("child_process");
 function ytdlpStream(videoId, type, req, res) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
-    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/bv*[ext=mp4]/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".pipe.tmp";
 
@@ -327,7 +327,6 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-playlist",
       "--no-part",
       "--no-mtime",
-      "--merge-output-format", "mp4",
       "--concurrent-fragments", "1",
       "--quiet", "--no-warnings"
     ];
