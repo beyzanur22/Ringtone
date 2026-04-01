@@ -704,8 +704,13 @@ app.use((req, res, next) => {
 ========================= */
 app.use((req, res, next) => {
   const appKey = req.headers['x-app-key'];
-  // Sadece health ve config açık (Railway health check + app config)
-  if (req.path === "/health" || req.path === "/config") return next();
+  // health, config ve stream açık (ExoPlayer custom header gönderemiyor)
+  // /download korumalı kalır (abuse engeli)
+  if (
+    req.path === "/health" ||
+    req.path === "/config" ||
+    req.path.startsWith("/stream")
+  ) return next();
 
   const expectedKey = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
   if (appKey === expectedKey) {
