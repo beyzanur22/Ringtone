@@ -313,7 +313,7 @@ const { execFile, spawn } = require("child_process");
 function ytdlpStream(videoId, type, req, res) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
-    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".pipe.tmp";
 
@@ -327,6 +327,7 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-playlist",
       "--no-part",
       "--no-mtime",
+      "--merge-output-format", "mp4",
       "--concurrent-fragments", "1",
       "--quiet", "--no-warnings"
     ];
@@ -386,7 +387,7 @@ function ytdlpStream(videoId, type, req, res) {
 function ytdlpDirectDownload(videoId, type) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
-    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".ytdl";
     
@@ -410,6 +411,7 @@ function ytdlpDirectDownload(videoId, type) {
       "--no-playlist",
       "--no-part",
       "--no-mtime",
+      "--merge-output-format", "mp4",
       "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30"
@@ -613,7 +615,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   }
 
   try {
-    const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+    const format = type === "audio" ? "bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
