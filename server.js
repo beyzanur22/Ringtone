@@ -25,7 +25,7 @@ async function initYoutubei() {
     yt = await Innertube.create({ 
       cache, 
       generate_session_locally: true,
-      client_type: 'WEB'
+      client_type: 'TV'
     });
     
     let creds = null;
@@ -38,13 +38,7 @@ async function initYoutubei() {
     }
 
     if (creds) {
-      // Token süresi kontrolü — expired token ile istek atma, direkt anonim moda geç
-      if (creds.expiry_date && new Date(creds.expiry_date) < new Date()) {
-        console.warn("[YOUTUBEI] ⚠️ OAuth2 token süresi dolmuş! Anonim modda devam ediliyor.");
-        console.warn("[YOUTUBEI] Yenilemek için: node generate_token.js");
-      } else {
-        await yt.session.signIn(creds);
-      }
+      await yt.session.signIn(creds);
     } else {
       console.warn("[YOUTUBEI] OAuth kimlik bilgisi bulunamadı, anonim modda çalışıyor.");
     }
@@ -55,9 +49,9 @@ async function initYoutubei() {
 initYoutubei();
 
 const queue = new PQueue({
-  concurrency: 4,      // aynı anda max 4 işlem
+  concurrency: 2,      // aynı anda max 2 işlem
   interval: 1000,      // 1 saniyede
-  intervalCap: 6       // max 6 request
+  intervalCap: 3       // max 3 request
 });
 
 /* =========================
@@ -68,7 +62,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = parseInt(process.env.CACHE_SIZE_MB || "500") * 1024 * 1024; // Railway: 500MB default
+const MAX_CACHE_SIZE = 500 * 1024 * 1024; // 500MB limit (Railway ephemeral disk için ideal)
 
 function checkDiskSpaceAndCleanup() {
   try {
@@ -270,20 +264,18 @@ async function cacheSet(key, data, ttlSeconds) {
 
 // Bots & Jitter
 const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:136.0) Gecko/20100101 Firefox/136.0",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
 ];
 function getRandomUA() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 const randomJitter = async () => {
-  // 100ms ile 400ms arası rastgele gecikme (hızlı ama doğal)
-  const ms = Math.floor(Math.random() * 300) + 100;
+  // 500ms ile 1500ms arası rastgele gecikme ekler
+  const ms = Math.floor(Math.random() * 1000) + 500;
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
@@ -328,6 +320,7 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-part",
       "--no-mtime",
       "--concurrent-fragments", "1",
+      "--remote-components", "ejs:github",
       "--quiet", "--no-warnings"
     ];
 
@@ -370,6 +363,7 @@ function ytdlpStream(videoId, type, req, res) {
         resolve();
       } else {
         if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        if (!res.headersSent) res.status(500).send("Streaming failed");
         reject(new Error(`yt-dlp exited with code ${code}`));
       }
     });
@@ -385,7 +379,7 @@ function ytdlpStream(videoId, type, req, res) {
 function ytdlpDirectDownload(videoId, type) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
-    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".ytdl";
     
@@ -409,10 +403,10 @@ function ytdlpDirectDownload(videoId, type) {
       "--no-playlist",
       "--no-part",
       "--no-mtime",
-      "--merge-output-format", "mp4",
       "--concurrent-fragments", "1",
       "--retries", "3",
-      "--socket-timeout", "30"
+      "--socket-timeout", "30",
+      "--remote-components", "ejs:github"
     ];
 
     // Cookies ekle
@@ -556,7 +550,7 @@ async function fetchFromPiped(endpointPath) {
   let lastError = null;
   for (const instance of PIPED_INSTANCES) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 3000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 6000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
@@ -573,7 +567,7 @@ async function fetchFromPiped(endpointPath) {
 async function tryInvidiousFallback(videoId, type) {
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3000 });
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(res.data.error);
         if (type === "audio") {
@@ -613,7 +607,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   }
 
   try {
-    const format = type === "audio" ? "bestaudio" : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best";
+    const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     return await resolveStreamUrl(url, format, ua, countryClient);
   } catch (err) {
@@ -668,19 +662,6 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   }
 }
 
-// Deduplication: Aynı videoId için eşzamanlı resolve isteklerini birleştir
-const pendingResolves = new Map();
-async function deduplicatedResolve(videoId, type, ua, countryClient) {
-  const key = `${videoId}_${type}`;
-  if (pendingResolves.has(key)) {
-    console.log(`[DEDUP] ${videoId} (${type}) zaten çözümleniyor, bekleniyor...`);
-    return pendingResolves.get(key);
-  }
-  const promise = resolveStreamUrlWithFallback(videoId, type, ua, countryClient);
-  pendingResolves.set(key, promise);
-  try { return await promise; } finally { pendingResolves.delete(key); }
-}
-
 const axiosClient = axios.create({
   httpAgent: new http.Agent({ keepAlive: true }),
   httpsAgent: new https.Agent({ keepAlive: true })
@@ -704,19 +685,19 @@ app.use((req, res, next) => {
 ========================= */
 app.use((req, res, next) => {
   const appKey = req.headers['x-app-key'];
-  // health, config ve stream açık (ExoPlayer custom header gönderemiyor)
-  // /download korumalı kalır (abuse engeli)
+  // Health ve Config açık kalabilir, diğerleri korumalı
   if (
     req.path === "/health" ||
     req.path === "/config" ||
-    req.path.startsWith("/stream")
+    req.path.startsWith("/stream") ||
+    req.path.startsWith("/download")
   ) return next();
 
   const expectedKey = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
   if (appKey === expectedKey) {
     next();
   } else {
-    console.warn(`[AUTH] Yetkisiz erişim: ${req.ip} → ${req.path}`);
+    console.warn(`Yetkisiz erişim denemesi: ${req.ip}`);
     res.status(403).json({ error: "Unauthorized access" });
   }
 });
@@ -997,7 +978,7 @@ app.get("/stream", async (req, res) => {
       // Queue ile sıralı çalıştır
       streamUrl = await queue.add(async () => {
         await randomJitter();
-        return deduplicatedResolve(videoId, "audio", ua, countryClient);
+        return resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
       });
       // URL'ler genelde daha kısa sürede expire olur
       await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
@@ -1108,7 +1089,7 @@ app.get("/stream/video", async (req, res) => {
 
     const streamUrl = await queue.add(async () => {
       await randomJitter();
-      return deduplicatedResolve(videoId, "video", ua, countryClient);
+      return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
     });
 
     let response;
@@ -1214,7 +1195,7 @@ app.get("/download/mp3", async (req, res) => {
 
     await randomJitter();
     const streamUrl = await queue.add(() =>
-      deduplicatedResolve(videoId, "audio", ua, countryClient)
+      resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -1311,7 +1292,7 @@ app.get("/download/mp4", async (req, res) => {
 
     await randomJitter();
     const streamUrl = await queue.add(() =>
-      deduplicatedResolve(videoId, "video", ua, countryClient)
+      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
     );
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
@@ -1368,8 +1349,8 @@ async function manageDiskSpace() {
       fileList.push({ path: filePath, size: stats.size, atime: stats.atime });
     }
 
-    const maxSizeBytes = MAX_CACHE_SIZE; // Merkezi limit kullan
-    const targetSizeBytes = Math.floor(MAX_CACHE_SIZE * 0.8); // %80'e düşür
+    const maxSizeBytes = 10 * 1024 * 1024 * 1024; // 10 GB
+    const targetSizeBytes = 8 * 1024 * 1024 * 1024; // 8 GB'a düşür
 
     if (totalSize > maxSizeBytes) {
       console.log(`[DISK_MANAGER] Limit asildi: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB. Temizlik basliyor...`);
