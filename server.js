@@ -313,7 +313,7 @@ const { execFile, spawn } = require("child_process");
 function ytdlpStream(videoId, type, req, res) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
-    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/bv*[ext=mp4]/best";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".pipe.tmp";
 
@@ -370,7 +370,6 @@ function ytdlpStream(videoId, type, req, res) {
         resolve();
       } else {
         if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-        if (!res.headersSent) res.status(500).send("Streaming failed");
         reject(new Error(`yt-dlp exited with code ${code}`));
       }
     });
