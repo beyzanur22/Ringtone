@@ -1,83 +1,2206 @@
-<?xml version="1.0" encoding="utf-8"?>
+package com.example.ringtonemasterv2
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+import android.app.appsearch.SearchResults
+import androidx.appcompat.app.AlertDialog
+import retrofit2.http.GET
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.*
+import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
+import android.view.Menu
+import android.view.MenuItem
+import androidx.appcompat.app.ActionBarDrawerToggle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.navigation.NavigationView
+import com.google.android.material.tabs.TabLayout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.localization.Localization
+import org.schabi.newpipe.extractor.search.SearchInfo
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import retrofit2.*
+import retrofit2.converter.gson.GsonConverterFactory
+import java.io.File
+import android.widget.AutoCompleteTextView
+import android.widget.ArrayAdapter
+import android.view.ViewGroup
+import java.net.URL
+import java.net.HttpURLConnection
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import org.json.JSONArray
+import androidx.media3.common.util.UnstableApi
+import com.bumptech.glide.Glide
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import org.json.JSONObject
+import androidx.media3.common.MediaMetadata
+import android.net.Uri
+import androidx.media3.common.Player
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import com.google.android.material.tabs.TabLayoutMediator
 
-    xmlns:tools="http://schemas.android.com/tools">
+// ---------------- MODELLER ----------------
+data class GlobalConfig(
+    val enabled: Boolean,
+    val mode: String
+)
+data class AppConfig(
+    val global: GlobalConfig,
+    val countries: Map<String, String>
+)
+data class VideoModel(
+    val title: String,
+    val uploader: String,
+    val url: String,
+    val thumbnailUrl: String,
+    val duration: Long
+)
+data class DownloadedItem(
+    val file: java.io.File,
+    val isAudio: Boolean,
+    val thumbnailUrl: String?,
+    val duration: String?
+)
+interface ConfigService {
+    @GET("gistfile1.txt")
+    fun getConfig(): Call<AppConfig>
+}
+// ---------------- ACTIVITY ----------------
+@UnstableApi
+class MainActivity : AppCompatActivity() {
+    private lateinit var downloadPanel: View
+    private lateinit var activeAdapter: ActiveDownloadsAdapter
+    private lateinit var downloadsPanelRecycler: RecyclerView
+    private lateinit var btnClearDownloads: TextView
+    private lateinit var emptyStateLayout: View
+    private lateinit var drawerLayout: DrawerLayout
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var downloadTabs: TabLayout
+    private lateinit var miniPlayer: com.google.android.material.card.MaterialCardView
+    private lateinit var miniPlayerTitle: TextView
+    private lateinit var miniPlayerArtist: TextView
+    private lateinit var miniPlayerCover: ImageView
+    private lateinit var downloadProgress: ProgressBar
+    private lateinit var btnCancelDownload: ImageButton
+    private lateinit var downloadsAdapter: DownloadsAdapter
+    private val allDownloads = mutableListOf<DownloadedItem>()
+    private var isDownloadsScreen = false
+    private var blockedChannels = listOf<String>()
+    private var currentCall: okhttp3.Call? = null
+    private var currentTrackIndex = -1
+    private var currentTrackList: List<TrackEntity> = emptyList()
+    private var musicService: MusicService? = null
+    private var isBound = false
+    private var currentSearchInfo: SearchInfo? = null
+    private var isSearchLoading = false
+    private val searchResults = mutableListOf<VideoModel>()
+    private lateinit var downloadBar: LinearLayout
+    private lateinit var txtDownloadBarText: TextView
+    private lateinit var txtToolbarTitle: TextView
+    private lateinit var txtToolbarSubtitle: TextView
+    private lateinit var bottomSheetBehavior: BottomSheetBehavior<View>
+    private lateinit var miniPlayerProgress: ProgressBar
+    private var miniHandler: android.os.Handler? = null
+    private var miniRunnable: Runnable? = null
+    private lateinit var loadingLayout: View
+    private val httpClient = OkHttpClient()
+    private var isShuffleEnabled = false
+    private var nextPageToken: String? = null
+    private var isLoadingMore = false
+    private var currentQuery: String = ""
+    private var repeatMode = 0
+    private lateinit var tabContainer: LinearLayout
+    private lateinit var downloadViewPager: androidx.viewpager2.widget.ViewPager2
+
+
+    // STREAM CACHE
+    // Aynı video için tekrar YouTube'a gitmemek için
+    private val serviceConnection = object : android.content.ServiceConnection {
+
+        override fun onServiceConnected(
+            name: android.content.ComponentName?,
+            service: android.os.IBinder?
+        ) {
+            val binder = service as MusicService.MusicBinder
+            musicService = binder.getService()
+            isBound = true
+
+            musicService?.getPlayer()?.addListener(object : Player.Listener {
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+
+                    runOnUiThread {
+
+                        val miniBtn = findViewById<ImageButton>(R.id.btnPlayPause)
+
+                        if (isPlaying) {
+                            miniBtn.setImageResource(android.R.drawable.ic_media_pause)
+                        } else {
+                            miniBtn.setImageResource(android.R.drawable.ic_media_play)
+                        }
+
+                    }
+
+                }
+
+            })
+        }
+        override fun onServiceDisconnected(name: android.content.ComponentName?) {
+            isBound = false
+        }
+    }
+    private val activeDownloads = mutableListOf<ActiveDownload>()
+    private val db by lazy { AppDatabase.get(this) }
+    // ---------------- onCreate ----------------
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        window.statusBarColor = android.graphics.Color.parseColor("#1F1E1E")
+        window.navigationBarColor = android.graphics.Color.parseColor("#1F1E1E")
+        // ---------------- DOWNLOAD PANEL SETUP ----------------
+        fetchRemoteConfig { config ->
+            val deviceCountry = java.util.Locale.getDefault().country
+            val mode = if (config.global.enabled) {
+                config.global.mode
+            } else {
+                config.countries[deviceCountry] ?: "youtube"
+            }
+            if (mode == "ringtone") {
+                startActivity(Intent(this, RingtoneActivity::class.java))
+                finish()
+            }
+        }
+        downloadPanel = findViewById(R.id.downloadPanel)
+        downloadsPanelRecycler = findViewById(R.id.recyclerDownloadsPanel)
+        downloadsPanelRecycler.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        })
+        downloadsPanelRecycler.layoutManager = LinearLayoutManager(this)
+        findViewById<TextView>(R.id.btnOpenDrawer).setOnClickListener {
+            drawerLayout.openDrawer(GravityCompat.START)
+        }
+        //download panel kısmı
+        val sheet = findViewById<View>(R.id.downloadPanel)
+        bottomSheetBehavior = BottomSheetBehavior.from(sheet)
+        bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+        bottomSheetBehavior.isHideable = true
+        bottomSheetBehavior.skipCollapsed = false
+       // Layout tamamlandıktan sonra gizle
+        sheet.post {
+            bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+        }
+        bottomSheetBehavior.addBottomSheetCallback(
+            object : BottomSheetBehavior.BottomSheetCallback() {
+
+                override fun onStateChanged(bottomSheet: View, newState: Int) {
+
+                    when (newState) {
+
+                        BottomSheetBehavior.STATE_EXPANDED -> {
+                            miniPlayer.visibility = View.GONE
+                        }
+
+                        BottomSheetBehavior.STATE_HIDDEN -> {
+                            updateMiniPlayerVisibility()
+                        }
+                        BottomSheetBehavior.STATE_COLLAPSED -> {
+                            updateMiniPlayerVisibility()
+                        }
+                    }
+                }
+                override fun onSlide(bottomSheet: View, slideOffset: Float) {}
+            }
+        )
+
+        activeAdapter = ActiveDownloadsAdapter(activeDownloads)
+        downloadsPanelRecycler.adapter = activeAdapter
+           // Music Service bağlama kısmı
+        val intent = Intent(this, MusicService::class.java)
+
+        startService(intent)
+        bindService(intent, serviceConnection, BIND_AUTO_CREATE)
+
+        btnClearDownloads = findViewById(R.id.btnClearDownloads)
+        emptyStateLayout = findViewById(R.id.emptyStateLayout)
+
+        btnClearDownloads.setOnClickListener {
+
+            val iterator = activeDownloads.iterator()
+
+            while (iterator.hasNext()) {
+                val item = iterator.next()
+
+                if (item.state != DownloadState.DOWNLOADING) {
+
+                    // Eğer dosya varsa sil
+                    val file = File(
+                        getExternalFilesDir(null),
+                        "downloads/${item.fileName}"
+                    )
+
+                    if (file.exists()) {
+                        file.delete()
+                    }
+
+                    iterator.remove()
+                }
+            }
+
+            activeAdapter.notifyDataSetChanged()
+            updateDownloadPanelState()
+            updateDownloadBadge()
+        }
+
+        fetchBlockedChannels { list ->
+            blockedChannels = list
+        }
+        findViewById<TextView>(R.id.btnGoDownloads).setOnClickListener {
+            toggleDownloadPanel()
+
+            val navView: NavigationView = findViewById(R.id.navigationView)
+            navView.menu.performIdentifierAction(R.id.nav_downloads, 0)
+
+            refreshDownloadsList()
+        }
+        loadingLayout = findViewById(R.id.loadingLayout)
+        loadingLayout.visibility = View.VISIBLE
+        // ---------------- PLAYLIST BACK ----------------
+
+        val btnBackPlaylist = findViewById<ImageButton>(R.id.btnBackPlaylist)
+        btnBackPlaylist.setOnClickListener {
+            showPlaylists()
+            btnBackPlaylist.visibility = View.GONE
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+
+            registerReceiver(
+                trackEndedReceiver,
+                IntentFilter("TRACK_ENDED"),
+                Context.RECEIVER_NOT_EXPORTED
+            )
+
+        } else {
+
+            registerReceiver(
+                trackEndedReceiver,
+                IntentFilter("TRACK_ENDED")
+            )
+
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                1
+            )
+        }
+        // ---------------- TOOLBAR ----------------
+
+        val toolbar: Toolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+
+        txtToolbarTitle = findViewById(R.id.txtToolbarTitle)
+        txtToolbarSubtitle = findViewById(R.id.txtToolbarSubtitle)
+
+        drawerLayout = findViewById(R.id.drawerLayout)
+        recyclerView = findViewById(R.id.recyclerView)
+
+        downloadTabs = findViewById(R.id.downloadTabs)
+        tabContainer = findViewById(R.id.tabContainer)
+        downloadViewPager = findViewById(R.id.downloadViewPager)
+
+        // ---------------- MINI PLAYER ----------------
+
+        miniPlayer = findViewById(R.id.miniPlayer)
+        downloadBar = findViewById(R.id.downloadBar)
+        txtDownloadBarText = findViewById(R.id.txtDownloadBarText)
+        // Tıklayınca panel aç/kapat kısmı
+        downloadBar.setOnClickListener {
+            toggleDownloadPanel()
+        }
+        // İlk açılışta yazıyı ayarla
+        updateDownloadBar()
+        miniPlayerTitle = findViewById(R.id.miniPlayerTitle)
+        miniPlayer.visibility = View.GONE
+        miniPlayerArtist = findViewById(R.id.miniPlayerArtist)
+        miniPlayerCover = findViewById(R.id.miniPlayerCover)
+
+        miniPlayer.setOnClickListener {
+            openFullPlayer()
+        }
+        miniPlayerProgress = findViewById(R.id.miniPlayerProgress)
+        downloadProgress = findViewById(R.id.downloadProgress)
+        btnCancelDownload = findViewById(R.id.btnCancelDownload)
+
+        val btnPlayPause = findViewById<ImageButton>(R.id.btnPlayPause)
+
+        btnPlayPause.setOnClickListener {
+            if (musicService?.isPlaying() == true) {
+                musicService?.pause()
+                btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+            } else {
+                musicService?.resume()
+                btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
+            }
+        }
+        btnCancelDownload.setOnClickListener {
+            currentCall?.cancel()
+            downloadProgress.visibility = View.GONE
+            Toast.makeText(this, " İndirme iptal edildi.", Toast.LENGTH_SHORT).show()
+        }
+
+        findViewById<View>(R.id.downloadManagerContainer)
+            .setOnClickListener { showDownloadManager() }
+
+        // ---------------- DRAWER ----------------
+
+        val toggle = ActionBarDrawerToggle(
+            this, drawerLayout, toolbar,
+            R.string.navigation_drawer_open,
+            R.string.navigation_drawer_close
+        )
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+
+        setupNavigation()
+        // ------------------- NEWPIPE ----------------------
+        val navView: NavigationView = findViewById(R.id.navigationView)
+        navView.setCheckedItem(R.id.nav_search)
+        navView.menu.performIdentifierAction(R.id.nav_search, 0)
+        updateDownloadPanelState()
+    }
+           // ---------------- NAVIGATION ----------------
+
+    private fun setupNavigation() {
+        val navView: NavigationView = findViewById(R.id.navigationView)
+        navView.setNavigationItemSelectedListener { item ->
+
+            when (item.itemId) {
+                R.id.nav_search -> {
+                    downloadTabs.visibility = View.GONE
+                    tabContainer.visibility = View.GONE
+                    downloadViewPager.visibility = View.GONE
+                    recyclerView.visibility = View.VISIBLE
+                    setupDownloaderMode()
+                    fetchTop50()
+                }
+                R.id.nav_playlists -> {
+                    downloadTabs.visibility = View.GONE
+                    tabContainer.visibility = View.GONE
+                    downloadViewPager.visibility = View.GONE
+                    recyclerView.visibility = View.VISIBLE
+                    showPlaylists()
+                }
+                R.id.nav_downloads -> {
+                    refreshDownloadsList()
+                }
+                R.id.nav_privacy_policy -> {
+                    // Kullanıcının internet tarayıcısında bağlantıyı açar
+                    val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://siteniz.com/privacy-policy"))
+                    startActivity(browserIntent)
+}
+                }
+            drawerLayout.closeDrawer(GravityCompat.START)
+            true
+        }
+    }
+    // ---------------- SEARCH ----------------
+    private fun setupDownloaderMode() {
+        isDownloadsScreen = false
+        downloadViewPager.visibility = View.GONE
+        tabContainer.visibility = View.GONE
+        recyclerView.visibility = View.VISIBLE
+        txtToolbarTitle.text = "Home"
+        txtToolbarSubtitle.text = "Popular"
+    }
+
+    private fun fetchTop50() {
+
+        val url = "https://ringtone-production.up.railway.app/top50"
+        txtToolbarTitle.text = "Home"
+        txtToolbarSubtitle.text = "Popular"
+        loadingLayout.visibility = View.VISIBLE
+        Thread {
+            try {
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+
+                val body = response.body()?.string() ?: return@Thread
+
+                //  YENİ JSON FORMAT
+                val jsonObject = org.json.JSONObject(body)
+                val source = jsonObject.getString("source")
+                val items = jsonObject.getJSONArray("data")
+
+                val results = mutableListOf<VideoModel>()
+
+                for (i in 0 until items.length()) {
+
+                    val item = items.getJSONObject(i)
+                    val snippet = item.getJSONObject("snippet")
+                    val contentDetails = item.getJSONObject("contentDetails")
+                    val isoDuration = contentDetails.getString("duration")
+                    val durationSeconds = parseIsoDuration(isoDuration)
+
+                    val videoId = item.getString("id")
+                    val title = snippet.getString("title")
+                    val channel = snippet.getString("channelTitle")
+                    val thumbnail = snippet
+                        .getJSONObject("thumbnails")
+                        .getJSONObject("high")
+                        .getString("url")
+
+                    results.add(
+                        VideoModel(
+                            title = title,
+                            uploader = channel,
+                            url = "https://www.youtube.com/watch?v=$videoId",
+                            thumbnailUrl = thumbnail,
+                            duration = durationSeconds
+                        )
+                    )
+                }
+                runOnUiThread {
+
+                    //  HOME = 2'li Grid
+                    recyclerView.layoutManager =
+                        androidx.recyclerview.widget.GridLayoutManager(this@MainActivity, 2)
+
+                    android.util.Log.d("TOP50_SOURCE", "Top50 $source'den geldi")
+
+                    recyclerView.adapter = HomeAdapter(
+                        results,
+
+                        onWatch = { video ->
+                            startActivity(
+                                Intent(this@MainActivity, VideoPlayerActivity::class.java)
+                                    .putExtra("url", video.url)
+                            )
+                        },
+
+                        onListen = { video ->
+
+                            val trackList = results.map {
+                                TrackEntity(
+                                    playlistId = -1,
+                                    title = it.title,
+                                    uploader = it.uploader,
+                                    streamUrl = it.url,
+                                    thumbnailUrl = it.thumbnailUrl
+                                )
+                            }
+
+                            val track = trackList.find { it.streamUrl == video.url }
+
+                            if (track != null) {
+                                playTrack(track, trackList)
+                            }
+                        },
+
+                        onDownloadMp3 = { downloadFile(it, "_audio.m4a") },
+                        onDownloadMp4 = { downloadFile(it, "_video.mp4") },
+                        onAddPlaylist = { showPlaylistPicker(it) },
+                        onGoDownloads = { refreshDownloadsList() }
+                    )
+                    loadingLayout.visibility = View.GONE
+                }
+
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread {
+                    //  HATA → loading kapat
+                    loadingLayout.visibility = View.GONE
+                }
+            }
+        }.start()
+    }
+    private fun performSearch(query: String) {
+        txtToolbarTitle.text = "Search Results"
+        txtToolbarSubtitle.text = query
+        currentQuery = query
+        searchResults.clear()
+
+        Thread {
+            try {
+
+                val url =
+                    "https://ringtone-production.up.railway.app/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}"
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+
+
+                //  403 kontrolü
+                if (response.code() == 403) {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Unauthorized request",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@Thread
+                }
+
+                // 429 kontrolü
+                if (response.code() == 429) {
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Too many searches. Please wait 1 minute.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@Thread
+                }
+
+                val body = response.body()?.string() ?: return@Thread
+
+                val jsonObject = org.json.JSONObject(body)
+                nextPageToken = jsonObject.optString("nextPageToken", null)
+                val items = jsonObject.getJSONArray("data")
+
+
+                for (i in 0 until items.length()) {
+
+                    val item = items.getJSONObject(i)
+                    val snippet = item.getJSONObject("snippet")
+
+                    // id hem string hem object olabilir
+                    val videoId = if (item.get("id") is String) {
+                        item.getString("id")
+                    } else {
+                        item.getJSONObject("id").getString("videoId")
+                    }
+
+                    val title = snippet.getString("title")
+                    val channel = snippet.getString("channelTitle")
+
+                    val thumbnail = snippet
+                        .getJSONObject("thumbnails")
+                        .getJSONObject("high")
+                        .getString("url")
+
+                    searchResults.add(
+                        VideoModel(
+                            title = title,
+                            uploader = channel,
+                            url = "https://www.youtube.com/watch?v=$videoId",
+                            thumbnailUrl = thumbnail,
+                            duration = 0L
+                        )
+                    )
+                }
+
+                runOnUiThread {
+
+                    recyclerView.layoutManager =
+                        LinearLayoutManager(this@MainActivity)
+                    recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+
+                        override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+
+                            if (dy <= 0) return
+
+                            val layoutManager = rv.layoutManager as LinearLayoutManager
+                            val lastVisible = layoutManager.findLastVisibleItemPosition()
+
+                            if (!isLoadingMore && lastVisible >= searchResults.size - 5) {
+
+                                if (nextPageToken != null) {
+
+                                    loadNextPage()
+
+                                }
+                            }
+                        }
+                    })
+
+                    android.util.Log.d("SEARCH_RESULTS", "Results = ${searchResults.size}")
+
+                    val trackList = searchResults.map {
+                        TrackEntity(
+                            playlistId = -1,
+                            title = it.title,
+                            uploader = it.uploader,
+                            streamUrl = it.url,
+                            thumbnailUrl = it.thumbnailUrl
+                        )
+                    }
+                    recyclerView.adapter = SearchAdapter(
+                        searchResults,
+
+                        onWatch = { video ->
+                            val intent = Intent(this, VideoPlayerActivity::class.java)
+                            intent.putExtra("url", video.url)
+                            startActivity(intent)
+                        },
+
+                        onListen = { video ->
+                            val track = trackList.find { it.streamUrl == video.url }
+                            if (track != null) {
+                                playTrack(track, trackList)
+                            }
+                        },
+
+
+                        onDownloadMp3 = { video ->
+                            downloadFile(video, "_audio.m4a")
+                        },
+
+
+                        onDownloadMp4 = { video ->
+                            downloadFile(video, "_video.mp4")
+                        },
+
+                        onAddPlaylist = { video ->
+                            showPlaylistPicker(video)
+                        },
+
+                        onGoDownloads = {
+                            refreshDownloadsList()
+                        }
+                    )
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+
+    // DOWNLOADS KISMI
+
+
+   fun refreshDownloadsList() {
+        isDownloadsScreen = true
+        txtToolbarTitle.text = "Downloads"
+        txtToolbarSubtitle.text = "Your Collection"
+
+        // Normal RecyclerView'ı gizle, ViewPager2'yi göster
+        recyclerView.visibility = View.GONE
+        downloadViewPager.visibility = View.VISIBLE
+        tabContainer.visibility = View.VISIBLE
+        downloadTabs.visibility = View.VISIBLE
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val downloads = db.dao().getDownloads()
+
+            withContext(Dispatchers.Main) {
+                allDownloads.clear()
+                allDownloads.addAll(
+                    downloads.map {
+                        DownloadedItem(
+                            java.io.File(it.path),
+                            it.isAudio,
+                            it.thumbnailUrl,
+                            it.duration
+                        )
+                    }
+                )
+
+                // ViewPager2 adapter bağla
+                downloadViewPager.adapter = DownloadsPagerAdapter(this@MainActivity, allDownloads)
+
+                // TabLayout + ViewPager2 senkronize et (kaydırmalı!)
+                TabLayoutMediator(downloadTabs, downloadViewPager) { tab, position ->
+                    tab.text = if (position == 0) "\uD83C\uDFB5 Audio" else "\uD83C\uDFA5 Videos"
+                }.attach()
+            }
+        }
+    }
+
+    // DownloadsPagerAdapter'ın erişebilmesi için public metodlar
+    fun onDownloadPlay(clickedItem: DownloadedItem) {
+        if (clickedItem.isAudio) {
+            val audioList = allDownloads
+                .filter { it.isAudio }
+                .map {
+                    TrackEntity(
+                        playlistId = -1,
+                        title = it.file.name,
+                        streamUrl = it.file.absolutePath,
+                        uploader = "Local file",
+                        thumbnailUrl = it.thumbnailUrl ?: ""
+                    )
+                }
+            val index = audioList.indexOfFirst {
+                it.streamUrl == clickedItem.file.absolutePath
+            }
+            if (index != -1) {
+                playTrack(audioList[index], audioList)
+            }
+        } else {
+            openLocalVideo(clickedItem.file)
+        }
+    }
+
+    fun onDownloadDelete(item: DownloadedItem) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            db.dao().deleteDownload(item.file.absolutePath)
+            item.file.delete()
+            withContext(Dispatchers.Main) {
+                refreshDownloadsList()
+            }
+        }
+    }
+
+    fun onDownloadAddToPlaylist(item: DownloadedItem) {
+        showPlaylistPickerFromDownload(item)
+    }
+
+    // ---------------- MEDIA -------------------
+    private fun playLocalAudio(file: File, thumbnailUrl: String?) {
+
+        val uriString = "file://${file.absolutePath}"
+        val metadata = MediaMetadata.Builder()
+            .setTitle(
+                file.name
+                    .replace("_audio.webm", "")
+                    .replace("_audio.m4a", "")
+                    .replace("_audio.mp3", "")
+            )
+            .setArtist("Local File")
+            .apply {
+                if (!thumbnailUrl.isNullOrEmpty()) {
+                    setArtworkUri(Uri.parse(thumbnailUrl))
+                }
+            }
+            .build()
+        musicService?.play(uriString,null, metadata)
+
+        miniPlayer.visibility = View.VISIBLE
+        miniPlayerTitle.text = file.name
+        miniPlayerTitle.isSelected = true
+        miniPlayerArtist.text = "Local file"
+
+        if (!thumbnailUrl.isNullOrEmpty()) {
+            Glide.with(this)
+                .load(thumbnailUrl)
+                .into(miniPlayerCover)
+        }
+
+        updateMiniPlayerVisibility()
+        startMiniPlayerProgressUpdater()
+    }
+
+    private fun openLocalVideo(file: java.io.File) {
+        startActivity(
+            Intent(this, VideoPlayerActivity::class.java)
+                .putExtra("path", file.absolutePath)
+        )
+    }
+
+    // ---------------- DOWNLOAD MANAGER ----------------
+    private fun showPlaylists() {
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            val playlists = db.dao().getPlaylists()
+
+            val playlistsWithDetails = playlists.map { playlist ->
+                val count = db.dao().getTrackCount(playlist.id)
+                val tracks = db.dao().getTracksForPlaylist(playlist.id)
+                val thumb = tracks.firstOrNull()?.thumbnailUrl
+                val titles = tracks.take(3).map { it.title }
+
+                Triple(playlist, count, Pair(thumb, titles))
+            }
+
+            withContext(Dispatchers.Main) {
+                downloadViewPager.visibility = View.GONE
+                tabContainer.visibility = View.GONE
+                recyclerView.visibility = View.VISIBLE
+
+                txtToolbarTitle.text = "Playlists"
+                txtToolbarSubtitle.text = ""
+
+                recyclerView.layoutManager =
+                    LinearLayoutManager(this@MainActivity)
+
+                recyclerView.adapter = PlaylistsAdapter(
+                    items = playlistsWithDetails,
+                    onClick = { playlist ->
+                        openPlaylist(playlist.id, playlist.name)
+                    },
+                    onCreate = {
+                        showCreatePlaylistDialog()
+                    },
+                    onDelete = { playlist ->
+
+                        lifecycleScope.launch(Dispatchers.IO) {
+
+                            db.dao().deletePlaylist(playlist.id)
+
+                            withContext(Dispatchers.Main) {
+                                showPlaylists()
+                                Toast.makeText(this@MainActivity, "Playlist deleted", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun showDownloadManager() {
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.bottomsheet_downloads, null)
+        dialog.setContentView(view)
+
+        val recycler = view.findViewById<RecyclerView>(R.id.recyclerDownloads)
+        recycler.layoutManager = LinearLayoutManager(this)
+        val activeAdapter = ActiveDownloadsAdapter(activeDownloads)
+        recycler.adapter = activeAdapter
+
+        dialog.show()
+    }
+
+    // ---------------- DOWNLOAD CORE ------------------
+    private fun downloadFile(video: VideoModel, suffix: String) {
+
+        val safe = video.title.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val isAudio = suffix.endsWith(".m4a")
+
+        val active = ActiveDownload(
+            title = video.title,
+            thumbnailUrl = video.thumbnailUrl,
+            duration = formatDuration(seconds = video.duration),
+            url = video.url,
+            fileName = "$safe$suffix",
+            artist = video.uploader ?: "Unknown Artist",
+            isAudio = isAudio
+        )
+
+        activeDownloads.add(active)
+        activeAdapter.notifyDataSetChanged()
+        updateDownloadBadge()
+        updateDownloadBar()
+        updateDownloadPanelState()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            try {
+
+                // URL temizleme
+                val uri = android.net.Uri.parse(video.url)
+
+                val videoId = uri.getQueryParameter("v")
+                    ?: uri.lastPathSegment   // shorts fallback
+
+                if (videoId == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Video ID çözülemedi",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+
+
+                val base = "https://ringtone-production.up.railway.app"
+
+               //  1. ÖNCE NEWPIPE DENE
+                val api = MediaApi(this@MainActivity)
+                val directUrl = if (isAudio) {
+                    api.getAudioUrl(videoId)
+                } else {
+                    api.getVideoUrl(videoId)
+                }
+
+                val fileName = if (isAudio) "$safe.m4a" else "$safe.mp4"
+
+                if (directUrl != null) {
+
+                    //  EN TEMİZ YOL (YouTube fark etmez)
+                    downloadToAppFolder(directUrl, "$safe$suffix", active)
+
+
+                } else {
+
+                    //  FALLBACK (yt-dlp)
+                    // YENİ, Okyanus Ötesi Hızlı Endpointlerimiz !!
+                    val streamUrl = if (isAudio) {
+                        "$base/stream?videoId=$videoId"
+                    } else {
+                        "$base/stream/video?videoId=$videoId"
+                    }
+
+                    downloadToAppFolder(streamUrl, "$safe$suffix", active)
+
+                    withContext(Dispatchers.Main) {
+
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    activeAdapter.notifyDataSetChanged()
+                    refreshDownloadsList()
+
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Download error",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+    fun retryDownload(item: ActiveDownload) {
+
+        //  UI reset
+        item.state = DownloadState.DOWNLOADING
+        item.progress = 0
+        activeAdapter.notifyDataSetChanged()
+        updateDownloadBar()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            try {
+
+                val uri = android.net.Uri.parse(item.url)
+
+                val videoId = uri.getQueryParameter("v")
+                    ?: uri.lastPathSegment
+
+                if (videoId == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Video ID çözülemedi",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                val base = "https://ringtone-production.up.railway.app"
+
+                val streamUrl = if (item.isAudio) {
+                    "$base/download/mp3?videoId=$videoId"
+                } else {
+                    "$base/download/mp4?videoId=$videoId"
+                }
+
+                downloadToAppFolder(streamUrl, item.fileName, item)
+
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Retry başarısız",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun showCreatePlaylistDialog() {
+        val input = EditText(this)
+        input.hint = "Playlist Name"
+
+        AlertDialog.Builder(this)
+            .setTitle("New Playlist")
+            .setView(input)
+            .setPositiveButton("Create") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        db.dao().insertPlaylist(PlaylistEntity(name = name))
+                        withContext(Dispatchers.Main) {
+                            showPlaylists()
+                        }
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun openPlaylist(playlistId: Long, name: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            val tracks = db.dao().getTracksForPlaylist(playlistId)
+
+            withContext(Dispatchers.Main) {
+                txtToolbarTitle.text = name
+                txtToolbarSubtitle.text = "Playlist"
+
+                recyclerView.layoutManager =
+                    LinearLayoutManager(this@MainActivity)
+
+                // hangi playlist olursa olsun geri tuşu çalışır
+                findViewById<ImageButton>(R.id.btnBackPlaylist)
+                    .visibility = View.VISIBLE
+
+                recyclerView.adapter = TracksAdapter(
+                    items = tracks,
+
+                    onPlay = { track ->
+                        playTrack(track, tracks)
+                    },
+
+                    onEdit = { track -> },
+
+                    onDelete = { track ->
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            db.dao().deleteTrack(track.id)
+                            openPlaylist(playlistId, name)
+                        }
+                    }
+                )
+            }
+        }
+    }
+    private fun showPlaylistPicker(video: VideoModel) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlists = db.dao().getPlaylists()
+
+            withContext(Dispatchers.Main) {
+
+                if (playlists.isEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Önce bir playlist oluştur",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@withContext
+                }
+                val names = playlists.map { it.name }.toTypedArray()
+
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Select Playlist")
+                    .setItems(names) { _, index ->
+                        val selected = playlists[index]
+                        addVideoToPlaylist(video, selected.id)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+    private fun addVideoToPlaylist(video: VideoModel, playlistId: Long) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            db.dao().insertTrack(
+                TrackEntity(
+                    playlistId = playlistId,
+                    title = video.title,
+                    streamUrl = video.url,
+                    uploader = video.uploader,
+                    thumbnailUrl = video.thumbnailUrl
+                )
+            )
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Added to playlist",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+    private fun playTrack(track: TrackEntity, trackList: List<TrackEntity>) {
+
+        if (!isBound) {
+            Toast.makeText(this, "Music service not ready", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        currentTrackList = trackList
+        currentTrackIndex = trackList.indexOf(track)
+
+        if (track.streamUrl.startsWith("/")) {
+            playLocalAudio(
+                File(track.streamUrl),
+                track.thumbnailUrl
+            )
+        } else {
+            playYoutubeAudio(track)
+        }
+    }
+    private fun playYoutubeAudio(track: TrackEntity) {
+
+        //  1) URL null / boş kontrolü
+        if (track.streamUrl.isBlank()) {
+            Toast.makeText(this, "Video linki boş", Toast.LENGTH_SHORT).show()
+            return
+        }
+        //  2) youTube watch linki kontrolü
+        if (!track.streamUrl.contains("youtube.com")) {
+            Toast.makeText(this, "Geçersiz YouTube linki", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        miniPlayer.visibility = View.VISIBLE
+        miniPlayerTitle.text = "Hazırlanıyor: ${track.title}..."
+        miniPlayerTitle.isSelected = true
+        miniPlayerArtist.text = ""
+
+        lifecycleScope.launch(Dispatchers.IO) {
+
+            try {
+
+                //  DEBUG için log ekle
+                android.util.Log.d("STREAM_URL_DEBUG", track.streamUrl)
+               //ÖNEMLİ ALAN
+                val uri = android.net.Uri.parse(track.streamUrl)
+
+                val videoId = uri.getQueryParameter("v")
+                    ?: uri.lastPathSegment  // shorts fallback
+
+                if (videoId == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Video ID çözülemedi", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
 
 
 
-    <uses-permission android:name="android.permission.INTERNET" />
+                var audioUrl = StreamCache.get(videoId)
 
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+                if (audioUrl == null) {
+                    // NewPipe'a maksimum 15 saniye süre veriyoruz (withTimeoutOrNull).
+                    // Eğer 15 saniyede çözemezse uygulamayı kitlemesini engelliyoruz!
+                    audioUrl = kotlinx.coroutines.withTimeoutOrNull(15000L) {
+                        MediaApi(this@MainActivity).getAudioUrl(videoId)
+                    }
 
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+                    if (audioUrl.isNullOrEmpty()) {
+                        // NewPipe başarısız oldu veya çok yavaş kaldı. Kullanıcıyı bekletmemek için
+                        // direkt kendi kurduğumuz HIZLI (Railway) sunucumuza bağlanıyoruz!
+                        audioUrl = "https://ringtone-production.up.railway.app/stream?videoId=$videoId"
+                    } else {
+                        StreamCache.put(videoId, audioUrl)
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.uploader)
+                        .setArtworkUri(Uri.parse(track.thumbnailUrl)) // Kapak resmi
+                        .build()
 
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+                    // Servise sadece URL değil, metadata ile birlikte gönderiyoruz
+                    musicService?.play(audioUrl, videoId , metadata)
+                    miniPlayerTitle.text = track.title
+                    miniPlayerTitle.isSelected = true
+                    miniPlayerArtist.text = track.uploader ?: "Unknown"
 
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+                    Glide.with(this@MainActivity)
+                        .load(track.thumbnailUrl)
+                        .into(miniPlayerCover)
 
-    <application
-        android:allowBackup="true"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:hardwareAccelerated="true"
+                    findViewById<ImageButton>(R.id.btnPlayPause)
+                        .setImageResource(android.R.drawable.ic_media_pause)
 
-        android:theme="@style/Theme.RingtoneMasterV2"
-        android:name=".MyApp"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+                    updateMiniPlayerVisibility()
+                    startMiniPlayerProgressUpdater()
+                }
 
-        <!-- MAIN ACTIVITY -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            } catch (e: Exception) {
+                e.printStackTrace()
 
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Video açılırken hata oluştu",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+    private fun showPlaylistPickerFromDownload(item: DownloadedItem) {
 
-        </activity>
-        <activity
-            android:name=".RingtoneActivity"
-            android:exported="false"/>
+        lifecycleScope.launch(Dispatchers.IO) {
+            val playlists = db.dao().getPlaylists()
 
-        <activity
-            android:name=".VideoPlayerActivity"
-            android:supportsPictureInPicture="true"
-            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"
-            android:launchMode="singleTask"
-            android:exported="false" />
+            withContext(Dispatchers.Main) {
 
-        <!-- VIDEO SERVIS TANIMI -->
-        <service
-            android:name=".VideoService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService"/>
-            </intent-filter>
-        </service>
+                if (playlists.isEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Create a playlist first",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@withContext
+                }
 
-        <!-- DOĞRU SERVIS TANIMI (Müzik İçin) -->
-        <service
-            android:name=".MusicService"
-            android:exported="true"
-            android:foregroundServiceType="mediaPlayback">
-            <intent-filter>
-                <action android:name="androidx.media3.session.MediaSessionService"/>
-            </intent-filter>
-        </service>
+                val names = playlists.map { it.name }.toTypedArray()
 
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Select Playlist")
+                    .setItems(names) { _, index ->
 
-    </application>
+                        val selected = playlists[index]
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            db.dao().insertTrack(
+                                TrackEntity(
+                                    playlistId = selected.id,
+                                    title = item.file.name,
+                                    streamUrl = item.file.absolutePath,  // local path
+                                    uploader = "Local file",
+                                    thumbnailUrl = item.thumbnailUrl ?: ""
 
-</manifest>
+                                )
+                            )
+                        }
+
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Added to Playlist",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        }
+    }
+    private fun downloadToAppFolder(
+        url: String,
+        name: String,
+        active: ActiveDownload
+    ) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+
+                val dir = File(getExternalFilesDir(null), "downloads")
+                if (!dir.exists()) dir.mkdirs()
+
+                val outFile = File(dir, name)
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+                    .build()
+
+                val call = httpClient.newCall(request)
+
+                active.call = call
+
+                val response = call.execute()
+                val body = response.body() ?: return@launch
+
+                val total = body.contentLength()
+                var downloaded = 0L
+
+                body.byteStream().use { input ->
+                    outFile.outputStream().use { output ->
+
+                        val buffer = ByteArray(8192)
+                        var read: Int
+
+                        while (input.read(buffer).also { read = it } != -1) {
+
+                            if (active.state == DownloadState.CANCELED) {
+                                return@launch
+                            }
+
+                            output.write(buffer, 0, read)
+                            downloaded += read
+
+                            val progress =
+                                if (total > 0) ((downloaded * 100) / total).toInt()
+                                else 0
+
+                            active.progress = progress
+
+                            withContext(Dispatchers.Main) {
+                                activeAdapter.notifyDataSetChanged()
+                                updateDownloadBar()
+                                updateDownloadBadge()
+                            }
+                        }
+                    }
+                }
+
+                // Dosya boyutu kontrolü — boş/hatalı indirme tespiti
+                val minSize = if (active.fileName.endsWith(".m4a")) 50 * 1024L else 500 * 1024L
+                if (outFile.length() < minSize) {
+                    outFile.delete()
+                    active.state = DownloadState.FAILED
+                    withContext(Dispatchers.Main) {
+                        activeAdapter.notifyDataSetChanged()
+                        updateDownloadBar()
+                        Toast.makeText(this@MainActivity, "İndirme başarısız — dosya çok küçük", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                active.state = DownloadState.COMPLETED
+
+                withContext(Dispatchers.Main) {
+                    updateDownloadBar()
+                }
+
+                val isAudio = active.fileName.endsWith(".m4a")
+                //  TELEFON DOWNLOADS KLASÖRÜNE KOPYALA
+                val publicFile = File(
+                    android.os.Environment.getExternalStoragePublicDirectory(
+                        android.os.Environment.DIRECTORY_DOWNLOADS
+                    ),
+                    name
+                )
+
+                outFile.copyTo(publicFile, overwrite = true)
+                android.media.MediaScannerConnection.scanFile(
+                    this@MainActivity,
+                    arrayOf(publicFile.absolutePath),
+                    null,
+                    null
+                )  // Yeni bir medya dosyası geldi, sistemi güncelle. demeye yarar.
+                db.dao().insertDownload(
+                    DownloadEntity(
+                        path = outFile.absolutePath,
+                        isAudio = isAudio,
+                        thumbnailUrl = active.thumbnailUrl,
+                        duration = active.duration
+                    )
+                )
+
+                withContext(Dispatchers.Main) {
+                    activeAdapter.notifyDataSetChanged()
+                    refreshDownloadsList()
+                    Toast.makeText(this@MainActivity, "${active.title} Downloaded successfully!", Toast.LENGTH_SHORT).show()
+                    //  AUDIO ise direkt çal
+                    if (isAudio) {
+                        playLocalAudio(outFile, active.thumbnailUrl)
+                    } else {
+                        val intent = Intent(this@MainActivity, VideoPlayerActivity::class.java)
+                        intent.putExtra("path", outFile.absolutePath)
+                        startActivity(intent)
+                    }
+
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+
+        val searchItem = menu?.findItem(R.id.action_search)
+
+        val searchView = searchItem?.actionView as? androidx.appcompat.widget.SearchView
+        val downloadItem = menu?.findItem(R.id.action_downloads)
+        downloadItem?.setActionView(R.layout.menu_download_badge)
+
+        val actionView = downloadItem?.actionView
+
+        actionView?.setOnClickListener {
+            toggleDownloadPanel()
+        }
+
+        updateDownloadBadge()
+        val searchText =
+            searchView?.findViewById<AutoCompleteTextView>(
+                androidx.appcompat.R.id.search_src_text
+            )
+
+        searchText?.setTextColor(android.graphics.Color.WHITE)
+        searchText?.setHintTextColor(android.graphics.Color.GRAY)
+        searchView?.maxWidth = Int.MAX_VALUE
+
+        searchItem?.setOnActionExpandListener(object : MenuItem.OnActionExpandListener {
+
+            override fun onMenuItemActionExpand(item: MenuItem): Boolean {
+
+                downloadItem?.isVisible = false
+                txtToolbarTitle.visibility = View.GONE
+                txtToolbarSubtitle.visibility = View.GONE
+
+                return true
+            }
+
+            override fun onMenuItemActionCollapse(item: MenuItem): Boolean {
+
+                downloadItem?.isVisible = true
+                txtToolbarTitle.visibility = View.VISIBLE
+                txtToolbarSubtitle.visibility = View.VISIBLE
+                invalidateOptionsMenu()
+
+                return true
+            }
+        })
+        searchView?.apply {
+            suggestionsAdapter = null
+
+            queryHint = "Search..."
+
+            //  SearchView içindeki AutoCompleteTextView’i güvenli şekilde bulma
+
+            val autoComplete = findAutoCompleteTextView(this)
+
+            if (autoComplete != null) {
+                autoComplete.post {
+                    autoComplete.threshold = 1
+                    autoComplete.dropDownWidth = resources.displayMetrics.widthPixels
+                    autoComplete.dropDownHorizontalOffset = -autoComplete.left
+                    autoComplete.dropDownVerticalOffset = 0
+
+                    autoComplete.setDropDownBackgroundDrawable(
+                        ContextCompat.getDrawable(
+                            this@MainActivity,
+                            R.drawable.bg_suggestions
+                        )
+                    )
+                }
+            }
+            val closeButton =
+                searchView?.findViewById<ImageView>(
+                    androidx.appcompat.R.id.search_close_btn
+                )
+
+            closeButton?.visibility = View.GONE
+
+            setOnQueryTextListener(object :
+                androidx.appcompat.widget.SearchView.OnQueryTextListener {
+
+                override fun onQueryTextSubmit(query: String?): Boolean {
+                    query?.let { q ->
+                        recyclerView.adapter = null
+                        performSearch(q)
+                    }
+                    clearFocus()
+                    return true
+                }
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+
+                    if (!newText.isNullOrEmpty()) {
+
+                        // FULL SCREEN SEARCH MOD !
+
+                        downloadTabs.visibility = View.GONE
+                        miniPlayer.visibility = View.GONE
+                        downloadBar.visibility = View.GONE
+
+                        fetchSuggestions(newText) { suggestions ->
+                            recyclerView.layoutManager =
+                                LinearLayoutManager(this@MainActivity)
+
+                            recyclerView.adapter = SuggestionsAdapter(
+                                suggestions,
+                                onClick = { selected ->
+                                    searchView.setQuery(selected, true) // tıklayınca arama yapsın
+                                    performSearch(selected) // OTOMATİK ARA
+                                    searchView.clearFocus() 
+                                },
+                                onArrowClick = { selected ->
+                                    searchView.setQuery(selected, false) // sadece yazsın arama yapmasın
+                                }
+                            )
+                        }
+
+                    } else {
+
+                        // arama silinince normale dön
+                        fetchTop50()
+                        updateMiniPlayerVisibility()
+                        downloadBar.visibility = View.VISIBLE
+                    }
+
+                    return true
+                }
+            })
+        }
+
+        return true
+    }
+    private fun findAutoCompleteTextView(view: View): AutoCompleteTextView? {
+        if (view is AutoCompleteTextView) return view
+
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                val result = findAutoCompleteTextView(view.getChildAt(i))
+                if (result != null) return result
+            }
+        }
+        return null
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+
+        if (item.itemId == R.id.action_downloads) {
+            toggleDownloadPanel()
+            return true
+        }
+
+        return super.onOptionsItemSelected(item)
+    }
+    private fun toggleDownloadPanel() {
+
+        when (bottomSheetBehavior.state) {
+
+            BottomSheetBehavior.STATE_HIDDEN -> {
+                bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
+            }
+
+            BottomSheetBehavior.STATE_COLLAPSED -> {
+                bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
+            }
+
+            BottomSheetBehavior.STATE_EXPANDED -> {
+                bottomSheetBehavior.state = BottomSheetBehavior.STATE_HIDDEN
+            }
+
+            else -> {
+                bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
+            }
+        }
+    }
+
+    private fun filterDownloads(query: String) {
+        val filtered = allDownloads.filter {
+            it.file.name.contains(query, ignoreCase = true)
+        }
+        downloadsAdapter.updateList(filtered)
+    }
+    private fun formatDuration(seconds: Long): String {
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%02d:%02d", minutes, remainingSeconds)
+    }
+
+    private fun fetchSuggestions(
+        query: String,
+        onResult: (List<String>) -> Unit
+    ) {
+
+        Thread {
+            try {
+
+                val url =
+                    "https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=$query"
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+
+                val body = response.body()?.string()
+
+                if (body != null) {
+
+                    val jsonArray = org.json.JSONArray(body)
+
+                    val suggestionsArray = jsonArray.getJSONArray(1)
+
+                    val suggestions = mutableListOf<String>()
+
+                    for (i in 0 until suggestionsArray.length()) {
+                        suggestions.add(suggestionsArray.getString(i))
+                    }
+
+                    runOnUiThread {
+                        onResult(suggestions)
+                    }
+
+                } else {
+                    runOnUiThread { onResult(emptyList()) }
+                }
+
+            } catch (e: Exception) {
+                runOnUiThread { onResult(emptyList()) }
+            }
+
+        }.start()
+    }
+    //web panel bağlama fonksiyonu :
+    private fun fetchBlockedChannels(onResult: (List<String>) -> Unit) {
+
+        Thread {
+            try {
+                val url = URL("https://ringtone-production.up.railway.app/blocked-channels")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 20000
+                connection.readTimeout = 20000
+                connection.requestMethod = "GET"
+                connection.setRequestProperty(
+                    "X-App-Key",
+                    "RINGTONE_MASTER_V2_SECRET_2026"
+                )
+
+                val reader = BufferedReader(
+                    InputStreamReader(connection.inputStream)
+                )
+
+                val response = reader.readText()
+                val jsonArray = JSONArray(response)
+
+                val list = mutableListOf<String>()
+                for (i in 0 until jsonArray.length()) {
+                    list.add(jsonArray.getString(i))
+                }
+
+                runOnUiThread {
+                    onResult(list)
+                }
+
+            } catch (e: Exception) {
+
+                // Backend kapalıysa bile uygulama çalışsın
+                runOnUiThread {
+                    onResult(emptyList())
+                }
+            }
+        }.start()
+    }
+    private fun fetchRemoteConfig(onResult: (AppConfig) -> Unit) {
+
+        Thread {
+            try {
+                val url = URL("https://ringtone-production.up.railway.app/config")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
+
+                connection.requestMethod = "GET"
+                connection.setRequestProperty(
+                    "X-App-Key",
+                    "RINGTONE_MASTER_V2_SECRET_2026"
+                )
+
+                val reader = BufferedReader(
+                    InputStreamReader(connection.inputStream)
+                )
+
+                val response = reader.readText()
+                val json = org.json.JSONObject(response)
+                val globalJson = json.getJSONObject("global")
+                val countriesJson = json.getJSONObject("countries")
+                val countriesMap = mutableMapOf<String, String>()
+
+                val keys = countriesJson.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    countriesMap[key] = countriesJson.getString(key)
+                }
+
+                val config = AppConfig(
+                    global = GlobalConfig(
+                        enabled = globalJson.getBoolean("enabled"),
+                        mode = globalJson.getString("mode")
+                    ),
+                    countries = countriesMap
+                )
+                runOnUiThread {
+                    onResult(config)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }.start()
+    }
+    private fun openFullPlayer() {
+
+        val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.layout_full_player, null)
+        dialog.setContentView(view)
+
+        miniPlayer.visibility = View.GONE
+
+        val imgCover = view.findViewById<ImageView>(R.id.imgCover)
+        val txtTitle = view.findViewById<TextView>(R.id.txtTitle)
+        val txtArtist = view.findViewById<TextView>(R.id.txtArtist)
+        val seekBar = view.findViewById<SeekBar>(R.id.seekBar)
+        val txtCurrentTime = view.findViewById<TextView>(R.id.txtCurrentTime)
+        val txtTotalTime = view.findViewById<TextView>(R.id.txtTotalTime)
+        val btnPlayPause = view.findViewById<ImageButton>(R.id.btnPlayPause)
+        val btnNext = view.findViewById<ImageButton>(R.id.btnNext)
+        val btnPrev = view.findViewById<ImageButton>(R.id.btnPrev)
+        val btnForward3 = view.findViewById<ImageButton>(R.id.btnForward3)
+        val btnRestart = view.findViewById<ImageButton>(R.id.btnRestart)
+
+        if (musicService?.isPlaying() == true) {
+            btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
+        } else {
+            btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+        }
+        // Mevcut çalan bilgileri doldur
+        txtTitle.text = miniPlayerTitle.text
+
+        // Eğer YouTube track ise thumbnail al
+        if (currentTrackIndex >= 0 && currentTrackIndex < currentTrackList.size) {
+
+            val track = currentTrackList[currentTrackIndex]
+
+            txtArtist.text = track.uploader ?: "Unknown"
+
+            if (!track.thumbnailUrl.isNullOrEmpty()) {
+                Glide.with(this)
+                    .load(track.thumbnailUrl)
+                    .into(imgCover)
+            } else {
+                imgCover.setImageResource(android.R.drawable.ic_media_play)            }
+
+        } else {
+            txtArtist.text = "Local file"
+            imgCover.setImageResource(android.R.drawable.ic_media_play)        }
+
+        // Play / Pause
+        btnPlayPause.setOnClickListener {
+            if (musicService?.isPlaying() == true) {
+                musicService?.pause()
+            } else {
+                musicService?.resume()
+            }
+        }
+        //  Next
+        btnNext.setOnClickListener {
+
+            if (currentTrackList.isEmpty()) return@setOnClickListener
+
+            currentTrackIndex = if (isShuffleEnabled) {
+                (0 until currentTrackList.size).random()
+            } else {
+                currentTrackIndex + 1
+            }
+
+            if (currentTrackIndex >= currentTrackList.size) {
+                currentTrackIndex = currentTrackList.size - 1
+                return@setOnClickListener
+            }
+
+            playTrack(
+                currentTrackList[currentTrackIndex],
+                currentTrackList
+            )
+
+            dialog.dismiss()
+        }
+
+        // Prev
+        btnPrev.setOnClickListener {
+
+            if (currentTrackList.isEmpty()) return@setOnClickListener
+
+            currentTrackIndex = if (isShuffleEnabled) {
+                (0 until currentTrackList.size).random()
+            } else {
+                currentTrackIndex - 1
+            }
+
+            if (currentTrackIndex < 0) {
+                currentTrackIndex = 0
+                return@setOnClickListener
+            }
+
+            playTrack(
+                currentTrackList[currentTrackIndex],
+                currentTrackList
+            )
+
+            dialog.dismiss()
+        }
+        btnForward3.setOnClickListener {
+
+            isShuffleEnabled = !isShuffleEnabled
+
+            if (isShuffleEnabled) {
+                btnForward3.setColorFilter(android.graphics.Color.GREEN)
+                Toast.makeText(this, "Shuffle On", Toast.LENGTH_SHORT).show()
+            } else {
+                btnForward3.setColorFilter(android.graphics.Color.WHITE)
+                Toast.makeText(this, "Shuffle Off", Toast.LENGTH_SHORT).show()
+            }
+        }
+        btnRestart.setOnClickListener {
+
+            repeatMode++
+
+            if (repeatMode > 2) repeatMode = 0
+
+            when (repeatMode) {
+
+                0 -> {
+                    btnRestart.setImageResource(R.drawable.ic_repeat)
+                    btnRestart.setColorFilter(android.graphics.Color.WHITE)
+                    Toast.makeText(this, "Repeat Off", Toast.LENGTH_SHORT).show()
+                }
+
+                1 -> {
+                    btnRestart.setImageResource(R.drawable.ic_repeat_active)
+                    btnRestart.setColorFilter(android.graphics.Color.GREEN)
+                    Toast.makeText(this, "Repeat Playlist", Toast.LENGTH_SHORT).show()
+                }
+
+                2 -> {
+                    btnRestart.setImageResource(R.drawable.ic_repeat_one)
+                    btnRestart.setColorFilter(android.graphics.Color.GREEN)
+                    Toast.makeText(this, "Repeat One", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        //  Süre Güncelleme
+        val handler = android.os.Handler(mainLooper)
+        val updateRunnable = object : Runnable {
+            override fun run() {
+
+                val position = musicService?.getCurrentPosition() ?: 0L
+                val duration = musicService?.getDuration() ?: 0L
+
+                if (duration > 0) {
+                    seekBar.max = duration.toInt()
+                    seekBar.progress = position.toInt()
+
+                    txtCurrentTime.text = formatTime(position)
+                    txtTotalTime.text = formatTime(duration)
+
+                }
+                handler.postDelayed(this, 1000)
+            }
+        }
+
+        handler.post(updateRunnable)
+
+        //  SeekBar kontrol
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    musicService?.seekTo(progress.toLong())
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+        dialog.setOnDismissListener {
+            updateMiniPlayerVisibility()
+            handler.removeCallbacks(updateRunnable)
+        }
+        dialog.show()
+
+        val bottomSheet =
+            dialog.findViewById<View>(
+                com.google.android.material.R.id.design_bottom_sheet
+            )
+
+        bottomSheet?.let {
+
+            it.layoutParams.height =
+                ViewGroup.LayoutParams.MATCH_PARENT
+
+            val behavior =
+                com.google.android.material.bottomsheet.BottomSheetBehavior.from(it)
+
+            behavior.state =
+                com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+
+            behavior.skipCollapsed = true
+        }
+        musicService?.getPlayer()?.addListener(object : Player.Listener {
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+
+                if (isPlaying) {
+                    btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
+                } else {
+                    btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+                }
+
+            }
+
+        })
+    }
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%02d:%02d", minutes, seconds)
+    }
+    override fun onDestroy() {
+
+        unregisterReceiver(trackEndedReceiver)
+
+        if (isBound) {
+            unbindService(serviceConnection)
+            isBound = false
+        }
+
+        super.onDestroy()
+    }
+    private fun updateMiniPlayerVisibility() {
+        if (isBound && currentTrackIndex >= 0 && currentTrackList.isNotEmpty()) {
+            miniPlayer.visibility = View.VISIBLE
+        } else {
+            miniPlayer.visibility = View.GONE
+        }
+    }
+    private fun parseIsoDuration(iso: String): Long {
+        val regex = Regex("PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?")
+        val match = regex.find(iso) ?: return 0L
+
+        val hours = match.groups[1]?.value?.toLongOrNull() ?: 0
+        val minutes = match.groups[2]?.value?.toLongOrNull() ?: 0
+        val seconds = match.groups[3]?.value?.toLongOrNull() ?: 0
+
+        return hours * 3600 + minutes * 60 + seconds
+
+    }
+    fun updateDownloadBar() {
+
+        val downloadingItems =
+            activeDownloads.filter { it.state == DownloadState.DOWNLOADING }
+
+        if (downloadingItems.isEmpty()) {
+
+            downloadBar.setBackgroundResource(R.drawable.bg_download_normal)
+
+            downloadBar.visibility = View.VISIBLE
+
+            txtDownloadBarText.text = "="
+            txtDownloadBarText.gravity = android.view.Gravity.CENTER
+            txtDownloadBarText.isSelected = false
+
+            findViewById<TextView>(R.id.txtDownloadPercentRight).text = ""
+
+        } else {
+
+            val latestDownload = downloadingItems.last()
+            val progress = latestDownload.progress
+
+            downloadBar.setBackgroundResource(R.drawable.bg_download_active)
+
+            downloadBar.visibility = View.VISIBLE
+
+            val artist = latestDownload.artist ?: "Unknown"
+            val title = latestDownload.title ?: ""
+
+            //  karakter limiti
+            val fullText = "     Fetching $artist - $title"
+            val limitedText =
+                if (fullText.length > 30)
+                    fullText.take(30)
+                else fullText
+
+            txtDownloadBarText.text = limitedText
+            txtDownloadBarText.gravity = android.view.Gravity.START
+            txtDownloadBarText.isSelected = true
+
+            findViewById<TextView>(R.id.txtDownloadPercentRight).text = "%$progress     "
+        }
+        downloadBar.requestLayout()
+    }
+    private fun updateDownloadPanelState() {
+        if (activeDownloads.isEmpty()) {
+            emptyStateLayout.visibility = View.VISIBLE
+            downloadsPanelRecycler.visibility = View.GONE
+            btnClearDownloads.visibility = View.GONE
+        } else {
+            emptyStateLayout.visibility = View.GONE
+            downloadsPanelRecycler.visibility = View.VISIBLE
+            btnClearDownloads.visibility = View.VISIBLE
+        }
+    }
+    private fun updateDownloadBadge() {
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        val menuItem = toolbar.menu?.findItem(R.id.action_downloads) ?: return
+
+        val actionView = menuItem.actionView ?: return
+        val badge = actionView.findViewById<TextView>(R.id.badge)
+
+        val count = activeDownloads.size
+
+        if (count > 0) {
+            badge.visibility = View.VISIBLE
+            badge.text = if (count > 99) "99+" else count.toString()
+        } else {
+            badge.visibility = View.GONE
+        }
+    }
+    private fun startMiniPlayerProgressUpdater() {
+        miniHandler?.removeCallbacksAndMessages(null)
+        miniHandler = android.os.Handler(mainLooper)
+        miniRunnable = object : Runnable {
+            override fun run() {
+                val position = musicService?.getCurrentPosition() ?: 0L
+                val duration = musicService?.getDuration() ?: 0L
+
+                if (duration > 0) {
+                    val progressPercent = ((position * 100) / duration).toInt()
+                    miniPlayerProgress.progress = progressPercent
+                }
+
+                miniHandler?.postDelayed(this, 500)
+            }
+        }
+        miniHandler?.post(miniRunnable!!)
+    }
+    private fun loadNextPage() {
+
+        isLoadingMore = true
+
+        Thread {
+
+            try {
+
+                val url =
+                    "https://ringtone-production.up.railway.app/search?q=" +
+                            java.net.URLEncoder.encode(currentQuery, "UTF-8") +
+                            "&pageToken=$nextPageToken"
+
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+                    .build()
+
+                val response = OkHttpClient().newCall(request).execute()
+
+                val body = response.body()?.string() ?: return@Thread
+
+                val jsonObject = JSONObject(body)
+
+                nextPageToken = jsonObject.optString("nextPageToken", null)
+
+                val items = jsonObject.getJSONArray("data")
+
+                for (i in 0 until items.length()) {
+
+                    val item = items.getJSONObject(i)
+                    val snippet = item.getJSONObject("snippet")
+
+                    val videoId = if (item.get("id") is String) {
+                        item.getString("id")
+                    } else {
+                        item.getJSONObject("id").getString("videoId")
+                    }
+
+                    val title = snippet.getString("title")
+                    val channel = snippet.getString("channelTitle")
+
+                    val thumbnail = snippet
+                        .getJSONObject("thumbnails")
+                        .getJSONObject("high")
+                        .getString("url")
+
+                    searchResults.add(
+                        VideoModel(
+                            title,
+                            channel,
+                            "https://www.youtube.com/watch?v=$videoId",
+                            thumbnail,
+                            0L
+                        )
+                    )
+                }
+
+                runOnUiThread {
+
+                    recyclerView.adapter?.notifyDataSetChanged()
+
+                    isLoadingMore = false
+                }
+
+            } catch (e: Exception) {
+
+                isLoadingMore = false
+
+            }
+
+        }.start()
+    }
+    private val trackEndedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+
+            when (repeatMode) {
+
+                2 -> {
+                    // repeat one
+                    musicService?.seekTo(0)
+                    musicService?.resume()
+                }
+
+                else -> {
+                    playNextTrack()
+                }
+            }
+        }
+    }
+    private fun playNextTrack() {
+
+        if (currentTrackList.isEmpty()) return
+
+        if (repeatMode == 1 && currentTrackIndex == currentTrackList.size - 1) {
+            currentTrackIndex = 0
+        } else {
+            currentTrackIndex++
+        }
+
+        if (currentTrackIndex >= currentTrackList.size) return
+
+        playTrack(
+            currentTrackList[currentTrackIndex],
+            currentTrackList
+        )
+    }
+    fun downloadWithManager(url: String, fileName: String) {
+
+        val request = android.app.DownloadManager.Request(Uri.parse(url))
+            .addRequestHeader("X-App-Key", "RINGTONE_MASTER_V2_SECRET_2026")
+            .setTitle(fileName)
+            .setDescription("Downloading...")
+
+            .setMimeType(
+                if (fileName.endsWith(".m4a")) "audio/mp4" else "video/mp4"
+            )
+
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(true)
+
+            .setNotificationVisibility(
+                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+            )
+            .setDestinationInExternalPublicDir(
+                android.os.Environment.DIRECTORY_DOWNLOADS,
+                fileName
+            )
+
+        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        dm.enqueue(request)
+    }
+}
