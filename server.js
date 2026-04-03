@@ -422,9 +422,10 @@ function ytdlpDirectDownload(videoId, type) {
     console.log(`[YTDL_DIRECT] İndiriliyor: ${videoId} (${type})`);
 
     const proc = execFile(ytdlpBin, args, {
-      timeout: 120000,
-      maxBuffer: 10 * 1024 * 1024
+      timeout: 600000,
+      maxBuffer: 50 * 1024 * 1024
     }, (error, stdout, stderr) => {
+
       if (error) {
         console.error(`[YTDL_DIRECT] Hata: ${stderr || error.message}`);
         if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
