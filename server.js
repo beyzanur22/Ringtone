@@ -49,9 +49,9 @@ async function initYoutubei() {
 initYoutubei();
 
 const queue = new PQueue({
-  concurrency: 2,      // aynı anda max 2 işlem
-  interval: 1000,      // 1 saniyede
-  intervalCap: 3       // max 3 request
+  concurrency: 30,     // Çok kullanıcılı ölçekleme için darboğaz genişletildi
+  interval: 1000,
+  intervalCap: 50      // Saniyede 50 isteğe kadar izin ver
 });
 
 /* =========================
@@ -264,14 +264,32 @@ async function cacheSet(key, data, ttlSeconds) {
 
 // Bots & Jitter
 const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+  "Mozilla/5.0 (Android 14; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/124.0.6367.88 Mobile/15E148 Safari/604.1"
 ];
 function getRandomUA() {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
+// Bot tespiti atlatmak için zenginleştirilmiş client hints header'ları
+function getAntiBotHeaders(ua) {
+  const isMobile = ua.includes("Android") || ua.includes("Mobile") || ua.includes("iPhone");
+  const platform = ua.includes("Windows") ? '"Windows"' : ua.includes("Mac OS X") ? '"macOS"' : '"Linux"';
+  return {
+    "User-Agent": ua,
+    "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "sec-ch-ua-mobile": isMobile ? "?1" : "?0",
+    "sec-ch-ua-platform": platform,
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Accept-Language": "en-US,en;q=0.9"
+  };
 }
 const randomJitter = async () => {
   // 500ms ile 1500ms arası rastgele gecikme ekler
@@ -614,48 +632,38 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   } catch (err) {
     logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
 
-    // First line of defense: Piped APIs
     try {
-      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-      if (type === "audio") {
-        const streams = pipedRes.data.audioStreams;
-        if (!streams || !Array.isArray(streams) || streams.length === 0) {
-          throw new Error("No valid audioStreams array found");
-        }
-        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-        if (best && best.url) {
-          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for audio.`);
-          stats.proxyFallbackSuccess++;
-          return best.url;
-        }
-      } else {
-        const streams = pipedRes.data.videoStreams;
-        if (!streams || !Array.isArray(streams) || streams.length === 0) {
-          throw new Error("No valid videoStreams array found");
-        }
-        const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-          streams.find(s => s.videoOnly === false && s.format === "MPEG_4") ||
-          streams[0];
-        if (best && best.url) {
-          logError("PROXY_FALLBACK_SUCCESS", videoId, `Piped API Fallback successful for video.`);
-          stats.proxyFallbackSuccess++;
-          return best.url;
-        }
-      }
-    } catch (pipedErr) {
-      logError("PIPED_FALLBACK_ERR", videoId, pipedErr.message);
-    }
+      // PROMISE.ANY ILE PARALEL ÇÖZÜM: Piped ve Invidious'dan hangisi önce dönerse onu kullan!
+      const promises = [
+        (async () => {
+          const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+          if (type === "audio") {
+            const streams = pipedRes.data.audioStreams || [];
+            const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
+            if (best && best.url) return { source: "piped", url: best.url, type: "audio" };
+          } else {
+            const streams = pipedRes.data.videoStreams || [];
+            const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+              streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
+            if (best && best.url) return { source: "piped", url: best.url, type: "video" };
+          }
+          throw new Error("Piped bulunamadı");
+        })(),
+        (async () => {
+          const invidiousUrl = await tryInvidiousFallback(videoId, type);
+          if (invidiousUrl) return { source: "invidious", url: invidiousUrl, type: type };
+          throw new Error("Invidious bulunamadı");
+        })()
+      ];
 
-    // Second line of defense: Invidious APIs
-    try {
-      const invidiousUrl = await tryInvidiousFallback(videoId, type);
-      if (invidiousUrl) {
-        logError("PROXY_FALLBACK_SUCCESS", videoId, `Invidious API Fallback successful for ${type}.`);
-        stats.proxyFallbackSuccess++;
-        return invidiousUrl;
-      }
-    } catch (invidiousErr) {
-      logError("INVIDIOUS_FALLBACK_ERR", videoId, invidiousErr.message);
+      const fastest = await Promise.any(promises);
+
+      logError("PROXY_FALLBACK_SUCCESS", videoId, `${fastest.source.toUpperCase()} API Fallback successful for ${fastest.type}. (Parallel execution)`);
+      stats.proxyFallbackSuccess++;
+      return fastest.url;
+
+    } catch (proxyErr) {
+      logError("PROXY_ALL_FAIL", videoId, `Tüm paralel proxy ağları başarısız oldu: ${proxyErr.message}`);
     }
 
     stats.proxyFallbackFail++;
@@ -1006,8 +1014,9 @@ app.get("/stream", async (req, res) => {
 
     let response;
     try {
+      const dynamicHeaders = getAntiBotHeaders(ua);
       const headersOptions = {
-        "User-Agent": ua,
+        ...dynamicHeaders,
         "Referer": "https://www.youtube.com/"
       };
       if (req.headers.range) headersOptions["Range"] = req.headers.range;
@@ -1163,9 +1172,12 @@ async function warmTop50() {
     });
     const items = filterBlockedChannels(response.data.items);
     await cacheSet("top50", items, CACHE_DURATION);
-    console.log("Top50 cache hazır (Redis).");
-  } catch (e) { console.log("Warmup başarısız:", e.message); }
+    console.log(`[WARMUP] Top50 cache hazır (${new Date().toLocaleTimeString()}).`);
+  } catch (e) { console.warn("[WARMUP] Top50 çekimi başarısız (Kota veya hata):", e.message); }
 }
+
+// Her 50 dakikada bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sürekli taze cache)
+setInterval(warmTop50, 50 * 60 * 1000);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", async () => {
