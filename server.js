@@ -614,7 +614,8 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session)
+  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session) - DEVRE DISI BIRAKILDI
+  /*
   try {
     const oauthUrl = await resolveWithYoutubei(videoId, type);
     if (oauthUrl) {
@@ -624,6 +625,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
   } catch (oauthErr) {
     console.warn(`[AUTH_FALLBACK] OAuth2 başarısız: ${oauthErr.message}`);
   }
+  */
 
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";

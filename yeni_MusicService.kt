@@ -182,8 +182,8 @@ class MusicService : MediaSessionService() {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(5000) // Hızlı Fallback için maksimum 5 saniye bekle
-            .setReadTimeoutMs(5000)
+            .setConnectTimeoutMs(15000) // yt-dlp'nin videoyu çözümlemesine izin ver (15 saniye)
+            .setReadTimeoutMs(30000)    // Okuma işleminde donmaları tolere et (30 saniye)
 
         val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
 
