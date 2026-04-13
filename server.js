@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 const axios = require("axios");
 const http = require("http");
@@ -575,9 +575,11 @@ const INVIDIOUS_INSTANCES = [
 
 async function fetchFromPiped(endpointPath) {
   let lastError = null;
-  for (const instance of PIPED_INSTANCES) {
+  // Sunucu sırasını karıştır — ölü sunucuya sürekli denk gelmeyi önle
+  const shuffled = [...PIPED_INSTANCES].sort(() => Math.random() - 0.5);
+  for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 6000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 2000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");

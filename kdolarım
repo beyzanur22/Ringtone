@@ -924,30 +924,30 @@ class MainActivity : AppCompatActivity() {
 
                 val base = "https://ringtone-production.up.railway.app"
 
-               //  1. ÖNCE NEWPIPE DENE
-                val api = MediaApi(this@MainActivity)
-                val directUrl = if (isAudio) {
-                    api.getAudioUrl(videoId)
-                } else {
-                    api.getVideoUrl(videoId)
+                var directUrl: String? = null
+
+                //  Android 13 ve üstü ise ÖNCE NEWPIPE DENE (Sadece 4 saniye ver)
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    directUrl = kotlinx.coroutines.withTimeoutOrNull(4000L) {
+                        val api = MediaApi(this@MainActivity)
+                        if (isAudio) api.getAudioUrl(videoId) else api.getVideoUrl(videoId)
+                    }
                 }
 
                 val fileName = if (isAudio) "$safe.m4a" else "$safe.mp4"
 
-                if (directUrl != null) {
+                if (!directUrl.isNullOrEmpty()) {
 
-                    //  EN TEMİZ YOL (YouTube fark etmez)
+                    //  EN TEMİZ YOL (YouTube fark etmez, cihazdan indir)
                     downloadToAppFolder(directUrl, "$safe$suffix", active)
-
 
                 } else {
 
-                    //  FALLBACK (yt-dlp)
-                    // YENİ, Okyanus Ötesi Hızlı Endpointlerimiz !!
+                    //  FALLBACK (Railway Backend - Çok Güvenilir ve Hızlı)
                     val streamUrl = if (isAudio) {
-                        "$base/stream?videoId=$videoId"
+                        "$base/download/mp3?videoId=$videoId"
                     } else {
-                        "$base/stream/video?videoId=$videoId"
+                        "$base/download/mp4?videoId=$videoId"
                     }
 
                     downloadToAppFolder(streamUrl, "$safe$suffix", active)
@@ -1193,15 +1193,16 @@ class MainActivity : AppCompatActivity() {
                 var audioUrl = StreamCache.get(videoId)
 
                 if (audioUrl == null) {
-                    // NewPipe'a maksimum 15 saniye süre veriyoruz (withTimeoutOrNull).
-                    // Eğer 15 saniyede çözemezse uygulamayı kitlemesini engelliyoruz!
-                    audioUrl = kotlinx.coroutines.withTimeoutOrNull(15000L) {
-                        MediaApi(this@MainActivity).getAudioUrl(videoId)
+                    // Android 13 (API 33) ve üstü ise NewPipe dene (kısa süre), altıysa direkt Backend
+                    if (android.os.Build.VERSION.SDK_INT >= 33) {
+                        // Sadece 3 saniye süre veriyoruz. Çözerse çözer, çözemezse direkt hızlı backend.
+                        audioUrl = kotlinx.coroutines.withTimeoutOrNull(3000L) {
+                            MediaApi(this@MainActivity).getAudioUrl(videoId)
+                        }
                     }
 
                     if (audioUrl.isNullOrEmpty()) {
-                        // NewPipe başarısız oldu veya çok yavaş kaldı. Kullanıcıyı bekletmemek için
-                        // direkt kendi kurduğumuz HIZLI (Railway) sunucumuza bağlanıyoruz!
+                        // NewPipe başarısız oldu, vakit aşımı VEYA Cihaz Android 12 ve altı!
                         audioUrl = "https://ringtone-production.up.railway.app/stream?videoId=$videoId"
                     } else {
                         StreamCache.put(videoId, audioUrl)
