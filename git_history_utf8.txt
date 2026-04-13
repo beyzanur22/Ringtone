@@ -1,0 +1,10 @@
+﻿d7b6dcf - Mon Apr 6 13:11:02 2026 +0300 - fix: add missing APP_KEY fallback string for HMAC
+eb8d657 - Mon Apr 6 12:32:34 2026 +0300 - deniyorum
+b083ca3 - Mon Apr 6 11:00:20 2026 +0300 - fix server.js
+d02765a - Mon Apr 6 09:46:34 2026 +0300 - update server.js
+683dac6 - Fri Apr 3 16:16:09 2026 +0300 - fix server.js
+12a79c9 - Fri Apr 3 15:17:48 2026 +0300 -  securtiy
+1ebe427 - Wed Apr 1 10:36:03 2026 +0300 - Revert server.js back to yesterday's version (before all today's changes)
+8086c53 - Wed Apr 1 10:30:15 2026 +0300 - fix: allow fallback on ytdlpStream failure by not sending 500 headers
+1b27e7f - Wed Apr 1 10:25:22 2026 +0300 - fix: remove merge option for stdout logging
+a769e88 - Wed Apr 1 10:19:40 2026 +0300 - fix: video format selector - use bestvideo+bestaudio with merge for mp4

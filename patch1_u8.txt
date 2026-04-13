@@ -1,0 +1,43 @@
+﻿commit b083ca3b0b0987d57d6c5fb84f4e06fc22d9b835
+Author: Beyza Nur ├ûzcan <167517048+beyzanur22@users.noreply.github.com>
+Date:   Mon Apr 6 11:00:20 2026 +0300
+
+    fix server.js
+
+diff --git a/server.js b/server.js
+index 81261be..905190a 100644
+--- a/server.js
++++ b/server.js
+@@ -614,7 +614,8 @@ async function tryInvidiousFallback(videoId, type) {
+ }
+ 
+ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
+-  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session)
++  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session) - DEVRE DISI BIRAKILDI
++  /*
+   try {
+     const oauthUrl = await resolveWithYoutubei(videoId, type);
+     if (oauthUrl) {
+@@ -624,6 +625,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
+   } catch (oauthErr) {
+     console.warn(`[AUTH_FALLBACK] OAuth2 ba┼şar─▒s─▒z: ${oauthErr.message}`);
+   }
++  */
+ 
+   try {
+     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+diff --git a/yeni_MusicService.kt b/yeni_MusicService.kt
+index 36b3497..dcf10cf 100644
+--- a/yeni_MusicService.kt
++++ b/yeni_MusicService.kt
+@@ -182,8 +182,8 @@ class MusicService : MediaSessionService() {
+         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+             .setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36")
+             .setAllowCrossProtocolRedirects(true)
+-            .setConnectTimeoutMs(5000) // H─▒zl─▒ Fallback i├ğin maksimum 5 saniye bekle
+-            .setReadTimeoutMs(5000)
++            .setConnectTimeoutMs(15000) // yt-dlp'nin videoyu ├ğ├Âz├╝mlemesine izin ver (15 saniye)
++            .setReadTimeoutMs(30000)    // Okuma i┼şleminde donmalar─▒ tolere et (30 saniye)
+ 
+         val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
+ 
