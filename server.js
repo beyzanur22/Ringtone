@@ -711,9 +711,9 @@ app.use((req, res, next) => {
     return res.status(403).json({ error: "Unauthorized / Missing Signature" });
   }
 
-  // İstek 5 dakikadan eski ise reddet (Replay-Attack koruması)
+  // İstek 2 saatten eski ise reddet (Esnek tolerans)
   const now = Date.now();
-  if (Math.abs(now - parseInt(timestamp)) > 5 * 60 * 1000) {
+  if (Math.abs(now - parseInt(timestamp)) > 120 * 60 * 1000) {
     console.warn(`[AUTH] Süresi dolmuş istek: IP: ${req.ip}`);
     return res.status(403).json({ error: "Request Expired" });
   }
