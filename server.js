@@ -622,16 +622,8 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // FIRST ATTEMPT: Youtubei.js (EN HIZLI ~200ms)
-  try {
-    const oauthUrl = await resolveWithYoutubei(videoId, type);
-    if (oauthUrl) {
-      console.log(`[YOUTUBEI_SUCCESS] ${videoId} çözümlendi (Youtubei.js - HIZLI)`);
-      return oauthUrl;
-    }
-  } catch (oauthErr) {
-    console.warn(`[YOUTUBEI_FALLBACK] Youtubei.js başarısız: ${oauthErr.message}`);
-  }
+  // Youtubei.js DEVRE DIŞI — YouTube 400 hatası veriyor, boşa vakit kaybettiriyor
+  // Direkt yt-dlp ile çözümlemeye geç (daha güvenilir)
 
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
