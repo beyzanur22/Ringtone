@@ -808,6 +808,36 @@ function filterBlockedChannels(items) {
   });
 }
 
+// ARKA PLANDA ÖN-BELLEKLEME (Spotify gibi anında açılması için)
+function prewarmTop10(items) {
+  if (!items || !Array.isArray(items)) return;
+  const top10 = items.slice(0, 10); // Sadece ilk 10'u ısıt ki rate-limit yemeyelim
+  top10.forEach((item, index) => {
+    const videoId = typeof item.id === "object" ? item.id.videoId : item.id;
+    if (!videoId) return;
+    
+    const cacheKey = `stream:audio:${videoId}`;
+    // Eğer cahce'te yoksa, arka planda yavaş yavaş bulup ekle
+    cacheGet(cacheKey).then(cachedData => {
+      if (!cachedData) {
+        // Küçük gecikmelerle kuyruğa ekle (YouTube'u boğmamak için)
+        setTimeout(() => {
+          queue.add(async () => {
+            try {
+              const ua = getRandomUA();
+              const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
+              await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
+              console.log(`[PREWARM_SUCCESS] ${videoId} arkaplanda hazırlandı!`);
+            } catch (err) {
+              // Sessizce yut
+            }
+          }).catch(()=>{});
+        }, index * 2000); // Her bir arasına 2 saniye koy
+      }
+    });
+  });
+}
+
 function getPlayerClientForCountry(countryCode) {
   try {
     const data = fs.readFileSync(CONFIG_FILE, "utf-8");
@@ -898,6 +928,10 @@ app.get("/top50", async (req, res) => {
     }
 
     await cacheSet("top50", items, CACHE_DURATION);
+    
+    // Arkada ilk 10 şarkıyı çözmeye başla, kullanıcı tıklayınca anında açılsın!
+    prewarmTop10(items);
+
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
     res.json({ source: "youtube", data: items });
   } catch (error) {
