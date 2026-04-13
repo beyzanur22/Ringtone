@@ -292,13 +292,13 @@ function getAntiBotHeaders(ua) {
   };
 }
 const randomJitter = async () => {
-  // 500ms ile 1500ms arası rastgele gecikme ekler
-  const ms = Math.floor(Math.random() * 1000) + 500;
+  // Sadece yt-dlp çağrılarında kullanılır, 100-300ms arası minimal gecikme
+  const ms = Math.floor(Math.random() * 200) + 100;
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Fallback player client stratejisi: default → android → mweb → web → ios
-const PLAYER_CLIENTS = ["default", "android", "mweb", "web", "ios"];
+// Fallback player client stratejisi: default → android → web (3 deneme yeterli, hız için)
+const PLAYER_CLIENTS = ["default", "android", "web"];
 
 async function resolveWithYoutubei(videoId, type) {
   if (!yt) throw new Error("Youtubei initialized değil");
@@ -622,18 +622,16 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // FIRST ATTEMPT: YouTube OAuth2 (Smart TV Session) - DEVRE DISI BIRAKILDI
-  /*
+  // FIRST ATTEMPT: Youtubei.js (EN HIZLI ~200ms)
   try {
     const oauthUrl = await resolveWithYoutubei(videoId, type);
     if (oauthUrl) {
-      console.log(`[AUTH_SUCCESS] ${videoId} çözümlendi (OAuth2)`);
+      console.log(`[YOUTUBEI_SUCCESS] ${videoId} çözümlendi (Youtubei.js - HIZLI)`);
       return oauthUrl;
     }
   } catch (oauthErr) {
-    console.warn(`[AUTH_FALLBACK] OAuth2 başarısız: ${oauthErr.message}`);
+    console.warn(`[YOUTUBEI_FALLBACK] Youtubei.js başarısız: ${oauthErr.message}`);
   }
-  */
 
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
@@ -760,8 +758,8 @@ if (!fs.existsSync(DATA_FILE)) {
    RATE LIMITS
 ========================= */
 app.use(rateLimit({
-  windowMs: 60 * 1000, //bot saldırı azaltma
-  max: 40,
+  windowMs: 60 * 1000,
+  max: 200, // Çoklu cihaz desteği: 3+ cihaz rahat kullansın
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
     logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Global)`);
@@ -769,9 +767,9 @@ app.use(rateLimit({
   }
 }));
 
-const searchLimiter = rateLimit({ //spam search engellemek için.
+const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 60, // Çoklu cihaz desteği
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
     logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search)`);
@@ -1012,13 +1010,12 @@ app.get("/stream", async (req, res) => {
       console.log("AUDIO CACHE HIT:", videoId);
     } else {
       ua = getRandomUA();
-      // Queue ile sıralı çalıştır
+      // Queue ile sıralı çalıştır — jitter KALDIRILDI (hız için)
       streamUrl = await queue.add(async () => {
-        await randomJitter();
         return resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
       });
-      // URL'ler genelde daha kısa sürede expire olur
-      await cacheSet(cacheKey, { url: streamUrl, ua }, 3600);
+      // Stream URL'leri 5 saat cache'le (YouTube URL'leri ~6 saat geçerli)
+      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
@@ -1126,7 +1123,6 @@ app.get("/stream/video", async (req, res) => {
     const ua = getRandomUA();
 
     const streamUrl = await queue.add(async () => {
-      await randomJitter();
       return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
     });
 
@@ -1234,7 +1230,6 @@ app.get("/download/mp3", async (req, res) => {
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
 
-    await randomJitter();
     const streamUrl = await queue.add(() =>
       resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient)
     );
