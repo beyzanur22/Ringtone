@@ -125,7 +125,7 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
 
     // Final kontrol: Eğer dosya çok küçükse kaydetme, sil!
     const stats = fs.statSync(filePath);
-    const minSize = type === "video" ? 1024 * 1024 : 100 * 1024;
+    const minSize = type === "video" ? 100 * 1024 : 10 * 1024;
     if (stats.size < minSize) {
       fs.unlinkSync(filePath);
       throw new Error(`Download successful but file too small (${(stats.size / 1024).toFixed(1)} KB) - likely bot detection.`);
@@ -373,7 +373,7 @@ function ytdlpStream(videoId, type, req, res) {
         console.log(`[YTDL_STREAM] Başarıyla tamamlandı: ${videoId}`);
         if (fs.existsSync(tempFile)) {
           const stats = fs.statSync(tempFile);
-          if (stats.size > (type === "video" ? 1024 * 1024 : 100 * 1024)) {
+          if (stats.size > (type === "video" ? 100 * 1024 : 10 * 1024)) {
             fs.renameSync(tempFile, outputFile);
           } else {
             fs.unlinkSync(tempFile);
@@ -459,7 +459,7 @@ function ytdlpDirectDownload(videoId, type) {
       }
 
       const stats = fs.statSync(tempFile);
-      const minSize = type === "video" ? 500 * 1024 : 50 * 1024; // 500KB video, 50KB audio min
+      const minSize = type === "video" ? 100 * 1024 : 10 * 1024; // 100KB video, 10KB audio min
 
       if (stats.size < minSize) {
         fs.unlinkSync(tempFile);
@@ -980,7 +980,7 @@ app.get("/stream", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      const minSize = typeStr === "video" ? 100 * 1024 : 10 * 1024;
       if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
@@ -1083,7 +1083,7 @@ app.get("/stream/video", async (req, res) => {
     // 1. Disk cache kontrolü
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 1024 * 1024) {
+      if (stats.size < 100 * 1024) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
@@ -1206,7 +1206,7 @@ app.get("/download/mp3", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      const minSize = typeStr === "video" ? 100 * 1024 : 10 * 1024;
       if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
@@ -1286,7 +1286,7 @@ app.get("/download/mp4", async (req, res) => {
     // 1. Disk cache kontrolü — daha önce indirilmiş mi?
     if (fs.existsSync(localFile)) {
       const fileStats = fs.statSync(localFile);
-      if (fileStats.size < 1024 * 1024) {
+      if (fileStats.size < 100 * 1024) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
