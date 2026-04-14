@@ -62,7 +62,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 500 * 1024 * 1024; // 500MB limit (Railway ephemeral disk için ideal)
+const MAX_CACHE_SIZE = 200 * 1024 * 1024; // 200MB limit (Railway ephemeral disk için)
 
 function checkDiskSpaceAndCleanup() {
   try {
@@ -72,13 +72,25 @@ function checkDiskSpaceAndCleanup() {
       return { path: p, stat: fs.statSync(p) };
     });
 
-    const totalSize = files.reduce((acc, f) => acc + f.stat.size, 0);
+    const now = Date.now();
+    for (const file of files) {
+      if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
+        try { fs.unlinkSync(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
+      }
+    }
+
+    const currentFiles = fs.readdirSync(CACHE_DIR).map(f => {
+      const p = path.join(CACHE_DIR, f);
+      return { path: p, stat: fs.statSync(p) };
+    });
+
+    const totalSize = currentFiles.reduce((acc, f) => acc + f.stat.size, 0);
     if (totalSize > MAX_CACHE_SIZE) {
       console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024).toFixed(1)} MB). Temizleniyor...`);
-      files.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
+      currentFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
       let deletedSize = 0;
-      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.7);
-      for (const file of files) {
+      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.5); // %50'ye kadar temizle
+      for (const file of currentFiles) {
         if (deletedSize >= targetToDelete) break;
         try { fs.unlinkSync(file.path); deletedSize += file.stat.size; } catch (e) { }
       }
@@ -86,7 +98,7 @@ function checkDiskSpaceAndCleanup() {
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-setInterval(checkDiskSpaceAndCleanup, 5 * 60 * 1000); // 5 dakikada bir kontrol
+setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 1 dakikada bir kontrol
 const downloadingFiles = new Set();
 
 async function downloadToCache(videoId, type, streamUrl, ua = null) {
@@ -140,31 +152,7 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
   }
 }
 
-setInterval(() => {
-  try {
-    const files = fs.readdirSync(CACHE_DIR).filter(f => !f.endsWith('.tmp'));
-    let totalSize = 0;
-    const fileStats = [];
-
-    for (const f of files) {
-      const p = path.join(CACHE_DIR, f);
-      const s = fs.statSync(p);
-      totalSize += s.size;
-      fileStats.push({ path: p, size: s.size, mtime: s.mtime.getTime() });
-    }
-
-    if (totalSize > MAX_CACHE_SIZE) {
-      console.log(`[DISK_MANAGER] Kapasite aşıldı! Toplam Boyut: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB. Eski dosyalar siliniyor...`);
-      fileStats.sort((a, b) => a.mtime - b.mtime);
-      for (const fsObj of fileStats) {
-        fs.unlinkSync(fsObj.path);
-        totalSize -= fsObj.size;
-        console.log(`[DISK_MANAGER] Silindi: ${path.basename(fsObj.path)}`);
-        if (totalSize < MAX_CACHE_SIZE * 0.9) break; // Clean down to 9 GB
-      }
-    }
-  } catch (e) { }
-}, 3600 * 1000);
+// Gereksiz ikinci disk silici temizlendi.
 
 /* =========================
    ERROR LOGGING & CIRCUIT BREAKER
