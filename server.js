@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 const axios = require("axios");
 const http = require("http");
@@ -218,7 +218,9 @@ try {
     console.log("[Redis] Bağlantı başarılı");
   }).catch(() => {
     console.warn("[Redis] Bağlantı başarısız, in-memory cache aktif");
-    redis.disconnect();
+    if (redis) {
+      redis.disconnect();
+    }
     redis = null;
   });
 } catch (e) {
