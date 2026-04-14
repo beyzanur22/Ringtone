@@ -62,7 +62,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 200 * 1024 * 1024; // 200MB limit (Railway ephemeral disk için)
+const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB limit (Railway ephemeral disk için)
 
 function checkDiskSpaceAndCleanup() {
   try {
@@ -98,7 +98,7 @@ function checkDiskSpaceAndCleanup() {
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 1 dakikada bir kontrol
+setInterval(checkDiskSpaceAndCleanup, 15 * 1000); // 15 saniyede bir kontrol
 const downloadingFiles = new Set();
 
 async function downloadToCache(videoId, type, streamUrl, ua = null) {
@@ -327,6 +327,7 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-mtime",
       "--concurrent-fragments", "1",
       "--remote-components", "ejs:github",
+      "--max-filesize", "50M",
       "--quiet", "--no-warnings"
     ];
 
@@ -415,6 +416,7 @@ function ytdlpDirectDownload(videoId, type) {
       "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30",
+      "--max-filesize", "50M",
       "--remote-components", "ejs:github"
     ];
 
