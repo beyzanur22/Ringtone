@@ -39,3 +39,34 @@ ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-form
 ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
 [2026-03-26T07:44:44.818Z] - [STREAM] - VideoID: NgRnbfWQmvw - Error: Command failed with exit code 1: C:\Users\beyza\Desktop\ringtone-backend-deploy\node_modules\yt-dlp-exec\bin\yt-dlp.exe https://www.youtube.com/watch?v=NgRnbfWQmvw --format bestaudio/best --get-url --no-check-certificates --no-warnings --no-prefer-free-formats --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15 --cookies cookies.txt --proxy http://jtsuuwtv:rk9mmw64wz5r@45.39.73.169:5584 --extractor-args youtube:player_client=ios
 ERROR: [youtube] NgRnbfWQmvw: Sign in to confirm you�re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-04-14T08:56:47.596Z] - [YTDLP_FATAL_FALLBACK] - VideoID: dQw4w9WgXcQ - Error: yt-dlp failed: Command failed with exit code 1: C:\Users\beyza\Desktop\ringtone-backend-deploy\node_modules\yt-dlp-exec\bin\yt-dlp.exe https://www.youtube.com/watch?v=dQw4w9WgXcQ --format best[ext=mp4]/best --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Android 14; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0 --cookies cookies.txt --extractor-args youtube:player_client=web
+WARNING: [youtube] dQw4w9WgXcQ: Signature solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS
+WARNING: [youtube] dQw4w9WgXcQ: n challenge solving failed: Some formats may be missing. Ensure you have a supported JavaScript runtime and challenge solver script distribution installed. Review any warnings presented before this message. For more details, refer to  https://github.com/yt-dlp/yt-dlp/wiki/EJS
+WARNING: [youtube] dQw4w9WgXcQ: web client https formats require a GVS PO Token which was not provided. They will be skipped as they may yield HTTP Error 403. You can manually pass a GVS PO Token for this client with --extractor-args "youtube:po_token=web.gvs+XXX". For more information, refer to  https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+WARNING: Only images are available for download. use --list-formats to see them
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-04-14T08:56:48.059Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-04-14T08:56:48.580Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://vid.puffyan.us failed: Request failed with status code 502
+[2026-04-14T08:56:49.615Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pi.ped.yt error: timeout of 2000ms exceeded
+[2026-04-14T08:56:51.631Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.smnz.de error: timeout of 2000ms exceeded
+[2026-04-14T08:56:53.643Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.projectsegfau.lt error: timeout of 2000ms exceeded
+[2026-04-14T08:56:54.592Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://inv.rvere.com failed: timeout of 6000ms exceeded
+[2026-04-14T08:56:55.649Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.syncpundit.io error: timeout of 2000ms exceeded
+[2026-04-14T08:56:56.032Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-04-14T08:56:56.097Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-04-14T08:56:56.130Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.lunar.icu failed: certificate has expired
+[2026-04-14T08:56:56.405Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.tokhmi.xyz error: API returned no valid streams.
+[2026-04-14T08:56:56.502Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://piped-api.lunar.icu error: certificate has expired
+[2026-04-14T08:56:58.516Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.us.projectsegfau.lt error: timeout of 2000ms exceeded
+[2026-04-14T08:57:00.525Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.yt error: timeout of 2000ms exceeded
+[2026-04-14T08:57:01.057Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 502
+[2026-04-14T08:57:01.305Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.astartes.nl error: write EPROTO 34370000:error:0A000458:SSL routines:ssl3_read_bytes:tlsv1 unrecognized name:openssl\ssl\record\rec_layer_s3.c:918:SSL alert number 112
+
+[2026-04-14T08:57:02.144Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.flokinet.to failed: timeout of 6000ms exceeded
+[2026-04-14T08:57:08.150Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.privacyredirect.com failed: timeout of 6000ms exceeded
+[2026-04-14T08:57:09.137Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.weblibre.org failed: socket hang up
+[2026-04-14T08:57:09.390Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://yt.artemislena.eu failed: write EPROTO 34370000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:openssl\ssl\record\rec_layer_s3.c:918:SSL alert number 80
+
+[2026-04-14T08:57:15.404Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: dQw4w9WgXcQ - Error: Instance https://invidious.jing.rocks failed: timeout of 6000ms exceeded
+[2026-04-14T08:57:15.404Z] - [PROXY_ALL_FAIL] - VideoID: dQw4w9WgXcQ - Error: Tüm paralel proxy ağları başarısız oldu: All promises were rejected
+[2026-04-14T08:57:15.405Z] - [DOWNLOAD_MP4] - VideoID: dQw4w9WgXcQ - Error: Tüm proxy ağları başarısız oldu.

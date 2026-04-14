@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 const axios = require("axios");
 const http = require("http");
@@ -394,11 +394,11 @@ function ytdlpDirectDownload(videoId, type) {
       ? "bestaudio[ext=m4a]/bestaudio"
       : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
-    const tempFile = outputFile + ".ytdl";
 
+    // Cache kontrolü
     if (fs.existsSync(outputFile)) {
       const stats = fs.statSync(outputFile);
-      const minSize = type === "video" ? 150 * 1024 : 20 * 1024;
+      const minSize = type === "video" ? 100 * 1024 : 20 * 1024;
       if (stats.size >= minSize) {
         console.log(`[YTDL_DIRECT] Cache hit: ${outputFile}`);
         return resolve(outputFile);
@@ -412,7 +412,7 @@ function ytdlpDirectDownload(videoId, type) {
     const args = [
       `https://www.youtube.com/watch?v=${videoId}`,
       "-f", format,
-      "-o", tempFile,
+      "-o", outputFile,
       "--no-playlist",
       "--no-part",
       "--no-mtime",
@@ -446,25 +446,41 @@ function ytdlpDirectDownload(videoId, type) {
 
       if (error) {
         console.error(`[YTDL_DIRECT] Hata: ${stderr || error.message}`);
-        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        // Olası artık dosyaları temizle
+        [outputFile, outputFile + ".ytdl", outputFile + ".part",
+         outputFile + ".ytdl.mp4"].forEach(f => {
+          try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch (e) { }
+        });
         return reject(new Error(`yt-dlp direct download failed: ${error.message}`));
       }
 
-      // Dosya boyutu kontrolü
-      if (!fs.existsSync(tempFile)) {
-        return reject(new Error("yt-dlp dosya oluşturamadı"));
+      // Dosya varlık kontrolü — DOĞRU YOL
+      if (!fs.existsSync(outputFile)) {
+        // Belki yt-dlp uzantıyı değiştirmiştir, cache dizininde ara
+        const possibleAlt = outputFile + ".mp4";
+        if (fs.existsSync(possibleAlt)) {
+          fs.renameSync(possibleAlt, outputFile);
+          console.log(`[YTDL_DIRECT] Alternatif dosya bulundu, taşındı: ${possibleAlt} → ${outputFile}`);
+        } else {
+          console.error(`[YTDL_DIRECT] Dosya bulunamadı! Beklenen: ${outputFile}`);
+          // Cache dizinindeki ilgili dosyaları listele (debug)
+          try {
+            const cacheFiles = fs.readdirSync(CACHE_DIR).filter(f => f.includes(videoId));
+            console.error(`[YTDL_DIRECT] Cache'teki ilgili dosyalar: ${cacheFiles.join(', ') || 'YOK'}`);
+          } catch (e) { }
+          return reject(new Error("yt-dlp dosya oluşturamadı"));
+        }
       }
 
-      const stats = fs.statSync(tempFile);
-      const minSize = type === "video" ? 100 * 1024 : 20 * 1024; // 100KB video, 20KB audio min
+      const stats = fs.statSync(outputFile);
+      const minSize = type === "video" ? 100 * 1024 : 20 * 1024;
 
       if (stats.size < minSize) {
-        fs.unlinkSync(tempFile);
+        fs.unlinkSync(outputFile);
         return reject(new Error(`İndirilen dosya çok küçük (${(stats.size / 1024).toFixed(1)} KB) - bot detection`));
       }
 
-      // Başarılı! Temp'ten asıl dosyaya taşı
-      fs.renameSync(tempFile, outputFile);
+      // Başarılı! Dosya zaten doğru yolda, rename gereksiz
       console.log(`[YTDL_DIRECT] Başarılı: ${outputFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
       resolve(outputFile);
     });

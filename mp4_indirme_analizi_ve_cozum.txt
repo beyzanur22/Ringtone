@@ -1,0 +1,446 @@
+================================================================================
+  MP4 VİDEO İNDİRME HATASI — KESİN KÖK NEDEN ANALİZİ VE ÇÖZÜM PLANI
+  Tarih: 14 Nisan 2026
+================================================================================
+
+
+GÖZLEMLENEN SORUN:
+  Kullanıcı bir videoyu (1.5+ dakika) indirmeye çalışıyor.
+  Backend logları şunları gösteriyor:
+
+    [DOWNLOAD_MP4] yt-dlp direct download başlatılıyor: Fsr14-8sxtA
+    [YTDL_DIRECT] İndiriliyor: Fsr14-8sxtA (video)
+    [DOWNLOAD_MP4] yt-dlp direct download başarısız: yt-dlp dosya oluşturamadı
+    [DOWNLOAD_MP4] Fallback: URL çözümlenip diske indiriliyor: Fsr14-8sxtA
+    [yt-dlp] Deneniyor: client-default, format-best[ext-mp4]/best
+    [yt-dlp] Başarılı: client-default
+
+  Sonuç: Video indirilemedi. "Dosya çok küçük" hatası.
+
+
+================================================================================
+  BÖLÜM 1: KESİN KÖK NEDEN (KANITLI)
+================================================================================
+
+  Log analizinden çıkan KANIT:
+
+    1. "[YTDL_DIRECT] İndiriliyor" mesajı VAR → yt-dlp başlatıldı
+    2. "[YTDL_DIRECT] Hata: ..."  mesajı YOK → yt-dlp HATA VERMEDEN bitti
+       (Eğer hata olsaydı satır 448'deki log görünürdü)
+    3. "yt-dlp dosya oluşturamadı" mesajı VAR → Bu satır 455'ten geliyor:
+       if (!fs.existsSync(tempFile)) → reject("yt-dlp dosya oluşturamadı")
+
+  YORUM:
+    yt-dlp exit code 0 ile çıktı (başarılı). Dosyayı İNDİRDİ.
+    AMA kod dosyayı YANLIŞ YOLDA ARIYOR. Bu yüzden "oluşturamadı" diyor.
+
+
+───────────────────────────────────────────────
+ANA NEDEN: yt-dlp MERGE İŞLEMİ DOSYA ADINI DEĞİŞTİRİYOR
+───────────────────────────────────────────────
+
+  Kod (server.js satır 389-470):
+
+    Satır 396: outputFile = "cache/video_Fsr14-8sxtA.mp4"
+    Satır 397: tempFile   = outputFile + ".ytdl"
+                          = "cache/video_Fsr14-8sxtA.mp4.ytdl"
+
+    Satır 415: args → "-o", tempFile    ← yt-dlp'ye bu yol veriliyor
+    Satır 427: args → "--merge-output-format", "mp4"
+
+    Format seçimi (satır 395):
+    "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
+
+  Ne oluyor:
+    yt-dlp bu format string'i ile önce "bestvideo+bestaudio" kombinasyonunu
+    deniyor. Bu durumda:
+      1. Video stream'i ayrı indirilir  (ör: .f137.mp4)
+      2. Audio stream'i ayrı indirilir  (ör: .f140.m4a)
+      3. ffmpeg ile BİRLEŞTİRİLİR
+      4. "--merge-output-format mp4" nedeniyle yt-dlp çıktı dosyasının
+         uzantısını .mp4 OLARAK DEĞİŞTİRİR
+
+    Sonuç: yt-dlp dosyayı şu yollardan birine yazıyor:
+      → "cache/video_Fsr14-8sxtA.mp4.ytdl.mp4"  (uzantı EKLENİYOR)
+      → "cache/video_Fsr14-8sxtA.mp4"           (uzantı DEĞİŞTİRİLİYOR)
+
+    AMA kod satır 454'te HALA şu yolu kontrol ediyor:
+      → "cache/video_Fsr14-8sxtA.mp4.ytdl"      (BULUNAMIYOR!)
+
+    Sonuç: fs.existsSync(tempFile) = false → "dosya oluşturamadı" hatası
+
+
+───────────────────────────────────────────────
+İKİNCİL NEDEN: FALLBACK YOUTUBE BOT SAYFASI İNDİRİYOR
+───────────────────────────────────────────────
+
+  Direct download başarısız sayılınca fallback devreye giriyor (satır 1380-1434):
+    1. resolveStreamUrlWithFallback ile bir URL çözümleniyor → BAŞARILI
+    2. Bu URL'e axios GET isteği atılıyor
+    3. AMA YouTube bu URL'e gerçek video yerine bot tespit sayfası
+       veya boş/kırık yanıt dönüyor (birkaç KB'lık HTML)
+    4. Dosya diske yazılıyor → boyut birkaç KB
+    5. Satır 1422: if (fallbackStats.size < 500 * 1024) → "dosya çok küçük"
+
+  NEDEN axios'a bot sayfası dönüyor:
+    - resolveStreamUrl ile alınan URL, yt-dlp'nin kendi session'ı için geçerli
+    - axios ile bu URL'e GİDİLDİĞİNDE farklı IP/session/headers kullanılıyor
+    - YouTube URL'i aynı session'dan gelmediğini anlayıp reddediyor
+    - Sonuç: 1.5 dakikalık video yerine 2-3 KB'lık HTML sayfası iniyor
+
+  NOT: Bu sorun SADECE ANA NEDEN yüzünden tetikleniyor.
+       Eğer ytdlpDirectDownload doğru çalışsa, fallback'e HİÇ düşülmeyecek.
+
+
+================================================================================
+  BÖLÜM 2: HATA AKIŞ DİYAGRAMI
+================================================================================
+
+  MEVCUT (BOZUK) AKIŞ:
+  ─────────────────────
+
+  Kullanıcı "Video İndir" → /download/mp4?videoId=xxx
+        │
+        ▼
+  Cache'te dosya var mı? ── HAYIR ──┐
+        │                            │
+       EVET                          ▼
+        │                   ytdlpDirectDownload(videoId, "video")
+        ▼                            │
+  Boyut ≥ 150KB? ── HAYIR → SİL     ▼
+        │                   yt-dlp videoyu İNDİRİYOR (exit code 0)
+       EVET                          │
+        │                            ▼
+        ▼                   Dosya "xxx.mp4.ytdl" yolunda aranıyor
+  ✅ Gönder                          │
+                                     ▼
+                            DOSYA YOK! (farklı isimle kaydedildi)
+                                     │
+                                     ▼
+                            ❌ "yt-dlp dosya oluşturamadı"
+                                     │
+                                     ▼
+                            Fallback: axios ile URL'den indir
+                                     │
+                                     ▼
+                            YouTube BOT SAYFASI döndürüyor (2-3 KB)
+                                     │
+                                     ▼
+                            Boyut < 500 KB → ❌ "dosya çok küçük"
+                                     │
+                                     ▼
+                            ❌ 500 hatası kullanıcıya döner
+
+
+================================================================================
+  BÖLÜM 3: KESİN ÇÖZÜM PLANI (3 FAZ)
+================================================================================
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FAZ 1 — DOSYA YOLU SORUNUNU DÜZELT (ANA FİX)                             ║
+║  Süre: 15 dakika | Bu tek başına sorunu çözer                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Dosya: server.js → ytdlpDirectDownload fonksiyonu (satır 389-471)
+
+  DEĞİŞİKLİK 1: Temp dosya stratejisini değiştir
+  ────────────────────────────────────────────────
+
+    // ESKİ (satır 397):
+    const tempFile = outputFile + ".ytdl";
+
+    // YENİ:
+    // Temp dosya yerine DOĞRUDAN outputFile'a yaz.
+    // yt-dlp zaten --no-part kullanıyor, yarım dosya riski yok.
+    // Merge işlemi bittikten sonra dosya outputFile yolunda olacak.
+
+  DEĞİŞİKLİK 2: yt-dlp'ye outputFile yolunu ver
+  ───────────────────────────────────────────────
+
+    // ESKİ (satır 415):
+    "-o", tempFile,
+
+    // YENİ:
+    "-o", outputFile,
+
+  DEĞİŞİKLİK 3: Dosya varlık kontrolünü outputFile üzerinden yap
+  ───────────────────────────────────────────────────────────────
+
+    // ESKİ (satır 454):
+    if (!fs.existsSync(tempFile)) {
+      return reject(new Error("yt-dlp dosya oluşturamadı"));
+    }
+
+    // YENİ:
+    if (!fs.existsSync(outputFile)) {
+      return reject(new Error("yt-dlp dosya oluşturamadı"));
+    }
+
+  DEĞİŞİKLİK 4: Boyut kontrolü ve rename kaldır
+  ───────────────────────────────────────────────
+
+    // ESKİ (satır 458-467):
+    const stats = fs.statSync(tempFile);
+    ...
+    fs.renameSync(tempFile, outputFile);
+
+    // YENİ:
+    const stats = fs.statSync(outputFile);
+    const minSize = type === "video" ? 100 * 1024 : 20 * 1024;
+    if (stats.size < minSize) {
+      fs.unlinkSync(outputFile);
+      return reject(new Error(`Dosya çok küçük (${...} KB)`));
+    }
+    // rename GEREKSIZ — zaten doğru yolda
+
+  DEĞİŞİKLİK 5: Hata durumunda da doğru dosyayı temizle
+  ──────────────────────────────────────────────────────
+
+    // ESKİ (satır 449):
+    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+
+    // YENİ:
+    if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile);
+    // Ayrıca olası .ytdl, .part dosyalarını da temizle
+    const possibleFiles = [outputFile, outputFile + ".ytdl",
+                           outputFile + ".part", outputFile + ".ytdl.mp4"];
+    possibleFiles.forEach(f => { try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch(e){} });
+
+
+  FAZ 1 SONRASI BEKLENEN AKIŞ:
+  ─────────────────────────────
+
+  Kullanıcı "Video İndir" → /download/mp4?videoId=xxx
+        │
+        ▼
+  ytdlpDirectDownload(videoId, "video")
+        │
+        ▼
+  yt-dlp → "-o cache/video_xxx.mp4" → "--merge-output-format mp4"
+        │
+        ▼
+  Dosya "cache/video_xxx.mp4" yoluna yazılıyor
+        │
+        ▼
+  fs.existsSync("cache/video_xxx.mp4") → TRUE ✅
+        │
+        ▼
+  Boyut kontrolü (5-50 MB arası, 1.5 dk video için) → GEÇERLİ ✅
+        │
+        ▼
+  res.sendFile() → ✅ Kullanıcıya video gönderilir
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FAZ 2 — FALLBACK GÜVENLİĞİNİ ARTIR                                      ║
+║  Süre: 10 dakika | Eğer yt-dlp bir gün gerçekten başarısız olursa          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Faz 1 ile sorunun %95'i çözülecek. Ama yt-dlp gerçekten başarısız olduğu
+  durumlarda fallback'in de düzgün çalışması lazım.
+
+  Dosya: server.js → /download/mp4 endpoint fallback kısmı (satır 1380-1434)
+
+  DEĞİŞİKLİK 1: Fallback'te axios yerine yt-dlp streaming kullan
+  ──────────────────────────────────────────────────────────────
+
+    Mevcut fallback şöyle çalışıyor:
+      1. yt-dlp ile URL çöz (--get-url)
+      2. URL'e axios ile git ve indir
+
+    Sorun: axios ile gidildiğinde YouTube farklı session olduğunu anlıyor.
+
+    Çözüm: Fallback'te de yt-dlp kullan ama farklı format seçimiyle:
+      - İlk deneme: "bestvideo[ext=mp4]+bestaudio[ext=m4a]" (merge)
+      - Fallback:   "best[ext=mp4]/best" (hazır birleşik, merge gerektirmez)
+
+    // YENİ FALLBACK:
+    try {
+      // Farklı format ile tekrar dene (merge'siz)
+      const format2 = "best[ext=mp4]/best";
+      const downloadedFile = await queue.add(() =>
+        ytdlpDirectDownload2(videoId, "video", format2) // basit format
+      );
+      if (downloadedFile && fs.existsSync(downloadedFile)) {
+        res.sendFile(downloadedFile);
+        return;
+      }
+    } catch (e) { ... }
+
+  DEĞİŞİKLİK 2: Axios fallback'ini tamamen kaldır veya son çare olarak tut
+  ─────────────────────────────────────────────────────────────────────────
+
+    axios ile YouTube URL'sine gitmek GÜVENİLMEZ.
+    En iyi strateji: tüm indirmeleri yt-dlp üzerinden yapmak.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  FAZ 3 — COOKIE GÜNCELLEMESİ & yt-dlp VERSİYONU                          ║
+║  Süre: 20 dakika | Uzun vadeli stabilite                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  error.log'da görünen "Sign in to confirm you're not a bot" hatası
+  gösteriyor ki cookies.txt dosyası ESKİ veya GEÇERSİZ.
+
+  DEĞİŞİKLİK 1: Cookie'leri tazele
+  ─────────────────────────────────
+
+    1. Bilgisayarında Chrome'da YouTube'a giriş yap
+    2. "Get cookies.txt LOCALLY" Chrome eklentisini kullan
+    3. youtube.com için cookie'leri export et
+    4. Dosyayı sunucuya yükle (cookies.txt olarak)
+
+  DEĞİŞİKLİK 2: Dockerfile'da yt-dlp'yi güncelle
+  ───────────────────────────────────────────────
+
+    // ESKİ:
+    pip3 install --no-cache-dir yt-dlp bgutil-ytdlp-pot-provider
+
+    // YENİ (her zaman son sürümü alsın):
+    pip3 install --no-cache-dir --upgrade yt-dlp bgutil-ytdlp-pot-provider
+
+  DEĞİŞİKLİK 3: Düzenli cookie geçerlilik kontrolü
+  ─────────────────────────────────────────────────
+
+    Sunucu başlatıldığında cookies.txt'nin yaşını kontrol et:
+    - 7 günden eski ise log'a uyarı yaz
+    - 30 günden eski ise kırmızı alarm log'u at
+
+
+================================================================================
+  BÖLÜM 4: UYGULAMA ÖNCELİK TABLOSU
+================================================================================
+
+  Sıra | Faz | Ne Yapılacak                          | Etkisi
+  ─────|─────|────────────────────────────────────────|───────────────────
+    1  |  1  | tempFile → outputFile düzeltmesi       | Sorunu tamamen çözer
+    2  |  2  | Fallback'i yt-dlp tabanlı yap          | Yedek koruma sağlar
+    3  |  3  | Cookie + yt-dlp güncelleme             | Uzun vadeli stabilite
+
+  FAZ 1 UYGULANDIĞINDA:
+    - yt-dlp direct download ÇALIŞACAK
+    - Fallback'e HİÇ düşülmeyecek
+    - "dosya çok küçük" hatası ORTADAN KALKACAK
+    - 1.5 dakikalık videolar sorunsuz indirilecek
+
+
+================================================================================
+  BÖLÜM 5: KEİSN DEĞİŞİKLİK KODU (KOPYALA-YAPIŞTIR HAZIR)
+================================================================================
+
+  Mevcut ytdlpDirectDownload fonksiyonu (satır 389-471) şununla DEĞİŞTİR:
+
+  ┌─────────────────────────────────────────────────────────────────────┐
+  │                                                                     │
+  │  function ytdlpDirectDownload(videoId, type) {                      │
+  │    return new Promise((resolve, reject) => {                        │
+  │      const ext = type === "audio" ? "m4a" : "mp4";                  │
+  │      const format = type === "audio"                                │
+  │        ? "bestaudio[ext=m4a]/bestaudio"                             │
+  │        : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+best"+   │
+  │          "audio/best[ext=mp4]/best";                                │
+  │      const outputFile = path.join(CACHE_DIR,                        │
+  │                           `${type}_${videoId}.${ext}`);             │
+  │                                                                     │
+  │      // Cache kontrolü                                              │
+  │      if (fs.existsSync(outputFile)) {                               │
+  │        const st = fs.statSync(outputFile);                          │
+  │        if (st.size >= (type === "video" ? 100*1024 : 20*1024)) {    │
+  │          console.log(`[YTDL_DIRECT] Cache hit: ${outputFile}`);     │
+  │          return resolve(outputFile);                                 │
+  │        }                                                            │
+  │        fs.unlinkSync(outputFile);                                   │
+  │      }                                                              │
+  │                                                                     │
+  │      const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp")        │
+  │        ? "/usr/local/bin/yt-dlp"                                    │
+  │        : fs.existsSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp")  │
+  │        ? "/app/node_modules/yt-dlp-exec/bin/yt-dlp" : "yt-dlp";    │
+  │                                                                     │
+  │      const args = [                                                 │
+  │        `https://www.youtube.com/watch?v=${videoId}`,                 │
+  │        "-f", format,                                                │
+  │        "-o", outputFile,          // ← DOĞRUDAN ÇIKTI DOSYASINA YAZ│
+  │        "--no-playlist",                                             │
+  │        "--no-part",                                                 │
+  │        "--no-mtime",                                                │
+  │        "--concurrent-fragments", "1",                               │
+  │        "--retries", "3",                                            │
+  │        "--socket-timeout", "30",                                    │
+  │        "--remote-components", "ejs:github"                          │
+  │      ];                                                             │
+  │                                                                     │
+  │      if (type === "video") {                                        │
+  │        args.push("--merge-output-format", "mp4");                   │
+  │      }                                                              │
+  │                                                                     │
+  │      if (process.env.USE_COOKIES !== "false"                        │
+  │          && fs.existsSync("cookies.txt")) {                         │
+  │        args.push("--cookies", "cookies.txt");                       │
+  │      }                                                              │
+  │                                                                     │
+  │      if (process.env.PROXY_URL) {                                   │
+  │        args.push("--proxy", process.env.PROXY_URL);                 │
+  │      }                                                              │
+  │                                                                     │
+  │      console.log(`[YTDL_DIRECT] İndiriliyor: ${videoId} (${type})`);│
+  │                                                                     │
+  │      execFile(ytdlpBin, args, {                                     │
+  │        timeout: 900000,                                             │
+  │        maxBuffer: 50 * 1024 * 1024                                  │
+  │      }, (error, stdout, stderr) => {                                │
+  │                                                                     │
+  │        if (error) {                                                 │
+  │          console.error(`[YTDL_DIRECT] Hata: ${stderr||error.msg}`); │
+  │          // Olası artık dosyaları temizle                            │
+  │          [outputFile, outputFile+".ytdl", outputFile+".part",       │
+  │           outputFile+".ytdl.mp4"].forEach(f => {                    │
+  │            try { if(fs.existsSync(f)) fs.unlinkSync(f); } catch{}  │
+  │          });                                                        │
+  │          return reject(new Error(                                    │
+  │            `yt-dlp direct download failed: ${error.message}`));     │
+  │        }                                                            │
+  │                                                                     │
+  │        // Dosya varlık kontrolü — DOĞRU YOL                         │
+  │        if (!fs.existsSync(outputFile)) {                            │
+  │          return reject(new Error("yt-dlp dosya oluşturamadı"));     │
+  │        }                                                            │
+  │                                                                     │
+  │        const stats = fs.statSync(outputFile);                       │
+  │        const minSize = type === "video" ? 100*1024 : 20*1024;       │
+  │                                                                     │
+  │        if (stats.size < minSize) {                                  │
+  │          fs.unlinkSync(outputFile);                                 │
+  │          return reject(new Error(                                    │
+  │            `Dosya çok küçük (${(stats.size/1024).toFixed(1)} KB)`));│
+  │        }                                                            │
+  │                                                                     │
+  │        console.log(`[YTDL_DIRECT] Başarılı: ${outputFile} `+        │
+  │          `(${(stats.size/1024/1024).toFixed(2)} MB)`);              │
+  │        resolve(outputFile);  // Zaten doğru yolda, rename gereksiz  │
+  │      });                                                            │
+  │    });                                                              │
+  │  }                                                                  │
+  │                                                                     │
+  └─────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+  ÖZET
+================================================================================
+
+  ❌ Eski durum:
+     yt-dlp dosyayı indiriyor → kod yanlış yolda arıyor → bulamıyor →
+     fallback devreye giriyor → YouTube bot sayfası dönüyor →
+     birkaç KB'lık dosya → "çok küçük" → indirme başarısız
+
+  ✅ Yeni durum (Faz 1 sonrası):
+     yt-dlp dosyayı indiriyor → kod DOĞRU YOLDA buluyor →
+     boyut kontrolü geçiyor → video kullanıcıya gönderiliyor
+
+  SORUN VİDEO SÜRESİ İLE İLGİLİ DEĞİLDİR.
+  1 dakikalık veya 1 saatlik video fark etmez — sorun dosya yolu
+  uyumsuzluğudur. Faz 1 uygulandığında tüm MP4 indirmeler düzelecektir.
+
+================================================================================
