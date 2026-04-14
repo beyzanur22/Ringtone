@@ -982,20 +982,44 @@ app.get("/search", searchLimiter, async (req, res) => {
       youtubeApiStatus = "ok";
     } catch (apiError) {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
-        logError("API_FALLBACK", null, `YouTube API Quota exceeded or forbidden. Using Piped API fallback config for search: ${query}`);
+        logError("API_FALLBACK", null, `YouTube API Quota exceeded. Trying youtubei.js for fast search: ${query}`);
         youtubeApiStatus = "quota_exceeded";
         stats.youtubeApiQuotaExceeded++;
-        const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-        const pipedItems = pipedRes.data.map(item => ({
-          id: { videoId: (item.url || "").split("?v=")[1] },
-          snippet: {
-            title: item.title,
-            channelTitle: item.uploaderName,
-            channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
-          }
-        }));
-        resultData = filterBlockedChannels(pipedItems);
-        nextToken = ""; // Piped basic API may not always have next page cursor matching easily
+
+        try {
+          if (!yt) throw new Error("Youtubei.js is not initialized yet");
+
+          const searchResults = await yt.search(query, { type: 'video' });
+          const ytItems = searchResults.videos.map(item => ({
+            id: { videoId: item.id },
+            snippet: {
+              title: item.title?.text || item.title || "Unknown",
+              channelTitle: item.author?.name || "Unknown",
+              channelId: item.author?.id || "",
+              thumbnails: {
+                high: { url: item.best_thumbnail?.url || item.thumbnails?.[0]?.url || "" }
+              }
+            }
+          }));
+
+          if (ytItems.length === 0) throw new Error("No results from youtubei.js");
+
+          resultData = filterBlockedChannels(ytItems);
+          nextToken = ""; // Simple pagination for youtubei fallback
+        } catch (ytErr) {
+          logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped: ${ytErr.message}`);
+          const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+          const pipedItems = pipedRes.data.map(item => ({
+            id: { videoId: (item.url || "").split("?v=")[1] },
+            snippet: {
+              title: item.title,
+              channelTitle: item.uploaderName,
+              channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
+            }
+          }));
+          resultData = filterBlockedChannels(pipedItems);
+          nextToken = "";
+        }
       } else {
         throw apiError;
       }
