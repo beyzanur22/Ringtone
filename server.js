@@ -62,35 +62,37 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB limit (Railway ephemeral disk için)
+const MAX_CACHE_SIZE = 300 * 1024 * 1024; // 300MB limit (Railway ephemeral disk için)
 
 function checkDiskSpaceAndCleanup() {
   try {
     if (!fs.existsSync(CACHE_DIR)) return;
     const files = fs.readdirSync(CACHE_DIR).map(f => {
       const p = path.join(CACHE_DIR, f);
-      return { path: p, stat: fs.statSync(p) };
+      return { path: p, stat: fs.statSync(p), name: f };
     });
 
     const now = Date.now();
     for (const file of files) {
-      if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
+      if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
         try { fs.unlinkSync(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
       }
     }
 
     const currentFiles = fs.readdirSync(CACHE_DIR).map(f => {
       const p = path.join(CACHE_DIR, f);
-      return { path: p, stat: fs.statSync(p) };
+      return { path: p, stat: fs.statSync(p), name: f };
     });
 
     const totalSize = currentFiles.reduce((acc, f) => acc + f.stat.size, 0);
     if (totalSize > MAX_CACHE_SIZE) {
       console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024).toFixed(1)} MB). Temizleniyor...`);
-      currentFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
+      // Aktif indirmeleri silmemek icin sadece tamamlanmis dosyalari sil (.mp4, .m4a)
+      const finishedFiles = currentFiles.filter(f => f.name.endsWith('.mp4') || f.name.endsWith('.m4a'));
+      finishedFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
       let deletedSize = 0;
       const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.5); // %50'ye kadar temizle
-      for (const file of currentFiles) {
+      for (const file of finishedFiles) {
         if (deletedSize >= targetToDelete) break;
         try { fs.unlinkSync(file.path); deletedSize += file.stat.size; } catch (e) { }
       }
@@ -327,7 +329,6 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-mtime",
       "--concurrent-fragments", "1",
       "--remote-components", "ejs:github",
-      "--max-filesize", "50M",
       "--quiet", "--no-warnings"
     ];
 
@@ -416,7 +417,6 @@ function ytdlpDirectDownload(videoId, type) {
       "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30",
-      "--max-filesize", "50M",
       "--remote-components", "ejs:github"
     ];
 
@@ -1266,7 +1266,7 @@ app.get("/download/mp3", async (req, res) => {
 
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
+      const minSize = typeStr === "video" ? 150 * 1024 : 20 * 1024;
       if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
@@ -1345,7 +1345,8 @@ app.get("/download/mp4", async (req, res) => {
     // 1. Disk cache kontrolü - dosya zaten varsa direkt gönder
     if (fs.existsSync(localFile)) {
       const fileStats = fs.statSync(localFile);
-      if (fileStats.size < 1024 * 1024) {
+      const minSize = typeStr === "video" ? 150 * 1024 : 20 * 1024;
+      if (fileStats.size < minSize) {
         console.warn(`[DOWNLOAD_MP4] Bozuk cache dosyası siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
