@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 const axios = require("axios");
 const http = require("http");
@@ -593,6 +593,23 @@ async function fetchFromPiped(endpointPath) {
   throw lastError || new Error("Tüm Piped API instance'ları başarısız oldu.");
 }
 
+// HIZLI PARALEL PIPED — Search için (Promise.any ile en hızlı yanıt)
+async function fetchFromPipedFast(endpointPath) {
+  const promises = PIPED_INSTANCES.map(instance =>
+    axiosClient.get(`${instance}${endpointPath}`, { timeout: 3000 })
+      .then(res => {
+        if (res && res.data && !res.data.error) return res;
+        throw new Error("Invalid response");
+      })
+  );
+  try {
+    return await Promise.any(promises);
+  } catch (err) {
+    throw new Error("Tüm Piped API instance'ları başarısız oldu (paralel).");
+  }
+}
+
+
 async function tryInvidiousFallback(videoId, type) {
   for (const instance of INVIDIOUS_INSTANCES) {
     try {
@@ -809,7 +826,7 @@ function prewarmTop10(items) {
   top10.forEach((item, index) => {
     const videoId = typeof item.id === "object" ? item.id.videoId : item.id;
     if (!videoId) return;
-    
+
     const cacheKey = `stream:audio:${videoId}`;
     // Eğer cahce'te yoksa, arka planda yavaş yavaş bulup ekle
     cacheGet(cacheKey).then(cachedData => {
@@ -825,7 +842,7 @@ function prewarmTop10(items) {
             } catch (err) {
               // Sessizce yut
             }
-          }).catch(()=>{});
+          }).catch(() => { });
         }, index * 2000); // Her bir arasına 2 saniye koy
       }
     });
@@ -922,7 +939,7 @@ app.get("/top50", async (req, res) => {
     }
 
     await cacheSet("top50", items, CACHE_DURATION);
-    
+
     // Arkada ilk 10 şarkıyı çözmeye başla, kullanıcı tıklayınca anında açılsın!
     prewarmTop10(items);
 
@@ -968,7 +985,7 @@ app.get("/search", searchLimiter, async (req, res) => {
         logError("API_FALLBACK", null, `YouTube API Quota exceeded or forbidden. Using Piped API fallback config for search: ${query}`);
         youtubeApiStatus = "quota_exceeded";
         stats.youtubeApiQuotaExceeded++;
-        const pipedRes = await fetchFromPiped(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+        const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
         const pipedItems = pipedRes.data.map(item => ({
           id: { videoId: (item.url || "").split("?v=")[1] },
           snippet: {
@@ -1405,7 +1422,7 @@ app.get("/download/mp4", async (req, res) => {
     // Fallback temp dosyasını temizle
     const tempCleanup = path.join(CACHE_DIR, `video_${req.query.videoId}.mp4.fallback.tmp`);
     if (fs.existsSync(tempCleanup)) {
-      try { fs.unlinkSync(tempCleanup); } catch(e) {}
+      try { fs.unlinkSync(tempCleanup); } catch (e) { }
     }
     if (!res.headersSent) {
       res.status(500).json({ error: "MP4 download failed" });
