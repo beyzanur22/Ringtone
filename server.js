@@ -392,7 +392,7 @@ function ytdlpDirectDownload(videoId, type) {
     // Video için: en iyi video+audio birleştir, yoksa hazır birleşik al
     const format = type === "audio"
       ? "bestaudio[ext=m4a]/bestaudio"
-      : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best";
+      : "b[ext=mp4][height<=720]/best[ext=mp4]/b/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
     const tempFile = path.join(CACHE_DIR, `temp_${videoId}.${ext}`);
 
@@ -422,10 +422,8 @@ function ytdlpDirectDownload(videoId, type) {
       "--remote-components", "ejs:github"
     ];
 
-    // Video ise çıktıyı kesinlikle mp4 konteynerine birleştir
-    if (type === "video") {
-      args.push("--merge-output-format", "mp4");
-    }
+    // Video ise çıktıyı direkt mp4 olarak alıyoruz (merge gerekmez)
+    // args.push("--merge-output-format", "mp4");
 
     // Cookies ekle
     if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
