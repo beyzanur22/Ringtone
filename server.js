@@ -1505,8 +1505,8 @@ async function manageDiskSpace() {
       fileList.push({ path: filePath, size: stats.size, atime: stats.atime });
     }
 
-    const maxSizeBytes = 10 * 1024 * 1024 * 1024; // 10 GB
-    const targetSizeBytes = 8 * 1024 * 1024 * 1024; // 8 GB'a düşür
+    const maxSizeBytes = 350 * 1024 * 1024; // 350 MB
+    const targetSizeBytes = 250 * 1024 * 1024; // 250 MB'a düşür
 
     if (totalSize > maxSizeBytes) {
       console.log(`[DISK_MANAGER] Limit asildi: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB. Temizlik basliyor...`);
