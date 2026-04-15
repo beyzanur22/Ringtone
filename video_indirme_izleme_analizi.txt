@@ -1,0 +1,270 @@
+================================================================================
+    VIDEO İZLEYEMEME VE MP4 İNDİREMEME SORUNLARI - KÖK NEDEN ANALİZİ
+    Tarih: 2026-04-14
+================================================================================
+
+ÖZET:
+Uygulamada video izleme ve MP4 indirme özelliklerinin çalışmamasının
+birden fazla bağımsız sebebi var. Aşağıda her birini detaylı açıklıyorum.
+
+================================================================================
+SORUN #1: yt-dlp "Signature Solving" ve "PO Token" Hatası (EN KRİTİK)
+================================================================================
+
+NEDEN:
+YouTube, 2025 sonlarından itibaren video URL'lerini şifreleyerek (signature 
+cipher) koruyor. Bu şifreleri çözmek için yt-dlp'nin bir JavaScript runtime'a 
+(EJS - External JavaScript Solver) ihtiyacı var. Sunucunuzda bu çözücü ya 
+yüklü değil ya da çalışmıyor.
+
+KANIT (error.log satır 43-47):
+  - "Signature solving failed: Some formats may be missing. Ensure you have 
+     a supported JavaScript runtime and challenge solver script distribution 
+     installed."
+  - "n challenge solving failed"
+  - "web client https formats require a GVS PO Token which was not provided"
+  - "Only images are available for download"
+  - "Requested format is not available"
+
+Bu hata dizisi şunu söylüyor:
+1. yt-dlp signature'ları çözemedi → video formatları listelenemedi
+2. PO Token olmayınca HTTPS formatları da atlandı
+3. Geriye sadece thumbnail resimleri kaldı → "sadece resimler indirilebilir"
+4. İstenen format (mp4/bestaudio) bulunamadı → İNDİRME BAŞARISIZ
+
+ÇÖZÜM:
+- Dockerfile'da Deno runtime kurulu ama PATH doğru mu kontrol edin.
+- start.sh'da "yt-dlp --remote-components ejs:github --version" komutu 
+  çalışıyor ama Railway'de ağ kısıtlamaları olabilir.
+- bgutil-ytdlp-pot-provider (PoToken sunucusu) port 4416'da çalışması lazım.
+  Eğer bu sunucu çöküyorsa PoToken üretilemez ve video URL'leri reddedilir.
+
+================================================================================
+SORUN #2: YouTube Bot Algılaması (Sign-in Required)
+================================================================================
+
+NEDEN:
+YouTube, sunucu IP adresinizden gelen istekleri bot olarak algılıyor.
+cookies.txt dosyanız var ama ya süresi dolmuş ya da geçersiz.
+
+KANIT (error.log satır 41):
+  - "Sign in to confirm you're not a bot. Use --cookies-from-browser or 
+     --cookies for the authentication."
+
+Bu hata, YouTube'un sunucunuzun IP'sini şüpheli bulduğunu ve 
+cookie/oturum bilgisi olmadan erişimi engellediğini gösteriyor.
+
+ÇÖZÜM:
+- cookies.txt dosyasını taze bir tarayıcı oturumundan yeniden export edin.
+- Railway'de deploy ediyorsanız, Railway IP'leri genelde datacenter IP'si 
+  olduğu için YouTube bu IP'leri kolayca engelliyor.
+- Proxy kullanılıyorsa, proxy IP'si de banlanmış olabilir.
+
+================================================================================
+SORUN #3: Tüm Fallback API'ler de Çalışmıyor
+================================================================================
+
+NEDEN:
+yt-dlp başarısız olduğunda kod Piped ve Invidious API'lerine düşüyor.
+Ancak bu ücretsiz public instance'ların büyük çoğunluğu ya kapanmış, 
+ya aşırı yüklenmiş, ya da SSL sertifikaları süresi dolmuş.
+
+KANIT (error.log satır 48-72):
+  INVIDIOUS sorunları:
+  - yewtu.be → 403 Forbidden
+  - vid.puffyan.us → 502 Bad Gateway
+  - inv.rvere.com → Timeout
+  - invidious.nerdvpn.de → 401 Unauthorized
+  - invidious.lunar.icu → "certificate has expired"
+  - invidious.flokinet.to → Timeout
+  - invidious.privacyredirect.com → Timeout
+  - invidious.weblibre.org → Socket hang up
+  - yt.artemislena.eu → SSL hatası
+  - invidious.jing.rocks → Timeout
+
+  PIPED sorunları:
+  - pipedapi.kavin.rocks → 502 Bad Gateway
+  - pi.ped.yt → Timeout
+  - pipedapi.smnz.de → Timeout
+  - api.piped.projectsegfau.lt → Timeout
+  - pipedapi.syncpundit.io → Timeout
+  - pipedapi.adminforge.de → DNS çözümlenemedi (ENOTFOUND)
+  - pipedapi.tokhmi.xyz → "API returned no valid streams"
+  - piped-api.lunar.icu → "certificate has expired"
+  - pipedapi.us.projectsegfau.lt → Timeout
+  - api.piped.yt → Timeout
+  - pipedapi.astartes.nl → SSL hatası
+
+  SONUÇ: "Tüm paralel proxy ağları başarısız oldu: All promises were rejected"
+
+Bu, tüm yedek çözümlerin de iflas ettiği anlamına geliyor.
+Sistem 3 katmanlı fallback'e sahip ama 3'ü de çalışmıyor:
+  1. yt-dlp → Signature/PoToken hatası
+  2. Piped API → Instance'lar ölü/timeout
+  3. Invidious API → Instance'lar ölü/yasaklı
+
+================================================================================
+SORUN #4: /stream/video Endpoint'i - ytdlpStream Fonksiyonunun Zayıflığı
+================================================================================
+
+NEDEN:
+Video izleme için kullanılan /stream/video endpoint'i (satır 1135) şu sırayı
+takip ediyor:
+  1. Disk cache kontrolü → Cache boşsa devam
+  2. ytdlpStream() → stdout'u pipe ediyor (satır 315-387)
+  3. ytdlpDirectDownload() → Dosyayı diske indirir
+  4. resolveStreamUrlWithFallback() → URL çözümle + axios pipe
+
+PROBLEM: ytdlpStream fonksiyonunda "-o -" ile stdout'a yazılıyor ama
+bu yöntem yt-dlp signature hatası verince hiç veri göndermiyor. Client
+(Android ExoPlayer) boş stream alıyor ve video yüklenemez.
+
+Ayrıca ytdlpStream'de "--remote-components ejs:github" argümanı var ama
+Railway container'ında bu indirilemezse yine signature çözülemez.
+
+Ek olarak, satır 333'teki "--remote-components ejs:github" argümanı 
+sadece yt-dlp'nin güncel sürümlerinde destekleniyor. Eski yt-dlp versiyonu
+bu argümanı tanımayabilir ve hata verebilir.
+
+================================================================================
+SORUN #5: /download/mp4 Endpoint'i - Aynı Temel Sorun
+================================================================================
+
+NEDEN:
+MP4 indirme endpoint'i (satır 1335) de aynı yt-dlp sorunlarından etkileniyor.
+ytdlpDirectDownload() başarısız olunca fallback'e düşüyor ama orada da 
+resolveStreamUrlWithFallback() başarısız oluyor (Sorun #1-3).
+
+Fallback zinciri:
+  1. Disk cache → Boş
+  2. ytdlpDirectDownload() → Signature hatası → BAŞARISIZ
+  3. resolveStreamUrl() → Format not available → BAŞARISIZ
+  4. Piped + Invidious → Tüm instance'lar ölü → BAŞARISIZ
+  
+Sonuç: "MP4 download failed" hatası dönüyor.
+
+================================================================================
+SORUN #6: Android Tarafı - VideoPlayerActivity Eksiklikleri
+================================================================================
+
+NEDEN:
+videoplayeractivity dosyasında (satır 104-129) fetchAndPlayYoutubeVideo()
+fonksiyonu:
+
+  1. VideoApi().getVideoUrl(videoId) çağrısı 15 saniye timeout ile yapılıyor.
+  2. Başarısız olursa hardcoded URL'ye düşüyor:
+     "https://ringtone-production.up.railway.app/stream/video?videoId=..."
+  3. Bu URL sunucuya gidiyor ama sunucu zaten video URL çözemediği için
+     500 hatası veya boş stream dönüyor.
+  4. ExoPlayer boş/hatalı stream'i oynatamıyor → Video izlenemez.
+
+AYRICA: Hata durumunda kullanıcıya hiçbir feedback verilmiyor. 
+catch bloğunda sadece Log.e var, Toast veya UI mesajı yok (satır 126-128).
+
+================================================================================
+SORUN #7: Youtubei.js Devre Dışı Bırakılmış
+================================================================================
+
+NEDEN:
+server.js satır 636-637'de youtubei.js stream çözümlemesi tamamen 
+devre dışı bırakılmış:
+  "// Youtubei.js DEVRE DIŞI — YouTube 400 hatası veriyor, boşa vakit 
+  kaybettiriyor"
+
+Bu, potansiyel bir çözüm yolunun kapatıldığı anlamına geliyor.
+Aslında youtubei.js v17+ ile client_type: 'TV' kullanılıyor (satır 28)
+ama resolveStreamUrlWithFallback'te hiç çağrılmıyor.
+
+================================================================================
+SORUN #8: Disk Cache Temizliği Video Dosyalarını Siliyor
+================================================================================
+
+NEDEN:
+start.sh satır 8: "rm -rf /app/cache/*"
+Her deploy'da veya container yeniden başladığında TÜM cache siliniliyor.
+
+Ayrıca checkDiskSpaceAndCleanup() (satır 67-102) MAX_CACHE_SIZE = 300MB
+ile çalışıyor. Video dosyaları genelde 50-200MB arasında olduğu için
+2-3 video cache'lendikten sonra en eski dosyalar siliniyor.
+
+Railway'nin ephemeral disk'i zaten sınırlı, bu yüzden videolar kalıcı 
+olarak saklanamıyor.
+
+================================================================================
+SORUN #9: Circuit Breaker Açılması
+================================================================================
+
+NEDEN:
+Ardarda 5 yt-dlp hatası olduğunda circuit breaker aktif oluyor (satır 174):
+  CIRCUIT_BREAKER_THRESHOLD = 5
+  CIRCUIT_BREAKER_TIMEOUT = 5 dakika
+
+Bu süre zarfında TÜM video istekleri "yt-dlp has been temporarily disabled" 
+hatası alıyor. Yani bir kez 5 hata olunca 5 dakika boyunca hiçbir video 
+çalışmıyor.
+
+================================================================================
+SORUN #10: /stream Endpoint'i Video için Yanlış Çalışıyor
+================================================================================
+
+NEDEN:
+/stream endpoint'i (satır 1034) type tespitini req.path üzerinden yapıyor:
+  const typeStr = req.path.includes("video") || req.path.includes("mp4") 
+    ? "video" : "audio";
+
+Ama /stream path'i ne "video" ne "mp4" içeriyor, bu yüzden HER ZAMAN 
+"audio" olarak çözümleniyor. Yani /stream?videoId=xxx yapıldığında 
+sadece ses indiriliyor, video değil.
+
+Video için /stream/video endpoint'i kullanılmalı.
+
+================================================================================
+ÇÖZÜM ÖNERİLERİ (ÖNCELİK SIRASINA GÖRE)
+================================================================================
+
+1. [ACİL] yt-dlp ve EJS Runtime Düzeltmesi:
+   - Dockerfile'da Deno'nun doğru kurulduğunu ve PATH'te olduğunu doğrulayın.
+   - Container'da "deno --version" ve "yt-dlp --version" komutlarını test edin.
+   - PoToken sunucusunun (port 4416) ayakta olduğunu "curl localhost:4416/ping"
+     ile kontrol edin.
+
+2. [ACİL] cookies.txt Yenilenmesi:
+   - Taze bir Google hesabından cookies export edin.
+   - Chrome eklentisi "Get cookies.txt LOCALLY" kullanın.
+   - Netscape format olduğundan emin olun.
+
+3. [ORTA] Piped/Invidious Instance Listesini Güncelleyin:
+   - https://piped-instances.kavin.rocks/ adresinden çalışan instance'ları alın.
+   - https://api.invidious.io/instances.json adresinden güncel listeyi çekin.
+   - Ölü instance'ları çıkarın, yeni çalışanları ekleyin.
+
+4. [ORTA] Youtubei.js'yi Yeniden Aktif Edin:
+   - resolveStreamUrlWithFallback() içinde yt-dlp'den ÖNCE deneyin.
+   - youtubei.js v17+ ile TV client genelde çalışıyor.
+
+5. [DÜŞÜK] Android Tarafında Hata Yönetimi:
+   - VideoPlayerActivity'de catch bloğuna kullanıcıya Toast mesajı ekleyin.
+   - Yükleme göstergesi (ProgressBar) ekleyin.
+   - Retry mekanizması ekleyin.
+
+6. [DÜŞÜK] Circuit Breaker Timeout'unu Düşürün:
+   - 5 dakika çok uzun, 1-2 dakikaya indirin.
+   - Veya threshold'u 5'ten 10'a çıkarın.
+
+================================================================================
+SONUÇ
+================================================================================
+
+Temel sorun TEK BİR ŞEY: YouTube'un anti-bot koruması.
+
+yt-dlp, signature çözücüsü (EJS) ve PO Token olmadan YouTube'dan video 
+URL'si alamıyor. Fallback olarak kullanılan Piped ve Invidious instance'ları 
+da aynı sebepten kapanmış veya kısıtlanmış durumda.
+
+Çözüm yolu:
+1. yt-dlp + Deno (EJS) + PoToken'ı düzgün çalıştırmak
+2. cookies.txt'yi güncel tutmak  
+3. Ölü fallback instance'ları güncellemek
+
+Bu üçü düzeltilirse hem video izleme hem MP4 indirme tekrar çalışacaktır.
+================================================================================

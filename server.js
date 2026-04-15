@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 const axios = require("axios");
 const http = require("http");
@@ -171,8 +171,8 @@ function logError(type, videoId, errorMessage) {
 
 let ytDlpFailCount = 0;
 let ytDlpCircuitBreakerUntil = 0;
-const CIRCUIT_BREAKER_THRESHOLD = 5;
-const CIRCUIT_BREAKER_TIMEOUT = 5 * 60 * 1000; // 5 mins
+const CIRCUIT_BREAKER_THRESHOLD = 10;
+const CIRCUIT_BREAKER_TIMEOUT = 2 * 60 * 1000; // 2 mins (5dk çok uzundu)
 let youtubeApiStatus = "ok";
 
 // Analytics & Stats
@@ -394,7 +394,7 @@ function ytdlpDirectDownload(videoId, type) {
       ? "bestaudio[ext=m4a]/bestaudio"
       : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best";
     const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
-    const tempFile = outputFile + ".ytdl";
+    const tempFile = path.join(CACHE_DIR, `temp_${videoId}.${ext}`);
 
     if (fs.existsSync(outputFile)) {
       const stats = fs.statSync(outputFile);
@@ -538,32 +538,60 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
 }
 
-const PIPED_INSTANCES = [
-  "https://pipedapi.kavin.rocks",
-  "https://api.piped.yt",
-  "https://piped-api.lunar.icu",
-  "https://pipedapi.syncpundit.io",
-  "https://api.piped.projectsegfau.lt",
-  "https://pipedapi.smnz.de",
-  "https://pipedapi.tokhmi.xyz",
-  "https://pipedapi.us.projectsegfau.lt",
-  "https://pi.ped.yt",
-  "https://pipedapi.adminforge.de",
-  "https://pipedapi.astartes.nl"
+// Dinamik + statik Piped instance listesi (14 Nisan 2026 güncellemesi)
+let PIPED_INSTANCES = [
+  "https://api.piped.private.coffee"
 ];
 
-const INVIDIOUS_INSTANCES = [
-  "https://yewtu.be",
-  "https://vid.puffyan.us",
-  "https://inv.rvere.com",
-  "https://invidious.nerdvpn.de",
-  "https://invidious.lunar.icu",
-  "https://invidious.flokinet.to",
-  "https://invidious.privacyredirect.com",
-  "https://invidious.weblibre.org",
-  "https://yt.artemislena.eu",
-  "https://invidious.jing.rocks"
+// Başlangıçta güncel Piped instance'larını çek
+async function refreshPipedInstances() {
+  try {
+    const res = await axiosClient.get("https://piped-instances.kavin.rocks/", { timeout: 5000 });
+    if (Array.isArray(res.data)) {
+      const working = res.data
+        .filter(i => i.up_to_date && i.uptime_24h > 90)
+        .map(i => i.api_url)
+        .filter(url => url && url.startsWith("https"));
+      if (working.length > 0) {
+        PIPED_INSTANCES = working;
+        console.log(`[PIPED_REFRESH] ${working.length} aktif instance bulundu`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[PIPED_REFRESH] Güncel liste alınamadı: ${e.message}`);
+  }
+}
+// Her 30 dakikada bir güncelle
+setTimeout(refreshPipedInstances, 10000);
+setInterval(refreshPipedInstances, 30 * 60 * 1000);
+
+// Dinamik + statik Invidious instance listesi (14 Nisan 2026 güncellemesi)
+let INVIDIOUS_INSTANCES = [
+  "https://inv.nadeko.net",
+  "https://inv.thepixora.com",
+  "https://invidious.nerdvpn.de"
 ];
+
+// Başlangıçta güncel Invidious instance'larını çek
+async function refreshInvidiousInstances() {
+  try {
+    const res = await axiosClient.get("https://api.invidious.io/instances.json", { timeout: 5000 });
+    if (Array.isArray(res.data)) {
+      const working = res.data
+        .filter(([name, info]) => info.type === "https" && info.api === true && info.monitor && !info.monitor.down)
+        .map(([name, info]) => info.uri)
+        .filter(url => url && url.startsWith("https"));
+      if (working.length > 0) {
+        INVIDIOUS_INSTANCES = working;
+        console.log(`[INVIDIOUS_REFRESH] ${working.length} aktif instance bulundu`);
+      }
+    }
+  } catch (e) {
+    console.warn(`[INVIDIOUS_REFRESH] Güncel liste alınamadı: ${e.message}`);
+  }
+}
+setTimeout(refreshInvidiousInstances, 12000);
+setInterval(refreshInvidiousInstances, 30 * 60 * 1000);
 
 async function fetchFromPiped(endpointPath) {
   let lastError = null;
@@ -633,9 +661,18 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // Youtubei.js DEVRE DIŞI — YouTube 400 hatası veriyor, boşa vakit kaybettiriyor
-  // Direkt yt-dlp ile çözümlemeye geç (daha güvenilir)
+  // 1. Youtubei.js ile dene (en hızlı yöntem)
+  try {
+    const ytUrl = await resolveWithYoutubei(videoId, type);
+    if (ytUrl) {
+      console.log(`[RESOLVE] Youtubei.js başarılı: ${videoId}`);
+      return ytUrl;
+    }
+  } catch (ytErr) {
+    console.warn(`[RESOLVE] Youtubei.js başarısız: ${ytErr.message}`);
+  }
 
+  // 2. yt-dlp ile dene
   try {
     const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -1038,7 +1075,7 @@ app.get("/stream", async (req, res) => {
       return res.status(400).json({ error: "videoId required" });
     }
 
-    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
+    const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
     const extStr = typeStr === "audio" ? "m4a" : "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
