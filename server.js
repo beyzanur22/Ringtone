@@ -25,23 +25,9 @@ async function initYoutubei() {
     yt = await Innertube.create({
       cache,
       generate_session_locally: true,
-      client_type: 'TV'
+      client_type: 'WEB'
     });
-
-    let creds = null;
-    if (process.env.YT_OAUTH_JSON) {
-      creds = JSON.parse(process.env.YT_OAUTH_JSON);
-      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı! (Env Var)");
-    } else if (fs.existsSync('oauth_credentials.json')) {
-      creds = JSON.parse(fs.readFileSync('oauth_credentials.json', 'utf-8'));
-      console.log("[YOUTUBEI] OAuth2 Girişi Başarılı! (File)");
-    }
-
-    if (creds) {
-      await yt.session.signIn(creds);
-    } else {
-      console.warn("[YOUTUBEI] OAuth kimlik bilgisi bulunamadı, anonim modda çalışıyor.");
-    }
+    console.log("[YOUTUBEI] Başarılı şekilde başlatıldı (WEB mode).");
   } catch (err) {
     console.error("[YOUTUBEI] Başlatma Hatası:", err.message);
   }
@@ -49,9 +35,9 @@ async function initYoutubei() {
 initYoutubei();
 
 const queue = new PQueue({
-  concurrency: 30,     // Çok kullanıcılı ölçekleme için darboğaz genişletildi
-  interval: 1000,
-  intervalCap: 50      // Saniyede 50 isteğe kadar izin ver
+  concurrency: 5,      // Bot tespitini zorlaştırmak için yavaşlatıldı (insan benzeri)
+  interval: 2000,      // 2 saniyede bir
+  intervalCap: 5       // Max 5 istek
 });
 
 /* =========================
@@ -1007,7 +993,7 @@ app.get("/top50", async (req, res) => {
     await cacheSet("top50", items, CACHE_DURATION);
 
     // Arkada ilk 10 şarkıyı çözmeye başla, kullanıcı tıklayınca anında açılsın!
-    prewarmTop10(items);
+    // prewarmTop10(items); // İptal edildi (Gereksiz istek atıp bot riskini artırıyor)
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
     res.json({ source: "youtube", data: items });
@@ -1032,48 +1018,52 @@ app.get("/search", searchLimiter, async (req, res) => {
     if (cached) return res.json(cached);
 
     let resultData, nextToken = "";
+    
+    // 1. ÖNCELİK: YOUTUBEI.JS (Kota Tüketmez)
     try {
-      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
-        params: {
-          part: "snippet",
-          q: query,
-          type: "video",
-          maxResults: 20,
-          pageToken: pageToken,
-          key: YOUTUBE_API_KEY
+      if (!yt) throw new Error("Youtubei.js is not initialized yet");
+
+      const searchResults = await yt.search(query, { type: 'video' });
+      const ytItems = searchResults.videos.map(item => ({
+        id: { videoId: item.id },
+        snippet: {
+          title: item.title?.text || item.title || "Unknown",
+          channelTitle: item.author?.name || "Unknown",
+          channelId: item.author?.id || "",
+          thumbnails: {
+            high: { url: item.best_thumbnail?.url || item.thumbnails?.[0]?.url || "" }
+          }
         }
-      });
-      resultData = filterBlockedChannels(response.data.items);
-      nextToken = response.data.nextPageToken;
+      }));
+
+      if (ytItems.length === 0) throw new Error("No results from youtubei.js");
+
+      resultData = filterBlockedChannels(ytItems);
+      nextToken = ""; // Simple pagination for youtubei fallback
       youtubeApiStatus = "ok";
-    } catch (apiError) {
-      if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
-        logError("API_FALLBACK", null, `YouTube API Quota exceeded. Trying youtubei.js for fast search: ${query}`);
-        youtubeApiStatus = "quota_exceeded";
-        stats.youtubeApiQuotaExceeded++;
-
-        try {
-          if (!yt) throw new Error("Youtubei.js is not initialized yet");
-
-          const searchResults = await yt.search(query, { type: 'video' });
-          const ytItems = searchResults.videos.map(item => ({
-            id: { videoId: item.id },
-            snippet: {
-              title: item.title?.text || item.title || "Unknown",
-              channelTitle: item.author?.name || "Unknown",
-              channelId: item.author?.id || "",
-              thumbnails: {
-                high: { url: item.best_thumbnail?.url || item.thumbnails?.[0]?.url || "" }
-              }
-            }
-          }));
-
-          if (ytItems.length === 0) throw new Error("No results from youtubei.js");
-
-          resultData = filterBlockedChannels(ytItems);
-          nextToken = ""; // Simple pagination for youtubei fallback
-        } catch (ytErr) {
-          logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped & Invidious: ${ytErr.message}`);
+    } catch (ytErr) {
+      logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to YouTube API: ${ytErr.message}`);
+      
+      // 2. ÖNCELİK: YOUTUBE DATA API (Son Çare - Kota tüketir)
+      try {
+        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+          params: {
+            part: "snippet",
+            q: query,
+            type: "video",
+            maxResults: 20,
+            pageToken: pageToken,
+            key: YOUTUBE_API_KEY
+          }
+        });
+        resultData = filterBlockedChannels(response.data.items);
+        nextToken = response.data.nextPageToken;
+        youtubeApiStatus = "ok";
+      } catch (apiError) {
+        if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
+          logError("API_FALLBACK", null, `YouTube API Quota exceeded. Trying Piped for fast search: ${query}`);
+          youtubeApiStatus = "quota_exceeded";
+          stats.youtubeApiQuotaExceeded++;
           
           try {
             // Önce Piped API'den hızlı arama
