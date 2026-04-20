@@ -1267,43 +1267,19 @@ app.get("/stream/video", async (req, res) => {
     
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
-    let streamUrl, ua;
+    let streamUrl;
 
     if (cachedData && cachedData.url) {
       streamUrl = cachedData.url;
-      ua = cachedData.ua || getRandomUA();
       console.log("VIDEO CACHE HIT:", videoId);
     } else {
-      ua = getRandomUA();
-      streamUrl = await queue.add(async () => {
-        return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
-      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
-      console.log("VIDEO CACHE SAVE:", videoId);
-    }
-
-    let response;
-    const headersOptions = {
-      "User-Agent": ua,
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headersOptions["Range"] = req.headers.range;
-
-    try {
-      response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        validateStatus: (status) => status < 400
-      });
-    } catch (axiosErr) {
-      console.warn(`[STREAM_VIDEO] Orijinal URL başarısız: ${axiosErr.message}. Piped/Invidious proxy devrede...`);
-      
+      console.log("[PROXY_VIDEO] Piped ve Invidious üzerinden kesin streaming çözümü aranıyor...");
+      // yt-dlp format uyumsuzluklarını ve Range/IP ban problemlerini kalıcı olarak atlamak için sadece proxy sunucuları kullanılıyor.
       const proxies = [
         (async () => {
           const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
           const streams = pipedRes.data.videoStreams || [];
+          // Kesinlikle ses içeren MPEG_4 formatını ara
           const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
               streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
           if (best && best.url) return best.url;
@@ -1316,19 +1292,25 @@ app.get("/stream/video", async (req, res) => {
         })()
       ];
 
-      try {
-        const newUrl = await Promise.any(proxies);
-        response = await axiosClient({
-          method: "GET",
-          url: newUrl,
-          responseType: "stream",
-          headers: headersOptions,
-          validateStatus: (status) => status < 400
-        });
-      } catch (proxyErr) {
-        throw new Error("Tüm proxy yedekleri başarısız oldu: " + proxyErr.message);
-      }
+      streamUrl = await Promise.any(proxies);
+      await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
+      console.log("VIDEO CACHE SAVE:", videoId);
     }
+
+    const headersOptions = {
+      "User-Agent": getRandomUA(),
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl,
+      responseType: "stream",
+      headers: headersOptions,
+      decompress: false, // Chunk stream (Range) indirirken otomatik gzip açmayı iptal et ki bytes birbirine uysun!
+      validateStatus: (status) => status < 400
+    });
 
     res.status(response.status);
     if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
