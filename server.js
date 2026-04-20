@@ -254,6 +254,23 @@ async function cacheSet(key, data, ttlSeconds) {
   memoryCache.set(key, { data, expire: Date.now() + (ttlSeconds * 1000) });
 }
 
+// OOM (Out of Memory) önleyici temizlik: Belleği şişiren eski aramaları süpür
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of memoryCache.entries()) {
+    if (now >= value.expire) {
+      memoryCache.delete(key);
+    }
+  }
+  // Eğer hala çok büyükse en eskileri zorla sil (Yüksek kapasite limiti)
+  if (memoryCache.size > 2000) {
+    const keys = Array.from(memoryCache.keys());
+    for (let i = 0; i < keys.length - 1000; i++) {
+        memoryCache.delete(keys[i]);
+    }
+  }
+}, 60 * 1000);
+
 // Bots & Jitter
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -1065,18 +1082,49 @@ app.get("/search", searchLimiter, async (req, res) => {
           resultData = filterBlockedChannels(ytItems);
           nextToken = ""; // Simple pagination for youtubei fallback
         } catch (ytErr) {
-          logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped: ${ytErr.message}`);
-          const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-          const pipedItems = pipedRes.data.map(item => ({
-            id: { videoId: (item.url || "").split("?v=")[1] },
-            snippet: {
-              title: item.title,
-              channelTitle: item.uploaderName,
-              channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
+          logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped & Invidious: ${ytErr.message}`);
+          
+          try {
+            // Önce Piped API'den hızlı arama
+            const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+            const pipedItems = pipedRes.data.map(item => ({
+              id: { videoId: (item.url || "").split("?v=")[1] },
+              snippet: {
+                title: item.title,
+                channelTitle: item.uploaderName,
+                channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
+                thumbnails: { high: { url: item.thumbnail || "" } }
+              }
+            }));
+            resultData = filterBlockedChannels(pipedItems);
+            nextToken = "";
+          } catch (pipedErr) {
+            logError("PIPED_SEARCH_FAIL", null, `Piped failed, falling back to Invidious Search: ${pipedErr.message}`);
+            // Piped çökerse Invidious'dan arama
+            let invidiousRes = null;
+            for (const instance of INVIDIOUS_INSTANCES) {
+              try {
+                const res = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { timeout: 4000 });
+                if (res && res.data && res.data.length > 0) {
+                  invidiousRes = res.data;
+                  break;
+                }
+              } catch (e) {}
             }
-          }));
-          resultData = filterBlockedChannels(pipedItems);
-          nextToken = "";
+            if (!invidiousRes) throw new Error("Arama için tüm Invidious sunucuları çöktü");
+            
+            const invItems = invidiousRes.map(item => ({
+              id: { videoId: item.videoId },
+              snippet: {
+                title: item.title,
+                channelTitle: item.author,
+                channelId: item.authorId || "",
+                thumbnails: { high: { url: item.videoThumbnails?.find(t => t.quality === "high")?.url || "" } }
+              }
+            }));
+            resultData = filterBlockedChannels(invItems);
+            nextToken = "";
+          }
         }
       } else {
         throw apiError;
