@@ -1236,45 +1236,84 @@ app.get("/stream", async (req, res) => {
 });
 
 
-// VIDEO STREAM (MP4) - Kesin ve Kalıcı Çözüm: Direkt Diske İndirip Sunma (ExoPlayer Tam Uyum)
+// VIDEO STREAM (MP4) - Yüksek Hızlı Doğrudan Aktarım (Proxy Stream)
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId) return res.status(400).json({ error: "videoId required" });
 
-    const typeStr = "video";
-    const extStr = "mp4";
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    const cacheKey = `stream:video:${videoId}`;
+    const cachedData = await cacheGet(cacheKey);
+    let streamUrl;
 
-    // 1. Disk Cache Kontrolü: Video zaten sunucudaysa milisaniyede direkt izlet
-    if (fs.existsSync(localFile)) {
-      const stats = fs.statSync(localFile);
-      if (stats.size > 1024 * 1024) { // 1MB'den büyükse sağlamdır
-        console.log(`[VIDEO_DISK_CACHE] Sunuluyor: ${videoId}`);
-        res.setHeader("Content-Type", "video/mp4");
-        return res.sendFile(localFile);
+    if (cachedData && cachedData.url) {
+      streamUrl = cachedData.url;
+      console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
+    } else {
+      console.log(`[VIDEO_RESOLVE] yt-dlp ile YouTube'dan doğrudan hızlı URL çekiliyor: ${videoId}`);
+      const ua = getRandomUA();
+      streamUrl = await queue.add(async () => {
+        const url = `https://www.youtube.com/watch?v=${videoId}`;
+        return await resolveStreamUrl(url, "best[ext=mp4]/best", ua, null);
+      });
+      await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
+    }
+
+    const headersOptions = {
+      "User-Agent": getRandomUA(),
+      "Referer": "https://www.youtube.com/"
+    };
+    if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
+    let response;
+    try {
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl,
+        responseType: "stream",
+        headers: headersOptions,
+        decompress: false, // ExoPlayer uyumluluğu için ham veriyi (byte) bozmadan gönderiyoruz
+        validateStatus: (status) => status < 400
+      });
+    } catch (fetchErr) {
+      // Eğer YouTube URL'sinin süresi dolmuş veya IP'ye bloke konmuşsa (403), önbelleği temizleyip anında taze kopyayı çek
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
+        console.warn(`[STREAM_VIDEO] YouTube URL süresi doldu (403/404). Önbellek silinip taze link alınıyor: ${videoId}`);
+        if (redis) await redis.del(cacheKey);
+        memoryCache.delete(cacheKey);
+
+        const freshUrl = await queue.add(async () => {
+          const url = `https://www.youtube.com/watch?v=${videoId}`;
+          return await resolveStreamUrl(url, "best[ext=mp4]/best", getRandomUA(), null);
+        });
+        streamUrl = freshUrl;
+        await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
+        
+        response = await axiosClient({
+          method: "GET",
+          url: streamUrl,
+          responseType: "stream",
+          headers: headersOptions,
+          decompress: false,
+          validateStatus: (status) => status < 400
+        });
       } else {
-        fs.unlinkSync(localFile); // Çok küçük yarım inmiş dosyayı temizle
+        throw fetchErr;
       }
     }
 
-    // 2. YTDLP_DIRECT: Piped/Invidious proxy hatalarını sonsuza dek bitirmek için...
-    // Videoyu sunucu hafızasına birkaç saniye içinde fiziksel MP4 olarak çekiyoruz!
-    console.log(`[YTDL_DIRECT_DOWNLOAD] Başlatılıyor (Kesin çözüm): ${videoId}`);
-    const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
+    res.status(response.status);
+    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
-    if (downloadedFile && fs.existsSync(downloadedFile)) {
-      console.log(`[YTDL_DIRECT_DOWNLOAD] Tamamlandı, Android'e akış başlatılıyor: ${videoId}`);
-      res.setHeader("Content-Type", "video/mp4");
-      // express sendFile(), ExoPlayer'ın tüm Byte-Range (ileri sarma) isteklerini yerleşik olarak hatasız çözer.
-      return res.sendFile(downloadedFile);
-    }
-    
-    throw new Error("Direct download did not output a valid MP4 file.");
+    response.data.pipe(res);
+
   } catch (err) {
-    logError("STREAM_VIDEO_FATAL", req.query.videoId, err.message);
+    logError("STREAM_VIDEO_PROXY", req.query.videoId, err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Video streaming failed (Disk Download Error)" });
+      res.status(500).json({ error: "Video streaming failed: " + err.message });
     } else {
       res.end();
     }
