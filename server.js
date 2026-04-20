@@ -1277,13 +1277,43 @@ app.get("/stream/video", async (req, res) => {
     };
     if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-    response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      headers: headersOptions,
-      validateStatus: (status) => status < 400
-    });
+    try {
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl,
+        responseType: "stream",
+        headers: headersOptions,
+        validateStatus: (status) => status < 400
+      });
+    } catch (axiosErr) {
+      console.warn(`[STREAM_VIDEO] Orijinal URL başarısız: ${axiosErr.message}. Cobalt proxy devrede...`);
+      const payload = {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        videoQuality: "720",
+        downloadMode: "auto",
+        audioFormat: "mp3",
+        youtubeVideoCodec: "h264"
+      };
+      const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+        timeout: 5000
+      });
+      if (cobaltRes.data && cobaltRes.data.url) {
+        response = await axiosClient({
+          method: "GET",
+          url: cobaltRes.data.url,
+          responseType: "stream",
+          headers: headersOptions,
+          validateStatus: (status) => status < 400
+        });
+      } else {
+        throw new Error("Cobalt API failed to provide URL");
+      }
+    }
 
     res.status(response.status);
     if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
