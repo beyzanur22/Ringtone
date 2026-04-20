@@ -1254,7 +1254,8 @@ app.get("/stream/video", async (req, res) => {
       const ua = getRandomUA();
       streamUrl = await queue.add(async () => {
         const url = `https://www.youtube.com/watch?v=${videoId}`;
-        return await resolveStreamUrl(url, "best[ext=mp4]/best", ua, null);
+        // Android ExoPlayer ProgressiveMediaSource kullandığı için kesinlikle HTTP tabanlı MP4 zorlanmalıdır (m3u8 kabul edilemez).
+        return await resolveStreamUrl(url, "best[ext=mp4][protocol^=http]/18/best", ua, null);
       });
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
@@ -1266,10 +1267,9 @@ app.get("/stream/video", async (req, res) => {
     };
     if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-    // Eğer YouTube ham MP4 yerine Canlı/Oynatma listesi (M3U8) dönerse, proxy bu text dosyasını bozacağı için
-    // direkt olarak Android ExoPlayer'ı o linke yönlendiriyoruz. (ExoPlayer M3U8'i anında tanıyıp böler)
+    // M3U8 kontrolüne artık gerek yok, çünkü HTTP Progressive zorladık. Fakat M3U8 gelirse direkt proxy yapıp bozulmasına izin vermemek için son güvenlik bırakılır.
     if (streamUrl.includes(".m3u8") || streamUrl.includes("manifest/")) {
-      console.log(`[STREAM_VIDEO_HLS] M3U8 algılandı, doğrudan yönlendiriliyor: ${videoId}`);
+      console.warn(`[STREAM_VIDEO_HLS] Zorunlu MP4 yerine M3U8 geldi! Android HlsMediaSource gerektirir. Yönlendiriliyor...`);
       return res.redirect(streamUrl);
     }
 
@@ -1292,7 +1292,7 @@ app.get("/stream/video", async (req, res) => {
 
         const freshUrl = await queue.add(async () => {
           const url = `https://www.youtube.com/watch?v=${videoId}`;
-          return await resolveStreamUrl(url, "best[ext=mp4]/best", getRandomUA(), null);
+          return await resolveStreamUrl(url, "best[ext=mp4][protocol^=http]/18/best", getRandomUA(), null);
         });
         streamUrl = freshUrl;
         await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
