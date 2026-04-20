@@ -1236,138 +1236,45 @@ app.get("/stream", async (req, res) => {
 });
 
 
-// VIDEO STREAM (MP4) - yt-dlp direct download öncelikli
+// VIDEO STREAM (MP4) - Kesin ve Kalıcı Çözüm: Direkt Diske İndirip Sunma (ExoPlayer Tam Uyum)
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
-    if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
-    }
+    if (!videoId) return res.status(400).json({ error: "videoId required" });
 
     const typeStr = "video";
     const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // 1. Disk cache kontrolü
+    // 1. Disk Cache Kontrolü: Video zaten sunucudaysa milisaniyede direkt izlet
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      if (stats.size < 1024 * 1024) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
-        fs.unlinkSync(localFile);
-      } else {
-        console.log(`[DISK_CACHE_HIT] Serving local video for`, videoId);
+      if (stats.size > 1024 * 1024) { // 1MB'den büyükse sağlamdır
+        console.log(`[VIDEO_DISK_CACHE] Sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
         return res.sendFile(localFile);
-      }
-    }
-
-    // 2. Proxy Stream (Axios ile doğrudan, Müzik kısmındaki gibi)
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
-    
-    const cacheKey = `stream:video:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
-    let streamUrl;
-
-    if (cachedData && cachedData.url) {
-      streamUrl = cachedData.url;
-      console.log("VIDEO CACHE HIT:", videoId);
-    } else {
-      console.log("[PROXY_VIDEO] Piped ve Invidious üzerinden kesin streaming çözümü aranıyor...");
-      // yt-dlp format uyumsuzluklarını ve Range/IP ban problemlerini kalıcı olarak atlamak için sadece proxy sunucuları kullanılıyor.
-      const proxies = [
-        (async () => {
-          const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-          const streams = pipedRes.data.videoStreams || [];
-          // Kesinlikle ses içeren MPEG_4 formatını ara
-          const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-              streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
-          if (best && best.url) return best.url;
-          throw new Error("Piped video streams bulunamadı");
-        })(),
-        (async () => {
-          const invUrl = await tryInvidiousFallback(videoId, "video");
-          if (invUrl) return invUrl;
-          throw new Error("Invidious video url bulunamadı");
-        })()
-      ];
-
-      streamUrl = await Promise.any(proxies);
-      await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
-      console.log("VIDEO CACHE SAVE:", videoId);
-    }
-
-    const headersOptions = {
-      "User-Agent": getRandomUA(),
-      "Referer": "https://www.youtube.com/"
-    };
-    if (req.headers.range) headersOptions["Range"] = req.headers.range;
-
-    let response;
-    try {
-      response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        decompress: false,
-        validateStatus: (status) => status < 400
-      });
-    } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.warn(`[STREAM_VIDEO] Cached URL expired (403/404). Clearing cache and retrying for: ${videoId}`);
-        if (redis) await redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
-
-        // Retry without cache
-        const proxies = [
-          (async () => {
-            const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-            const streams = pipedRes.data.videoStreams || [];
-            const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-                streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
-            if (best && best.url) return best.url;
-            throw new Error("Piped fail on retry");
-          })(),
-          (async () => {
-            const invUrl = await tryInvidiousFallback(videoId, "video");
-            if (invUrl) return invUrl;
-            throw new Error("Invidious fail on retry");
-          })()
-        ];
-        
-        try {
-          streamUrl = await Promise.any(proxies);
-          await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
-          response = await axiosClient({
-            method: "GET",
-            url: streamUrl,
-            responseType: "stream",
-            headers: headersOptions,
-            decompress: false,
-            validateStatus: (status) => status < 400
-          });
-        } catch (retryErr) {
-          throw new Error("Retry failed: " + retryErr.message);
-        }
       } else {
-        throw fetchErr;
+        fs.unlinkSync(localFile); // Çok küçük yarım inmiş dosyayı temizle
       }
     }
 
-    res.status(response.status);
-    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
-    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
-    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+    // 2. YTDLP_DIRECT: Piped/Invidious proxy hatalarını sonsuza dek bitirmek için...
+    // Videoyu sunucu hafızasına birkaç saniye içinde fiziksel MP4 olarak çekiyoruz!
+    console.log(`[YTDL_DIRECT_DOWNLOAD] Başlatılıyor (Kesin çözüm): ${videoId}`);
+    const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
 
-    response.data.pipe(res);
-
+    if (downloadedFile && fs.existsSync(downloadedFile)) {
+      console.log(`[YTDL_DIRECT_DOWNLOAD] Tamamlandı, Android'e akış başlatılıyor: ${videoId}`);
+      res.setHeader("Content-Type", "video/mp4");
+      // express sendFile(), ExoPlayer'ın tüm Byte-Range (ileri sarma) isteklerini yerleşik olarak hatasız çözer.
+      return res.sendFile(downloadedFile);
+    }
+    
+    throw new Error("Direct download did not output a valid MP4 file.");
   } catch (err) {
-    logError("STREAM_VIDEO", req.query.videoId, err.message);
-    console.error("VIDEO STREAM ERROR:", err.message);
+    logError("STREAM_VIDEO_FATAL", req.query.videoId, err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Video streaming failed" });
+      res.status(500).json({ error: "Video streaming failed (Disk Download Error)" });
     } else {
       res.end();
     }
