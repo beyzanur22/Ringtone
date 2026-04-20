@@ -1261,29 +1261,7 @@ app.get("/stream/video", async (req, res) => {
       }
     }
 
-    // 2. yt-dlp STREAM (INSTANT PLAY)
-    try {
-      console.log(`[STREAM_VIDEO] Instant streaming başlatılıyor: ${videoId}`);
-      return await queue.add(() => ytdlpStream(videoId, "video", req, res));
-    } catch (streamErr) {
-      console.warn(`[STREAM_VIDEO] Instant streaming başarısız, fallback deneniyor: ${streamErr.message}`);
-      if (res.headersSent) throw streamErr;
-    }
-
-    // 3. Fallback: Direct Download (Eğer streaming bir şekilde fail olursa)
-    try {
-      const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
-
-      if (downloadedFile && fs.existsSync(downloadedFile)) {
-        console.log(`[STREAM_VIDEO] Direct download başarılı, sunuluyor: ${videoId}`);
-        res.setHeader("Content-Type", "video/mp4");
-        return res.sendFile(downloadedFile);
-      }
-    } catch (directErr) {
-      console.warn(`[STREAM_VIDEO] Direct download başarısız: ${directErr.message}`);
-    }
-
-    // 3. Eski yöntem fallback (URL çıkar + axios ile indir)
+    // 2. Proxy Stream (Axios ile doğrudan, Müzik kısmındaki gibi)
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
     const ua = getRandomUA();
