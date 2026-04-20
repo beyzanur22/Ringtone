@@ -1264,11 +1264,23 @@ app.get("/stream/video", async (req, res) => {
     // 2. Proxy Stream (Axios ile doğrudan, Müzik kısmındaki gibi)
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
-    const ua = getRandomUA();
+    
+    const cacheKey = `stream:video:${videoId}`;
+    const cachedData = await cacheGet(cacheKey);
+    let streamUrl, ua;
 
-    const streamUrl = await queue.add(async () => {
-      return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-    });
+    if (cachedData && cachedData.url) {
+      streamUrl = cachedData.url;
+      ua = cachedData.ua || getRandomUA();
+      console.log("VIDEO CACHE HIT:", videoId);
+    } else {
+      ua = getRandomUA();
+      streamUrl = await queue.add(async () => {
+        return resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
+      });
+      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+      console.log("VIDEO CACHE SAVE:", videoId);
+    }
 
     let response;
     const headersOptions = {
