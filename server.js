@@ -1286,32 +1286,35 @@ app.get("/stream/video", async (req, res) => {
         validateStatus: (status) => status < 400
       });
     } catch (axiosErr) {
-      console.warn(`[STREAM_VIDEO] Orijinal URL başarısız: ${axiosErr.message}. Cobalt proxy devrede...`);
-      const payload = {
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        videoQuality: "720",
-        downloadMode: "auto",
-        audioFormat: "mp3",
-        youtubeVideoCodec: "h264"
-      };
-      const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        },
-        timeout: 5000
-      });
-      if (cobaltRes.data && cobaltRes.data.url) {
+      console.warn(`[STREAM_VIDEO] Orijinal URL başarısız: ${axiosErr.message}. Piped/Invidious proxy devrede...`);
+      
+      const proxies = [
+        (async () => {
+          const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+          const streams = pipedRes.data.videoStreams || [];
+          const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+              streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
+          if (best && best.url) return best.url;
+          throw new Error("Piped video streams bulunamadı");
+        })(),
+        (async () => {
+          const invUrl = await tryInvidiousFallback(videoId, "video");
+          if (invUrl) return invUrl;
+          throw new Error("Invidious video url bulunamadı");
+        })()
+      ];
+
+      try {
+        const newUrl = await Promise.any(proxies);
         response = await axiosClient({
           method: "GET",
-          url: cobaltRes.data.url,
+          url: newUrl,
           responseType: "stream",
           headers: headersOptions,
           validateStatus: (status) => status < 400
         });
-      } else {
-        throw new Error("Cobalt API failed to provide URL");
+      } catch (proxyErr) {
+        throw new Error("Tüm proxy yedekleri başarısız oldu: " + proxyErr.message);
       }
     }
 
