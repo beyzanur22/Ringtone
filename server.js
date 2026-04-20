@@ -801,20 +801,11 @@ app.use(async (req, res, next) => {
     return res.status(403).json({ error: "Request Expired" });
   }
 
-  // Nonce kontrolü (Aynı imza ile tekrar istek atılmasını engelle)
-  const nonceKey = `nonce:${signature}`;
-  const isUsed = await cacheGet(nonceKey);
-  if (isUsed) {
-    console.warn(`[AUTH] Replay attack engellendi (Kullanılmış İmza): IP: ${req.ip}`);
-    return res.status(403).json({ error: "Forbidden / Replay Attack Detected" });
-  }
-
   // Beklenen imzayı oluştur
   const payload = timestamp + ":" + req.path;
   const expectedSignature = crypto.createHmac("sha256", EXPECTED_SECRET).update(payload).digest("base64");
 
   if (signature === expectedSignature) {
-    await cacheSet(nonceKey, true, 300); // İmzayı 5 dakika cache'de sakla (Tekrar kullanılamaz)
     next();
   } else {
     console.warn(`[AUTH] Hatalı imza ile erişim: IP: ${req.ip}`);
