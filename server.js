@@ -1261,9 +1261,17 @@ app.get("/stream/video", async (req, res) => {
 
     const headersOptions = {
       "User-Agent": getRandomUA(),
-      "Referer": "https://www.youtube.com/"
+      "Referer": "https://www.youtube.com/",
+      "Accept-Encoding": "identity" // Hayati önem taşıyor: YouTube'un videoyu GZIP ile gönderip ExoPlayer'ı bozmasını engeller.
     };
     if (req.headers.range) headersOptions["Range"] = req.headers.range;
+
+    // Eğer YouTube ham MP4 yerine Canlı/Oynatma listesi (M3U8) dönerse, proxy bu text dosyasını bozacağı için
+    // direkt olarak Android ExoPlayer'ı o linke yönlendiriyoruz. (ExoPlayer M3U8'i anında tanıyıp böler)
+    if (streamUrl.includes(".m3u8") || streamUrl.includes("manifest/")) {
+      console.log(`[STREAM_VIDEO_HLS] M3U8 algılandı, doğrudan yönlendiriliyor: ${videoId}`);
+      return res.redirect(streamUrl);
+    }
 
     let response;
     try {
