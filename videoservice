@@ -143,11 +143,26 @@ class VideoService : MediaSessionService() {
         player?.let {
             it.stop()
             it.clearMediaItems()
+            
+            val httpDataSourceFactory = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+                .setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(30000)
+
+            val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(this, httpDataSourceFactory)
+
             val mediaItem = MediaItem.Builder()
                 .setUri(url)
                 .setMediaMetadata(metadata ?: MediaMetadata.EMPTY)
                 .build()
-            it.setMediaItem(mediaItem)
+
+            val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(
+                dataSourceFactory,
+                androidx.media3.extractor.DefaultExtractorsFactory()
+            ).createMediaSource(mediaItem)
+
+            it.setMediaSource(mediaSource)
             it.prepare()
             it.playWhenReady = true
         }

@@ -1,0 +1,132 @@
+server.js Kod Açıklaması ve Adım Adım Analizi
+===============================================
+
+Bu dosya, YouTube üzerinden video ve ses indirme, video arama ve trendleri (Top 50) getirme işlemlerini yapan gelişmiş bir backend (sunucu) kodudur. Kodun en temel odak noktası "YouTube'un bot tespit ve engelleme (rate limit, IP ban) sistemlerini aşmak" ve "yüksek performansta (hızlı) çoklu kullanıcıya hizmet vermek"tir.
+
+Aşağıda kodunuzun blok blok açıklaması ve neyin ne için kullanıldığı yer almaktadır:
+
+1. Kütüphaneler ve Ortam Değişkenleri (Dependencies & Setup)
+---------------------------------------------------------
+```javascript
+require("dotenv").config();
+const axios = require("axios");
+const express = require("express");
+const ytdlp = require("yt-dlp-exec");
+const Redis = require("ioredis");
+const PQueue = require("p-queue").default;
+const { Innertube, UniversalCache } = require("youtubei.js");
+...
+```
+Amaç: Projenin çalışabilmesi için gerekli araçları içe aktarmak.
+- express: Web sunucusunu kurmak ve API endpoint'leri (/search, /stream) oluşturmak için.
+- yt-dlp-exec: YouTube'dan medya indirmek için kullanılan temel motor.
+- axio: Harici API'lara (YouTube API, Piped API vb.) HTTP istekleri atmak için.
+- ioredis: Sık istenen verileri hızlı okumak için RAM'de (Redis) tutmak için.
+- p-queue: Çok fazla kişi aynı anda istek atarsa sunucunun çökmemesi için istekleri sıraya sokmak için.
+- youtubei.js: YouTube'un gizli iç API'sini taklit ederek resmi API sınırlarına takılmadan işlem yapmak için.
+
+2. youtubei.js ve OAuth2 Girişi (Kimlik Doğrulama)
+---------------------------------------------------------
+```javascript
+let yt = null;
+async function initYoutubei() {
+  const cache = new UniversalCache(false);
+  yt = await Innertube.create({ ... });
+  ...
+  await yt.session.signIn(creds);
+}
+```
+Amaç: YouTube, hesap girişi (OAuth2) olmayan IP adreslerinin çok fazla video çözmesini kısıtlar (Bot Detection). Bu kod sayesinde sisteminiz arkada sanki bir TV uygulaması üzerinden giriş yapılmış gerçek bir kullanıcıymış gibi davranır. Bu, bağlantı kopmalarını ve engellemeleri ciddi oranda azaltır.
+
+3. İstek Kuyruğu (P-Queue)
+---------------------------------------------------------
+```javascript
+const queue = new PQueue({
+  concurrency: 30,
+  interval: 1000,
+  intervalCap: 50
+});
+```
+Amaç: Aynı saniye içerisinde yüzlerce istek gelirse yt-dlp ve sunucu işlemcisi tıkanır. Bu yüzden aynı anda maksimum 30 iş yapmasına, 1 saniyede maksimum 50 istek işlemesine izin verilmiştir.
+
+4. Disk Önbellekleme Sistemi (Disk Cache)
+---------------------------------------------------------
+```javascript
+const CACHE_DIR = path.join(__dirname, 'cache');
+const MAX_CACHE_SIZE = 300 * 1024 * 1024; // 300 MB
+...
+function checkDiskSpaceAndCleanup() { ... }
+```
+Amaç: Aynı video saniyeler içerisinde birden fazla kez istenirse, YouTube'dan tekrar tekrar indirmek yerine, sunucuda '/cache' klasöründe saklanır ve oradan gönderilir. 'checkDiskSpaceAndCleanup' ve 'manageDiskSpace' fonksiyonları belirli aralıklarla çalışarak diskin dolmasını (şimdiki limit Railway için 300MB ayarlanmış) önlemek adına en eski ve kullanılmayan dosyaları otomatik siler.
+
+5. Hata Yönetimi ve Circuit Breaker (Devre Kesici)
+---------------------------------------------------------
+```javascript
+function logError(type, videoId, errorMessage) { ... }
+let ytDlpFailCount = 0;
+let ytDlpCircuitBreakerUntil = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 10;
+```
+Amaç: Eğer yt-dlp üst üste 10 kere başarısız olursa (YouTube tarafından banlanmışsa), 'Circuit Breaker' (Devre Kesici) devreye girer. Sistemi kitlememek ve YouTube'a sürekli başarısız istek atmamak için yt-dlp bir süre duraklatılır ve alternatif (Fallback) proxy sistemlerine geçilir. 'logError' hataları error.log dosyasına yazar.
+
+6. Redis Önbellekleme (In-Memory Cache)
+---------------------------------------------------------
+```javascript
+redis = new Redis(...);
+async function cacheGet(key) { ... }
+async function cacheSet(key, data, ttlSeconds) { ... }
+```
+Amaç: "Top 50" veya kullanıcıların arama sonuçları gibi veriler 1 saat boyunca anlık olarak değişmez. Bu verileri veritabanı veya YouTube'dan her sorguda çekmek limitlerinizi tüketir. Redis (veya redis yoksa uygulamanın kendi RAM'i) bu arama sonuçlarını saklayıp kullanıcıya milisaniyeler içinde cevap vermek için kullanılır. 
+
+7. Bot Algılamasını Aşma Stratejileri (Anti-Bot Headers & Jitter)
+---------------------------------------------------------
+```javascript
+const USER_AGENTS = [ "Mozilla/5.0...", ... ];
+function getAntiBotHeaders(ua) { ... }
+const randomJitter = async () => { ... };
+```
+Amaç: YouTube istek yapanın insan mı bot mu olduğunu tarayıcı bilgilerinden (User-Agent, sec-ch-ua vb.) ve istek atma hızımızdan anlar. Rastgele gecikmeler (jitter) ekleyip farklı cihazlardan (iPhone, Windows, Mac vb.) geliyormuş gibi sahte başlıklar (headers) oluşturarak engellemeden (403 Forbidden) kaçılır.
+
+8. Fallback Ağları (Piped ve Invidious Entegrasyonu)
+---------------------------------------------------------
+```javascript
+let PIPED_INSTANCES = [ "https://api.piped.private.coffee" ];
+let INVIDIOUS_INSTANCES = [ ... ];
+async function fetchFromPipedFast(endpointPath) { ... }
+```
+Amaç: yt-dlp veya youtubei çalışmazsa (IP'niz engellenirse), sistem API isteklerini dünyaya açık Piped ve Invidious havuzlarına atar. `tryInvidiousFallback` ve `fetchFromPiped` fonksiyonları aktif açık kaynaklı YouTube proxy sunucuları üzerinden medya verisini çeker, böylece kendi IP adresiniz zarar görmez. 
+
+9. Güvenlik, Kimlik Doğrulama (HMAC Authentication Middleware)
+---------------------------------------------------------
+```javascript
+app.use((req, res, next) => {
+  const timestamp = req.headers['x-timestamp'];
+  const signature = req.headers['x-signature'];
+  ...
+  const expectedSignature = crypto.createHmac(...).update(payload).digest("base64");
+  if (signature !== expectedSignature) { ... }
+});
+```
+Amaç: Bu API açıkta durduğu için herkesin sizin sunucu kaynaklarınızı sömürüp bedavaya YouTube indirmesi yapmasını önler. Mobil uygulamanız `x-timestamp` ile saati, bir şifre (APP_KEY) ile harmanlayarak bir imza oluşturur (`x-signature`). Sadece doğru imza ile gelen isteklerin indirme ve sorgulama yapmasına izin verilir.
+
+10. Express API Uç Noktaları (Endpoints)
+---------------------------------------------------------
+Burası sistemin kullanıcılara açtığı kapılardır:
+- `/health`: Sunucunun açık olup olmadığını, ne kadar kaynak tükettiğini döndürür.
+- `/config`: Ülkelere göre dinamik konfigürasyon yapılmasını sağlar.
+- `/top50`: Amerika bölgesi baz alınarak en popüler 50 müzik/videoyu çeker. Redis'e kaydeder.
+- `/search`: Verilen kelimeyle YouTube araması yapar. Limit dolarsa (429/403) Piped veya youtubei üzerinden arama yapar.
+- `/stream` & `/stream/video`: Medyayı anlık izleme/dinleme için tarayıcıya (veya uygulamaya) parça parça akıtır. Önce diske bakar cache'te varsa anında yollar.
+- `/download/mp3` & `/download/mp4`: Bu noktalar cihazlara asıl indirme işlemi için 'attachment' (Ek) olarak dosyayı verip Content-Length belirler. Önce medyayı arkaplanda diske indirir, eksik indiyse siler, tam indiyse kullanıcıya yollar. 
+
+11. Arka Plan Görevleri (Prewarm, Warmup)
+---------------------------------------------------------
+```javascript
+function prewarmTop10(items) { ... }
+async function warmTop50() { ... }
+```
+Amaç: Kullanıcı uygulamayı açtığında Top 50'yi veya trendleri saniyelerce beklememesi için, sunucu her 50 dakikada bir otomatik YouTube'a bağlanıp Top 50 listesini günceller ve hatta ilk 10 şarkının stream URL'sini arkaplanda sessiz sedasız çözüp hazırda bekletir. Kullanıcı bir şarkıya basar basmaz anında oynatılması içindir. 
+
+
+Özetle:
+Bu server.js kodu tek bir işlemi yapan basit bir kod değil, YouTube'un sıkı güvenlik ve limitlerine karşı "Sıralı fallback, arkaplan önbellekleme, disk yönetimi, sahte headerlar, dağıtık Piped apileri ve güvenlik bariyeri" kullanarak çok katmanlı, performansı yüksek tutmayı ve stabiliteyi artırmayı hedefleyen profesyonel bir Proxy-Server olarak kurgulanmıştır.

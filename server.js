@@ -679,7 +679,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
     logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
 
     try {
-      // PROMISE.ANY ILE PARALEL ÇÖZÜM: Piped ve Invidious'dan hangisi önce dönerse onu kullan!
+      // PROMISE.ANY ILE PARALEL ÇÖZÜM: Piped, Invidious ve Cobalt'tan hangisi önce dönerse onu kullan!
       const promises = [
         (async () => {
           const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
@@ -699,6 +699,28 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
           const invidiousUrl = await tryInvidiousFallback(videoId, type);
           if (invidiousUrl) return { source: "invidious", url: invidiousUrl, type: type };
           throw new Error("Invidious bulunamadı");
+        })(),
+        (async () => {
+          // COBALT API FALLBACK - Çok hızlı ve güvenilir
+          const payload = {
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            videoQuality: "720",
+            downloadMode: type === "audio" ? "audio" : "auto",
+            audioFormat: "mp3",
+            youtubeVideoCodec: "h264"
+          };
+          const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+            timeout: 5000
+          });
+          if (cobaltRes.data && cobaltRes.data.url) {
+            return { source: "cobalt", url: cobaltRes.data.url, type: type };
+          }
+          throw new Error("Cobalt bulunamadı");
         })()
       ];
 
@@ -740,7 +762,7 @@ app.use((req, res, next) => {
 ========================= */
 const crypto = require("crypto");
 
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   // Sadece health ve config tamamen açık. stream ve download artık imza kontrolüne tabi!
   if (req.path === "/health" || req.path === "/config") {
     return next();
@@ -755,11 +777,19 @@ app.use((req, res, next) => {
     return res.status(403).json({ error: "Unauthorized / Missing Signature" });
   }
 
-  // İstek 2 saatten eski ise reddet (Esnek tolerans)
+  // İstek 5 dakikadan eski ise reddet (Replay Attack koruması)
   const now = Date.now();
-  if (Math.abs(now - parseInt(timestamp)) > 120 * 60 * 1000) {
+  if (Math.abs(now - parseInt(timestamp)) > 5 * 60 * 1000) {
     console.warn(`[AUTH] Süresi dolmuş istek: IP: ${req.ip}`);
     return res.status(403).json({ error: "Request Expired" });
+  }
+
+  // Nonce kontrolü (Aynı imza ile tekrar istek atılmasını engelle)
+  const nonceKey = `nonce:${signature}`;
+  const isUsed = await cacheGet(nonceKey);
+  if (isUsed) {
+    console.warn(`[AUTH] Replay attack engellendi (Kullanılmış İmza): IP: ${req.ip}`);
+    return res.status(403).json({ error: "Forbidden / Replay Attack Detected" });
   }
 
   // Beklenen imzayı oluştur
@@ -767,6 +797,7 @@ app.use((req, res, next) => {
   const expectedSignature = crypto.createHmac("sha256", EXPECTED_SECRET).update(payload).digest("base64");
 
   if (signature === expectedSignature) {
+    await cacheSet(nonceKey, true, 300); // İmzayı 5 dakika cache'de sakla (Tekrar kullanılamaz)
     next();
   } else {
     console.warn(`[AUTH] Hatalı imza ile erişim: IP: ${req.ip}`);
