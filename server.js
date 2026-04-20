@@ -1303,14 +1303,57 @@ app.get("/stream/video", async (req, res) => {
     };
     if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl,
-      responseType: "stream",
-      headers: headersOptions,
-      decompress: false, // Chunk stream (Range) indirirken otomatik gzip açmayı iptal et ki bytes birbirine uysun!
-      validateStatus: (status) => status < 400
-    });
+    let response;
+    try {
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl,
+        responseType: "stream",
+        headers: headersOptions,
+        decompress: false,
+        validateStatus: (status) => status < 400
+      });
+    } catch (fetchErr) {
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
+        console.warn(`[STREAM_VIDEO] Cached URL expired (403/404). Clearing cache and retrying for: ${videoId}`);
+        if (redis) await redis.del(cacheKey);
+        memoryCache.delete(cacheKey);
+
+        // Retry without cache
+        const proxies = [
+          (async () => {
+            const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+            const streams = pipedRes.data.videoStreams || [];
+            const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+                streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
+            if (best && best.url) return best.url;
+            throw new Error("Piped fail on retry");
+          })(),
+          (async () => {
+            const invUrl = await tryInvidiousFallback(videoId, "video");
+            if (invUrl) return invUrl;
+            throw new Error("Invidious fail on retry");
+          })()
+        ];
+        
+        try {
+          streamUrl = await Promise.any(proxies);
+          await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
+          response = await axiosClient({
+            method: "GET",
+            url: streamUrl,
+            responseType: "stream",
+            headers: headersOptions,
+            decompress: false,
+            validateStatus: (status) => status < 400
+          });
+        } catch (retryErr) {
+          throw new Error("Retry failed: " + retryErr.message);
+        }
+      } else {
+        throw fetchErr;
+      }
+    }
 
     res.status(response.status);
     if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
