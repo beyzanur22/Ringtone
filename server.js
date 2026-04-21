@@ -172,7 +172,7 @@ function logError(type, videoId, errorMessage) {
 let ytDlpFailCount = 0;
 let ytDlpCircuitBreakerUntil = 0;
 const CIRCUIT_BREAKER_THRESHOLD = 10;
-const CIRCUIT_BREAKER_TIMEOUT = 2 * 60 * 1000; // 2 mins (5dk çok uzundu)
+const CIRCUIT_BREAKER_TIMEOUT = 30 * 1000; // 30 sn (Çok daha kısa, hızlıca tekrar dener)
 let youtubeApiStatus = "ok";
 
 // Analytics & Stats
@@ -266,7 +266,7 @@ setInterval(() => {
   if (memoryCache.size > 2000) {
     const keys = Array.from(memoryCache.keys());
     for (let i = 0; i < keys.length - 1000; i++) {
-        memoryCache.delete(keys[i]);
+      memoryCache.delete(keys[i]);
     }
   }
 }, 60 * 1000);
@@ -553,9 +553,12 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
 }
 
-// Dinamik + statik Piped instance listesi (14 Nisan 2026 güncellemesi)
+// Dinamik + statik Piped instance listesi (Çok daha kararlı sunucular eklendi)
 let PIPED_INSTANCES = [
-  "https://api.piped.private.coffee"
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.tokhmi.xyz",
+  "https://api.piped.private.coffee",
+  "https://piped-api.garudalinux.org"
 ];
 
 // Başlangıçta güncel Piped instance'larını çek
@@ -580,11 +583,13 @@ async function refreshPipedInstances() {
 setTimeout(refreshPipedInstances, 10000);
 setInterval(refreshPipedInstances, 30 * 60 * 1000);
 
-// Dinamik + statik Invidious instance listesi (14 Nisan 2026 güncellemesi)
+// Dinamik + statik Invidious instance listesi
 let INVIDIOUS_INSTANCES = [
   "https://inv.nadeko.net",
-  "https://inv.thepixora.com",
-  "https://invidious.nerdvpn.de"
+  "https://inv.tux.pizza",
+  "https://invidious.nerdvpn.de",
+  "https://yewtu.be",
+  "https://invidious.jing.rocks"
 ];
 
 // Başlangıçta güncel Invidious instance'larını çek
@@ -1074,7 +1079,7 @@ app.get("/search", searchLimiter, async (req, res) => {
           nextToken = ""; // Simple pagination for youtubei fallback
         } catch (ytErr) {
           logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped & Invidious: ${ytErr.message}`);
-          
+
           try {
             // Önce Piped API'den hızlı arama
             const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
@@ -1100,10 +1105,10 @@ app.get("/search", searchLimiter, async (req, res) => {
                   invidiousRes = res.data;
                   break;
                 }
-              } catch (e) {}
+              } catch (e) { }
             }
             if (!invidiousRes) throw new Error("Arama için tüm Invidious sunucuları çöktü");
-            
+
             const invItems = invidiousRes.map(item => ({
               id: { videoId: item.videoId },
               snippet: {
@@ -1203,11 +1208,26 @@ app.get("/stream", async (req, res) => {
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
-        // Cache URL expire olmuş veya banlanmış, temizle
-        if (redis) redis.del(cacheKey);
+        console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Cache silinip taze link alınıyor: ${videoId}`);
+        if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
+        
+        const freshUrl = await queue.add(async () => {
+          return await resolveStreamUrlWithFallback(videoId, "audio", getRandomUA(), countryClient);
+        });
+        streamUrl = freshUrl;
+        await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+        
+        response = await axiosClient({
+          method: "GET",
+          url: streamUrl,
+          responseType: "stream",
+          headers: headersOptions,
+          validateStatus: (status) => status < 400
+        });
+      } else {
+        throw fetchErr;
       }
-      throw fetchErr;
     }
 
     res.status(response.status);
@@ -1250,12 +1270,13 @@ app.get("/stream/video", async (req, res) => {
       streamUrl = cachedData.url;
       console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
     } else {
-      console.log(`[VIDEO_RESOLVE] yt-dlp ile YouTube'dan doğrudan hızlı URL çekiliyor: ${videoId}`);
+      console.log(`[VIDEO_RESOLVE] Akıllı Algoritma ve Fallback ile YouTube'dan doğrudan hızlı URL çekiliyor: ${videoId}`);
       const ua = getRandomUA();
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
+      
       streamUrl = await queue.add(async () => {
-        const url = `https://www.youtube.com/watch?v=${videoId}`;
-        // Android ExoPlayer ProgressiveMediaSource kullandığı için kesinlikle HTTP tabanlı MP4 zorlanmalıdır (m3u8 kabul edilemez).
-        return await resolveStreamUrl(url, "best[ext=mp4][protocol^=http]/18/best", ua, null);
+        return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
       });
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
@@ -1291,12 +1312,11 @@ app.get("/stream/video", async (req, res) => {
         memoryCache.delete(cacheKey);
 
         const freshUrl = await queue.add(async () => {
-          const url = `https://www.youtube.com/watch?v=${videoId}`;
-          return await resolveStreamUrl(url, "best[ext=mp4][protocol^=http]/18/best", getRandomUA(), null);
+          return await resolveStreamUrlWithFallback(videoId, "video", getRandomUA(), req.headers["cf-ipcountry"] || "UNKNOWN");
         });
         streamUrl = freshUrl;
         await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
-        
+
         response = await axiosClient({
           method: "GET",
           url: streamUrl,
