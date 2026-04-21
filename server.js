@@ -57,10 +57,12 @@ const queue = new PQueue({
 /* =========================
    CLOUDFLARE R2 (S3) CACHE
 ========================= */
-const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, ListObjectsV2Command, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 
 let r2Client = null;
 const R2_BUCKET = process.env.R2_BUCKET_NAME || "ringtone-cache";
+const R2_MAX_SIZE = 9 * 1024 * 1024 * 1024; // 9GB limit (10GB free, 1GB tampon)
+const R2_CLEANUP_DAYS = 30; // 30 gün dinlenmemiş şarkıları sil
 
 if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
   r2Client = new S3Client({
@@ -91,6 +93,8 @@ async function uploadToR2(key, filePath) {
       ContentType: contentType
     }));
     console.log(`[R2_UPLOAD] Başarılı: ${key}`);
+    // Erişim zamanını kaydet
+    await trackR2Access(key);
   } catch (err) {
     console.warn(`[R2_UPLOAD_ERR] ${key}: ${err.message}`);
   }
@@ -112,16 +116,107 @@ async function getR2Stream(key) {
   if (!r2Client) return null;
   try {
     const response = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    // Her erişimde son dinlenme zamanını güncelle
+    trackR2Access(key).catch(() => {});
     return {
       stream: response.Body,
       contentType: response.ContentType,
       contentLength: response.ContentLength
     };
   } catch (err) {
-    console.warn(`[R2_GET_ERR] ${key}: ${err.message}`);
+    if (err.name !== "NoSuchKey") console.warn(`[R2_GET_ERR] ${key}: ${err.message}`);
     return null;
   }
 }
+
+// ★ R2 ERİŞİM TAKİBİ: Her dinlemede son erişim zamanını Redis'e kaydet
+async function trackR2Access(key) {
+  try {
+    if (redis) {
+      await redis.hset("r2:last_access", key, Date.now().toString());
+    }
+  } catch (err) { /* sessizce devam */ }
+}
+
+// ★ R2 OTOMATİK TEMİZLEYİCİ: 30 gündür dinlenmeyen şarkıları siler
+async function cleanupR2() {
+  if (!r2Client) return;
+  try {
+    console.log("[R2_CLEANUP] Otomatik temizlik başlıyor...");
+
+    // R2'deki tüm dosyaları listele
+    let allObjects = [];
+    let continuationToken = undefined;
+    do {
+      const listResponse = await r2Client.send(new ListObjectsV2Command({
+        Bucket: R2_BUCKET,
+        ContinuationToken: continuationToken
+      }));
+      if (listResponse.Contents) allObjects.push(...listResponse.Contents);
+      continuationToken = listResponse.IsTruncated ? listResponse.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    if (allObjects.length === 0) {
+      console.log("[R2_CLEANUP] R2 deposu boş, temizlik gerekmiyor.");
+      return;
+    }
+
+    // Toplam boyutu hesapla
+    const totalSize = allObjects.reduce((acc, obj) => acc + (obj.Size || 0), 0);
+    console.log(`[R2_CLEANUP] R2 deposu: ${allObjects.length} dosya, ${(totalSize / 1024 / 1024).toFixed(1)} MB`);
+
+    // Redis'ten son erişim zamanlarını al
+    let lastAccessMap = {};
+    if (redis) {
+      lastAccessMap = await redis.hgetall("r2:last_access") || {};
+    }
+
+    const now = Date.now();
+    const maxAge = R2_CLEANUP_DAYS * 24 * 60 * 60 * 1000;
+    let deletedCount = 0;
+    let deletedSize = 0;
+
+    // Boyut limitini aşıyorsa veya eski dosyalar varsa temizle
+    const needsSpaceCleanup = totalSize > R2_MAX_SIZE;
+
+    // Dosyaları son erişim zamanına göre sırala (en eski önce)
+    const sortedObjects = allObjects.map(obj => ({
+      ...obj,
+      lastAccess: parseInt(lastAccessMap[obj.Key] || "0") || (obj.LastModified ? obj.LastModified.getTime() : 0)
+    })).sort((a, b) => a.lastAccess - b.lastAccess);
+
+    for (const obj of sortedObjects) {
+      const age = now - obj.lastAccess;
+      const isExpired = age > maxAge;
+      const needsSpace = needsSpaceCleanup && (totalSize - deletedSize) > R2_MAX_SIZE * 0.7;
+
+      if (isExpired || needsSpace) {
+        try {
+          await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: obj.Key }));
+          deletedCount++;
+          deletedSize += obj.Size || 0;
+          if (redis) await redis.hdel("r2:last_access", obj.Key);
+          console.log(`[R2_CLEANUP] Silindi: ${obj.Key} (${(age / 86400000).toFixed(0)} gün önce dinlenmiş)`);
+        } catch (delErr) {
+          console.warn(`[R2_CLEANUP_ERR] ${obj.Key}: ${delErr.message}`);
+        }
+      }
+    }
+
+    if (deletedCount > 0) {
+      console.log(`[R2_CLEANUP] Tamamlandı: ${deletedCount} dosya silindi, ${(deletedSize / 1024 / 1024).toFixed(1)} MB yer açıldı.`);
+    } else {
+      console.log("[R2_CLEANUP] Silinecek eski dosya yok. Depo sağlıklı ✅");
+    }
+  } catch (err) {
+    console.error(`[R2_CLEANUP_ERR] ${err.message}`);
+  }
+}
+
+// Her 6 saatte bir otomatik temizlik çalıştır
+setInterval(cleanupR2, 6 * 60 * 60 * 1000);
+// Startup'tan 2 dakika sonra ilk temizliği yap
+setTimeout(cleanupR2, 2 * 60 * 1000);
 
 /* =========================
    PHASE 6: DISK CACHING
