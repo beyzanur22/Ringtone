@@ -856,7 +856,16 @@ async function tryInvidiousFallback(videoId, type) {
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
   if (!forceProxy) {
-    // 1. Youtubei.js ile dene (en hızlı yöntem)
+    // 1. yt-dlp ile dene (cookies ile en güvenilir yöntem)
+    try {
+      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      return await resolveStreamUrl(url, format, ua, countryClient);
+    } catch (err) {
+      console.warn(`[RESOLVE] yt-dlp başarısız: ${err.message}. Youtubei.js deneniyor...`);
+    }
+
+    // 2. Youtubei.js ile dene (yedek)
     try {
       const ytUrl = await resolveWithYoutubei(videoId, type);
       if (ytUrl) {
@@ -864,16 +873,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
         return ytUrl;
       }
     } catch (ytErr) {
-      console.warn(`[RESOLVE] Youtubei.js başarısız: ${ytErr.message}`);
-    }
-
-    // 2. yt-dlp ile dene
-    try {
-      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      return await resolveStreamUrl(url, format, ua, countryClient);
-    } catch (err) {
-      logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
+      logError("YTDLP_FATAL_FALLBACK", videoId, `Youtubei.js de başarısız: ${ytErr.message}. Proxy ağına geçiliyor...`);
     }
   } else {
     console.log(`[RESOLVE] 403 Retry nedeniyle doğrudan Proxy ağına (Piped/Invidious) geçiliyor: ${videoId}`);
