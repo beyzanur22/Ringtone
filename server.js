@@ -571,8 +571,8 @@ async function refreshPipedInstances() {
         .map(i => i.api_url)
         .filter(url => url && url.startsWith("https"));
       if (working.length > 0) {
-        PIPED_INSTANCES = working;
-        console.log(`[PIPED_REFRESH] ${working.length} aktif instance bulundu`);
+        PIPED_INSTANCES = Array.from(new Set([...PIPED_INSTANCES, ...working]));
+        console.log(`[PIPED_REFRESH] ${PIPED_INSTANCES.length} aktif instance havuzda`);
       }
     }
   } catch (e) {
@@ -580,7 +580,7 @@ async function refreshPipedInstances() {
   }
 }
 // Her 30 dakikada bir güncelle
-setTimeout(refreshPipedInstances, 10000);
+setTimeout(refreshPipedInstances, 5000);
 setInterval(refreshPipedInstances, 30 * 60 * 1000);
 
 // Dinamik + statik Invidious instance listesi
@@ -602,15 +602,15 @@ async function refreshInvidiousInstances() {
         .map(([name, info]) => info.uri)
         .filter(url => url && url.startsWith("https"));
       if (working.length > 0) {
-        INVIDIOUS_INSTANCES = working;
-        console.log(`[INVIDIOUS_REFRESH] ${working.length} aktif instance bulundu`);
+        INVIDIOUS_INSTANCES = Array.from(new Set([...INVIDIOUS_INSTANCES, ...working]));
+        console.log(`[INVIDIOUS_REFRESH] ${INVIDIOUS_INSTANCES.length} aktif instance havuzda`);
       }
     }
   } catch (e) {
     console.warn(`[INVIDIOUS_REFRESH] Güncel liste alınamadı: ${e.message}`);
   }
 }
-setTimeout(refreshInvidiousInstances, 12000);
+setTimeout(refreshInvidiousInstances, 6000);
 setInterval(refreshInvidiousInstances, 30 * 60 * 1000);
 
 async function fetchFromPiped(endpointPath) {
@@ -660,7 +660,13 @@ async function tryInvidiousFallback(videoId, type) {
           const streams = res.data.adaptiveFormats;
           if (streams && Array.isArray(streams)) {
             const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio"));
-            if (m4a && m4a.url) return m4a.url;
+            // 403 hatasını engellemek için googlevideo.com linkleri yerine proxy linki oluştur
+            if (m4a && m4a.url) {
+              if (m4a.url.includes("googlevideo.com") && m4a.itag) {
+                 return `${instance}/latest_version?id=${videoId}&itag=${m4a.itag}&local=true`;
+              }
+              return m4a.url;
+            }
           }
         } else {
           const streams = res.data.formatStreams;
@@ -668,7 +674,12 @@ async function tryInvidiousFallback(videoId, type) {
             const mp4 = streams.find(s => (s.type && s.type.includes("video/mp4") && s.qualityLabel === "720p")) ||
               streams.find(s => s.type && s.type.includes("video/mp4")) ||
               streams[0];
-            if (mp4 && mp4.url) return mp4.url;
+            if (mp4 && mp4.url) {
+              if (mp4.url.includes("googlevideo.com") && mp4.itag) {
+                 return `${instance}/latest_version?id=${videoId}&itag=${mp4.itag}&local=true`;
+              }
+              return mp4.url;
+            }
           }
         }
         throw new Error("No valid streams in Invidious instance payload.");
@@ -680,27 +691,32 @@ async function tryInvidiousFallback(videoId, type) {
   throw new Error("All Invidious instances failed.");
 }
 
-async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient) {
-  // 1. Youtubei.js ile dene (en hızlı yöntem)
-  try {
-    const ytUrl = await resolveWithYoutubei(videoId, type);
-    if (ytUrl) {
-      console.log(`[RESOLVE] Youtubei.js başarılı: ${videoId}`);
-      return ytUrl;
+async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
+  if (!forceProxy) {
+    // 1. Youtubei.js ile dene (en hızlı yöntem)
+    try {
+      const ytUrl = await resolveWithYoutubei(videoId, type);
+      if (ytUrl) {
+        console.log(`[RESOLVE] Youtubei.js başarılı: ${videoId}`);
+        return ytUrl;
+      }
+    } catch (ytErr) {
+      console.warn(`[RESOLVE] Youtubei.js başarısız: ${ytErr.message}`);
     }
-  } catch (ytErr) {
-    console.warn(`[RESOLVE] Youtubei.js başarısız: ${ytErr.message}`);
+
+    // 2. yt-dlp ile dene
+    try {
+      const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      return await resolveStreamUrl(url, format, ua, countryClient);
+    } catch (err) {
+      logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
+    }
+  } else {
+    console.log(`[RESOLVE] 403 Retry nedeniyle doğrudan Proxy ağına (Piped/Invidious) geçiliyor: ${videoId}`);
   }
 
-  // 2. yt-dlp ile dene
   try {
-    const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-    return await resolveStreamUrl(url, format, ua, countryClient);
-  } catch (err) {
-    logError("YTDLP_FATAL_FALLBACK", videoId, `yt-dlp failed: ${err.message}. Trying Ultimate Proxy Ring (Piped + Invidious)...`);
-
-    try {
       // PROMISE.ANY ILE PARALEL ÇÖZÜM: Piped, Invidious ve Cobalt'tan hangisi önce dönerse onu kullan!
       const promises = [
         (async () => {
@@ -1214,7 +1230,7 @@ app.get("/stream", async (req, res) => {
         memoryCache.delete(cacheKey);
         
         const freshUrl = await queue.add(async () => {
-          return await resolveStreamUrlWithFallback(videoId, "audio", getRandomUA(), countryClient);
+          return await resolveStreamUrlWithFallback(videoId, "audio", getRandomUA(), countryClient, true);
         });
         streamUrl = freshUrl;
         await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
@@ -1313,7 +1329,7 @@ app.get("/stream/video", async (req, res) => {
         memoryCache.delete(cacheKey);
 
         const freshUrl = await queue.add(async () => {
-          return await resolveStreamUrlWithFallback(videoId, "video", getRandomUA(), req.headers["cf-ipcountry"] || "UNKNOWN");
+          return await resolveStreamUrlWithFallback(videoId, "video", getRandomUA(), req.headers["cf-ipcountry"] || "UNKNOWN", true);
         });
         streamUrl = freshUrl;
         await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
