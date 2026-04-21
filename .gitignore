@@ -7,3 +7,4 @@ yt_cache/
 proxies.txt
 error.log
 cache/
+*.txt

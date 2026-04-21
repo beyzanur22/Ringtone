@@ -1,3 +1,0 @@
-eb8d657 deniyorum
-b083ca3 fix server.js
-d02765a update server.js
