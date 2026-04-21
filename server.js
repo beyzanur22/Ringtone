@@ -1191,9 +1191,10 @@ app.get("/stream", async (req, res) => {
     }
 
     let response;
+    let headersOptions;
     try {
       const dynamicHeaders = getAntiBotHeaders(ua);
-      const headersOptions = {
+      headersOptions = {
         ...dynamicHeaders,
         "Referer": "https://www.youtube.com/"
       };
