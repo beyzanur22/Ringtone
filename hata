@@ -1,0 +1,53 @@
+Mounting volume on: /var/lib/containers/railwayapp/bind-mounts/1fd8533f-56fe-47ee-87e9-c0170a23a281/vol_3vibbjo3yyghyg9v
+Starting Container
+[STARTUP] Bekleniyor... (2/15)
+[STARTUP] Bekleniyor... (3/15)
+[STARTUP] Bekleniyor... (4/15)
+[STARTUP] Bekleniyor... (5/15)
+[STARTUP] Bekleniyor... (6/15)
+[STARTUP] Bekleniyor... (7/15)
+[STARTUP] Bekleniyor... (8/15)
+[STARTUP] Bekleniyor... (9/15)
+[STARTUP] Bekleniyor... (10/15)
+[STARTUP] Bekleniyor... (11/15)
+[STARTUP] Bekleniyor... (12/15)
+[STARTUP] Bekleniyor... (13/15)
+[STARTUP] Bekleniyor... (14/15)
+[STARTUP] Bekleniyor... (15/15)
+[STARTUP] HATA: PoToken sunucusu çöktü! Loglar:
+/usr/bin/python3: No module named bgutil_ytdlp_pot_provider
+[STARTUP] yt-dlp JS çözücüler güncelleniyor...
+2026.03.17
+[STARTUP] Node.js sunucusu başlatılıyor...
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+Backend running on port 8080
+Redis: bağlı
+[Redis] Bağlantı başarılı
+[YOUTUBEI] OAuth2 Girişi Başarılı! (Env Var)
+[WARMUP] Top50 cache hazır (8:19:32 AM).
+[PIPED_REFRESH] 6 aktif instance havuzda
+[REQ] 2026-04-21T08:19:37.157Z | HEAD /health | IP: 167.82.233.57 | Country: UNKNOWN
+[INVIDIOUS_REFRESH] 5 aktif instance havuzda
+[REQ] 2026-04-21T08:19:55.512Z | GET /stream?videoId=78wrful9cVU | IP: 157.52.106.21 | Country: UNKNOWN
+[RESOLVE] Youtubei.js başarısız: Request to https://www.youtube.com/youtubei/v1/player?prettyPrint=false&alt=json failed with status code 400
+[yt-dlp] Deneniyor: client=default, format=bestaudio
+[yt-dlp] Deneniyor: client=android, format=bestaudio
+[yt-dlp] client=default başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] 78wrful9cVU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=android başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] 78wrful9cVU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[yt-dlp] client=web başarısız: WARNING: [youtube] No title found in player responses; falling back to title from initial data. Other metadata may also be missing
+ERROR: [youtube] 78wrful9cVU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies
+[2026-04-21T08:20:01.190Z] - [YTDLP_FATAL_FALLBACK] - VideoID: 78wrful9cVU - Error: yt-dlp failed: Command failed with exit code 1: /app/node_modules/yt-dlp-exec/bin/yt-dlp https://www.youtube.com/watch?v=78wrful9cVU --format bestaudio --get-url --add-header referer:https://www.youtube.com/ --add-header user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0 --extractor-args youtube:player_client=web
+ERROR: [youtube] 78wrful9cVU: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  for tips on effectively exporting YouTube cookies. Trying Ultimate Proxy Ring (Piped + Invidious)...
+[2026-04-21T08:20:01.278Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.ngn.tf error: getaddrinfo ENOTFOUND pipedapi.ngn.tf
+[2026-04-21T08:20:01.897Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://api.piped.private.coffee error: Request failed with status code 500
+[2026-04-21T08:20:01.943Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: 78wrful9cVU - Error: Instance https://yewtu.be failed: Request failed with status code 403
+[2026-04-21T08:20:01.996Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.kavin.rocks error: Request failed with status code 521
+[2026-04-21T08:20:02.072Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.darkness.services error: getaddrinfo ENOTFOUND pipedapi.darkness.services
+[2026-04-21T08:20:02.475Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: 78wrful9cVU - Error: Instance https://invidious.nerdvpn.de failed: Request failed with status code 401
+[2026-04-21T08:20:02.642Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.adminforge.de error: getaddrinfo ENOTFOUND adminforge.destreams
+[2026-04-21T08:20:02.681Z] - [INVIDIOUS_INSTANCE_ERR] - VideoID: 78wrful9cVU - Error: Instance https://yt.chocolatemoo53.com failed: Request failed with status code 403
+[2026-04-21T08:20:03.148Z] - [PIPED_INSTANCE_ERR] - VideoID: N/A - Error: Instance https://pipedapi.leptons.xyz error: Request failed with status code 502
+[REQ] 2026-04-21T08:20:11.539Z | GET /stream?videoId=78wrful9cVU | IP: 157.52.106.40 | Country: UNKNOWN
+AUDIO CACHE HIT: 78wrful9cVU

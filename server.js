@@ -55,6 +55,75 @@ const queue = new PQueue({
 });
 
 /* =========================
+   CLOUDFLARE R2 (S3) CACHE
+========================= */
+const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+
+let r2Client = null;
+const R2_BUCKET = process.env.R2_BUCKET_NAME || "ringtone-cache";
+
+if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
+  r2Client = new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    }
+  });
+  console.log("[R2] Cloudflare R2 bağlantısı hazır!");
+} else {
+  console.warn("[R2] R2 credentials bulunamadı. Sadece disk cache kullanılacak.");
+}
+
+// R2'ye dosya yükle (arka planda)
+async function uploadToR2(key, filePath) {
+  if (!r2Client) return;
+  try {
+    const fileStream = fs.createReadStream(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = ext === ".m4a" ? "audio/mp4" : ext === ".mp4" ? "video/mp4" : "application/octet-stream";
+
+    await r2Client.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: fileStream,
+      ContentType: contentType
+    }));
+    console.log(`[R2_UPLOAD] Başarılı: ${key}`);
+  } catch (err) {
+    console.warn(`[R2_UPLOAD_ERR] ${key}: ${err.message}`);
+  }
+}
+
+// R2'de dosya var mı kontrol et
+async function existsInR2(key) {
+  if (!r2Client) return false;
+  try {
+    await r2Client.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+// R2'den dosyayı stream olarak al
+async function getR2Stream(key) {
+  if (!r2Client) return null;
+  try {
+    const response = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return {
+      stream: response.Body,
+      contentType: response.ContentType,
+      contentLength: response.ContentLength
+    };
+  } catch (err) {
+    console.warn(`[R2_GET_ERR] ${key}: ${err.message}`);
+    return null;
+  }
+}
+
+/* =========================
    PHASE 6: DISK CACHING
 ========================= */
 const path = require("path");
@@ -146,6 +215,9 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
     }
 
     console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+    // ★ Arka planda R2'ye de yükle (kalıcı bulut cache)
+    const r2Key = `${type}/${videoId}.${ext}`;
+    uploadToR2(r2Key, filePath).catch(() => {});
   } catch (err) {
     console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
@@ -1161,8 +1233,22 @@ app.get("/stream", async (req, res) => {
 
     const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
     const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const r2Key = `${typeStr}/${videoId}.${extStr}`;
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
+    // ★ KATMAN 0: CLOUDFLARE R2 (En hızlı — YouTube'a hiç gitmez)
+    try {
+      const r2Data = await getR2Stream(r2Key);
+      if (r2Data && r2Data.stream) {
+        console.log(`[R2_CACHE_HIT] ☁️ Cloudflare'den sunuluyor: ${videoId}`);
+        if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
+        if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
+        r2Data.stream.pipe(res);
+        return;
+      }
+    } catch (r2Err) { /* R2 yoksa disk/YouTube'a devam */ }
+
+    // KATMAN 1: DISK CACHE
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
       const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
@@ -1175,6 +1261,8 @@ app.get("/stream", async (req, res) => {
           res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
         }
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        // Arka planda R2'ye yükle (bir sonraki istek R2'den gelsin)
+        uploadToR2(r2Key, localFile).catch(() => {});
         return res.sendFile(localFile);
       }
     }
@@ -1273,6 +1361,19 @@ app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId) return res.status(400).json({ error: "videoId required" });
+
+    // ★ KATMAN 0: CLOUDFLARE R2 (Video için de en hızlı yol)
+    const r2Key = `video/${videoId}.mp4`;
+    try {
+      const r2Data = await getR2Stream(r2Key);
+      if (r2Data && r2Data.stream) {
+        console.log(`[R2_VIDEO_HIT] ☁️ Video Cloudflare'den sunuluyor: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
+        r2Data.stream.pipe(res);
+        return;
+      }
+    } catch (r2Err) { /* R2 yoksa YouTube'a devam */ }
 
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
