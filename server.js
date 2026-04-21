@@ -553,12 +553,14 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   throw lastError || new Error("Tüm player client'lar başarısız oldu");
 }
 
-// Dinamik + statik Piped instance listesi (Çok daha kararlı sunucular eklendi)
+// Dinamik + statik Piped instance listesi
 let PIPED_INSTANCES = [
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.tokhmi.xyz",
   "https://api.piped.private.coffee",
-  "https://piped-api.garudalinux.org"
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.darkness.services",
+  "https://pipedapi.leptons.xyz",
+  "https://pipedapi.ngn.tf"
 ];
 
 // Başlangıçta güncel Piped instance'larını çek
@@ -567,7 +569,7 @@ async function refreshPipedInstances() {
     const res = await axiosClient.get("https://piped-instances.kavin.rocks/", { timeout: 5000 });
     if (Array.isArray(res.data)) {
       const working = res.data
-        .filter(i => i.up_to_date && i.uptime_24h > 90)
+        .filter(i => i.up_to_date && i.uptime_24h > 80)
         .map(i => i.api_url)
         .filter(url => url && url.startsWith("https"));
       if (working.length > 0) {
@@ -579,17 +581,16 @@ async function refreshPipedInstances() {
     console.warn(`[PIPED_REFRESH] Güncel liste alınamadı: ${e.message}`);
   }
 }
-// Her 30 dakikada bir güncelle
 setTimeout(refreshPipedInstances, 5000);
 setInterval(refreshPipedInstances, 30 * 60 * 1000);
 
 // Dinamik + statik Invidious instance listesi
 let INVIDIOUS_INSTANCES = [
+  "https://inv.thepixora.com",
   "https://inv.nadeko.net",
-  "https://inv.tux.pizza",
   "https://invidious.nerdvpn.de",
-  "https://yewtu.be",
-  "https://invidious.jing.rocks"
+  "https://yt.chocolatemoo53.com",
+  "https://yewtu.be"
 ];
 
 // Başlangıçta güncel Invidious instance'larını çek
@@ -598,7 +599,7 @@ async function refreshInvidiousInstances() {
     const res = await axiosClient.get("https://api.invidious.io/instances.json", { timeout: 5000 });
     if (Array.isArray(res.data)) {
       const working = res.data
-        .filter(([name, info]) => info.type === "https" && info.api === true && info.monitor && !info.monitor.down)
+        .filter(([name, info]) => info.type === "https" && info.monitor && !info.monitor.down)
         .map(([name, info]) => info.uri)
         .filter(url => url && url.startsWith("https"));
       if (working.length > 0) {
@@ -619,7 +620,7 @@ async function fetchFromPiped(endpointPath) {
   const shuffled = [...PIPED_INSTANCES].sort(() => Math.random() - 0.5);
   for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 2000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 5000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
@@ -651,21 +652,19 @@ async function fetchFromPipedFast(endpointPath) {
 
 
 async function tryInvidiousFallback(videoId, type) {
-  for (const instance of INVIDIOUS_INSTANCES) {
+  const shuffled = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
+  for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 6000 });
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 8000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(res.data.error);
         if (type === "audio") {
           const streams = res.data.adaptiveFormats;
           if (streams && Array.isArray(streams)) {
             const m4a = streams.find(s => (s.type && s.type.includes("audio/mp4")) || s.container === "m4a") || streams.find(s => s.type && s.type.includes("audio"));
-            // 403 hatasını engellemek için googlevideo.com linkleri yerine proxy linki oluştur
-            if (m4a && m4a.url) {
-              if (m4a.url.includes("googlevideo.com") && m4a.itag) {
-                 return `${instance}/latest_version?id=${videoId}&itag=${m4a.itag}&local=true`;
-              }
-              return m4a.url;
+            if (m4a && m4a.itag) {
+              // DAIMA Invidious proxy üzerinden geç — doğrudan googlevideo linklerini ASLA kullanma
+              return `${instance}/latest_version?id=${videoId}&itag=${m4a.itag}&local=true`;
             }
           }
         } else {
@@ -674,15 +673,12 @@ async function tryInvidiousFallback(videoId, type) {
             const mp4 = streams.find(s => (s.type && s.type.includes("video/mp4") && s.qualityLabel === "720p")) ||
               streams.find(s => s.type && s.type.includes("video/mp4")) ||
               streams[0];
-            if (mp4 && mp4.url) {
-              if (mp4.url.includes("googlevideo.com") && mp4.itag) {
-                 return `${instance}/latest_version?id=${videoId}&itag=${mp4.itag}&local=true`;
-              }
-              return mp4.url;
+            if (mp4 && mp4.itag) {
+              return `${instance}/latest_version?id=${videoId}&itag=${mp4.itag}&local=true`;
             }
           }
         }
-        throw new Error("No valid streams in Invidious instance payload.");
+        throw new Error("No valid streams/itag in Invidious response.");
       }
     } catch (err) {
       logError("INVIDIOUS_INSTANCE_ERR", videoId, `Instance ${instance} failed: ${err.message}`);
