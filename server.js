@@ -774,7 +774,6 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
 
     stats.proxyFallbackFail++;
     throw new Error("Tüm proxy ağları başarısız oldu.");
-  }
 }
 
 const axiosClient = axios.create({
