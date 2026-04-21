@@ -702,7 +702,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
 
     // 2. yt-dlp ile dene
     try {
-      const format = type === "audio" ? "bestaudio" : "best[ext=mp4]/best";
+      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
       const url = `https://www.youtube.com/watch?v=${videoId}`;
       return await resolveStreamUrl(url, format, ua, countryClient);
     } catch (err) {
