@@ -1,5 +1,28 @@
 require("dotenv").config();
 
+/* =========================
+   CRASH PROTECTION (Sunucu asla çökmesin)
+========================= */
+process.on("uncaughtException", (err) => {
+  console.error(`[FATAL] Yakalanmamış hata (sunucu ÇÖKMEDEN kurtarıldı): ${err.message}`);
+  console.error(err.stack);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error(`[FATAL] İşlenmeyen Promise hatası (sunucu ÇÖKMEDEN kurtarıldı):`, reason);
+});
+
+// Memory izleme — RAM dolmadan uyar
+setInterval(() => {
+  const mem = process.memoryUsage();
+  const heapUsedMB = (mem.heapUsed / 1024 / 1024).toFixed(1);
+  const rssMB = (mem.rss / 1024 / 1024).toFixed(1);
+  if (mem.heapUsed > 400 * 1024 * 1024) {
+    console.warn(`[MEMORY_WARNING] RAM yüksek! Heap: ${heapUsedMB} MB, RSS: ${rssMB} MB`);
+    if (global.gc) global.gc(); // Manuel garbage collection
+  }
+}, 60000); // Her dakika kontrol
+
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
