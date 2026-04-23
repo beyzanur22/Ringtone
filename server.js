@@ -26,6 +26,7 @@ setInterval(() => {
 const axios = require("axios");
 const http = require("http");
 const https = require("https");
+const { HttpsProxyAgent } = require("https-proxy-agent");
 const express = require("express");
 const ytdlp = require("yt-dlp-exec");
 // PoToken: sistem yt-dlp binary'sini kullan (Docker'dan gelir)
@@ -72,10 +73,16 @@ async function initYoutubei() {
 initYoutubei();
 
 const queue = new PQueue({
-  concurrency: 30,     // Çok kullanıcılı ölçekleme için darboğaz genişletildi
-  interval: 1000,
-  intervalCap: 50      // Saniyede 50 isteğe kadar izin ver
+  concurrency: 5,      // YouTube bot tespitini önlemek için düşük tutuldu
+  interval: 2000,
+  intervalCap: 3       // 2 saniyede max 3 istek (insan davranışı)
 });
+
+// ★ VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
+const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
+function isValidVideoId(id) {
+  return id && VIDEO_ID_REGEX.test(id);
+}
 
 /* =========================
    CLOUDFLARE R2 (S3) CACHE
@@ -140,7 +147,7 @@ async function getR2Stream(key) {
   try {
     const response = await r2Client.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
     // Her erişimde son dinlenme zamanını güncelle
-    trackR2Access(key).catch(() => {});
+    trackR2Access(key).catch(() => { });
     return {
       stream: response.Body,
       contentType: response.ContentType,
@@ -335,7 +342,7 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
     console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
     // ★ Arka planda R2'ye de yükle (kalıcı bulut cache)
     const r2Key = `${type}/${videoId}.${ext}`;
-    uploadToR2(r2Key, filePath).catch(() => {});
+    uploadToR2(r2Key, filePath).catch(() => { });
   } catch (err) {
     console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
     if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
@@ -878,17 +885,76 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
+  // ★ YENİ SIRA: 3rd Party API'ler ÖNCE, YouTube'a direkt istek SON
+  // Bu sayede kendi IP'miz YouTube'a neredeyse hiç gitmez
+
+  // KATMAN 1: Piped / Invidious / Cobalt (Kendi IP'miz YouTube'a GİTMEZ)
+  try {
+    console.log(`[RESOLVE] 3rd Party API'ler deneniyor (Piped/Inv/Cobalt): ${videoId}`);
+    const promises = [
+      (async () => {
+        const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+        if (type === "audio") {
+          const streams = pipedRes.data.audioStreams || [];
+          const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
+          if (best && best.url) return { source: "piped", url: best.url, type: "audio" };
+        } else {
+          const streams = pipedRes.data.videoStreams || [];
+          const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+            streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
+          if (best && best.url) return { source: "piped", url: best.url, type: "video" };
+        }
+        throw new Error("Piped bulunamadı");
+      })(),
+      (async () => {
+        const invidiousUrl = await tryInvidiousFallback(videoId, type);
+        if (invidiousUrl) return { source: "invidious", url: invidiousUrl, type: type };
+        throw new Error("Invidious bulunamadı");
+      })(),
+      (async () => {
+        const payload = {
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          videoQuality: "720",
+          downloadMode: type === "audio" ? "audio" : "auto",
+          audioFormat: "mp3",
+          youtubeVideoCodec: "h264"
+        };
+        const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          },
+          timeout: 5000
+        });
+        if (cobaltRes.data && cobaltRes.data.url) {
+          return { source: "cobalt", url: cobaltRes.data.url, type: type };
+        }
+        throw new Error("Cobalt bulunamadı");
+      })()
+    ];
+
+    const fastest = await Promise.any(promises);
+    console.log(`[RESOLVE] ✅ ${fastest.source.toUpperCase()} başarılı: ${videoId} (IP korundu)`);
+    stats.proxyFallbackSuccess++;
+    return fastest.url;
+
+  } catch (thirdPartyErr) {
+    console.warn(`[RESOLVE] 3rd Party API'ler başarısız: ${thirdPartyErr.message}. yt-dlp'ye geçiliyor (proxy ile)...`);
+  }
+
+  // KATMAN 2: yt-dlp (PROXY ÜZERİNDEN — kendi IP'miz gitmez)
   if (!forceProxy) {
-    // 1. yt-dlp ile dene (cookies ile en güvenilir yöntem)
     try {
       const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
       const url = `https://www.youtube.com/watch?v=${videoId}`;
+      console.log(`[RESOLVE] yt-dlp deneniyor (proxy: ${process.env.PROXY_URL ? 'EVET' : 'HAYIR'}): ${videoId}`);
       return await resolveStreamUrl(url, format, ua, countryClient);
     } catch (err) {
       console.warn(`[RESOLVE] yt-dlp başarısız: ${err.message}. Youtubei.js deneniyor...`);
     }
 
-    // 2. Youtubei.js ile dene (yedek)
+    // KATMAN 3: Youtubei.js (Son çare)
     try {
       const ytUrl = await resolveWithYoutubei(videoId, type);
       if (ytUrl) {
@@ -896,76 +962,28 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
         return ytUrl;
       }
     } catch (ytErr) {
-      logError("YTDLP_FATAL_FALLBACK", videoId, `Youtubei.js de başarısız: ${ytErr.message}. Proxy ağına geçiliyor...`);
+      logError("ALL_METHODS_FAIL", videoId, `Youtubei.js de başarısız: ${ytErr.message}`);
     }
-  } else {
-    console.log(`[RESOLVE] 403 Retry nedeniyle doğrudan Proxy ağına (Piped/Invidious) geçiliyor: ${videoId}`);
   }
 
-  try {
-      // PROMISE.ANY ILE PARALEL ÇÖZÜM: Piped, Invidious ve Cobalt'tan hangisi önce dönerse onu kullan!
-      const promises = [
-        (async () => {
-          const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-          if (type === "audio") {
-            const streams = pipedRes.data.audioStreams || [];
-            const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-            if (best && best.url) return { source: "piped", url: best.url, type: "audio" };
-          } else {
-            const streams = pipedRes.data.videoStreams || [];
-            const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-              streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
-            if (best && best.url) return { source: "piped", url: best.url, type: "video" };
-          }
-          throw new Error("Piped bulunamadı");
-        })(),
-        (async () => {
-          const invidiousUrl = await tryInvidiousFallback(videoId, type);
-          if (invidiousUrl) return { source: "invidious", url: invidiousUrl, type: type };
-          throw new Error("Invidious bulunamadı");
-        })(),
-        (async () => {
-          // COBALT API FALLBACK - Çok hızlı ve güvenilir
-          const payload = {
-            url: `https://www.youtube.com/watch?v=${videoId}`,
-            videoQuality: "720",
-            downloadMode: type === "audio" ? "audio" : "auto",
-            audioFormat: "mp3",
-            youtubeVideoCodec: "h264"
-          };
-          const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
-            headers: {
-              "Accept": "application/json",
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            },
-            timeout: 5000
-          });
-          if (cobaltRes.data && cobaltRes.data.url) {
-            return { source: "cobalt", url: cobaltRes.data.url, type: type };
-          }
-          throw new Error("Cobalt bulunamadı");
-        })()
-      ];
-
-      const fastest = await Promise.any(promises);
-
-      logError("PROXY_FALLBACK_SUCCESS", videoId, `${fastest.source.toUpperCase()} API Fallback successful for ${fastest.type}. (Parallel execution)`);
-      stats.proxyFallbackSuccess++;
-      return fastest.url;
-
-    } catch (proxyErr) {
-      logError("PROXY_ALL_FAIL", videoId, `Tüm paralel proxy ağları başarısız oldu: ${proxyErr.message}`);
-    }
-
-    stats.proxyFallbackFail++;
-    throw new Error("Tüm proxy ağları başarısız oldu.");
+  stats.proxyFallbackFail++;
+  throw new Error("Tüm yöntemler başarısız oldu (3rd Party + yt-dlp + Youtubei.js).");
 }
 
 const axiosClient = axios.create({
   httpAgent: new http.Agent({ keepAlive: true }),
   httpsAgent: new https.Agent({ keepAlive: true })
 });
+
+// ★ PROXY AXIOS CLIENT: YouTube stream fetch istekleri için (googlevideo.com)
+function getProxyAxiosConfig(extraConfig = {}) {
+  const config = { ...extraConfig };
+  if (process.env.PROXY_URL) {
+    config.httpsAgent = new HttpsProxyAgent(process.env.PROXY_URL);
+    config.httpAgent = undefined; // proxy agent kullanılacak
+  }
+  return config;
+}
 
 const app = express();
 app.set("trust proxy", 1);
@@ -1345,8 +1363,8 @@ app.get("/search", searchLimiter, async (req, res) => {
 app.get("/stream", async (req, res) => {
   try {
     const { videoId } = req.query;
-    if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
+    if (!videoId || !isValidVideoId(videoId)) {
+      return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
     const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
@@ -1380,7 +1398,7 @@ app.get("/stream", async (req, res) => {
         }
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
         // Arka planda R2'ye yükle (bir sonraki istek R2'den gelsin)
-        uploadToR2(r2Key, localFile).catch(() => {});
+        uploadToR2(r2Key, localFile).catch(() => { });
         return res.sendFile(localFile);
       }
     }
@@ -1422,26 +1440,28 @@ app.get("/stream", async (req, res) => {
         url: streamUrl,
         responseType: "stream",
         headers: headersOptions,
-        validateStatus: (status) => status < 400
+        validateStatus: (status) => status < 400,
+        ...getProxyAxiosConfig()
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
         console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Cache silinip taze link alınıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
-        
+
         const freshUrl = await queue.add(async () => {
           return await resolveStreamUrlWithFallback(videoId, "audio", getRandomUA(), countryClient, true);
         });
         streamUrl = freshUrl;
         await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
-        
+
         response = await axiosClient({
           method: "GET",
           url: streamUrl,
           responseType: "stream",
           headers: headersOptions,
-          validateStatus: (status) => status < 400
+          validateStatus: (status) => status < 400,
+          ...getProxyAxiosConfig()
         });
       } else {
         throw fetchErr;
@@ -1478,7 +1498,7 @@ app.get("/stream", async (req, res) => {
 app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
-    if (!videoId) return res.status(400).json({ error: "videoId required" });
+    if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
 
     // ★ KATMAN 0: CLOUDFLARE R2 (Video için de en hızlı yol)
     const r2Key = `video/${videoId}.mp4`;
@@ -1505,7 +1525,7 @@ app.get("/stream/video", async (req, res) => {
       const ua = getRandomUA();
       const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
       const countryClient = getPlayerClientForCountry(country);
-      
+
       streamUrl = await queue.add(async () => {
         return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
       });
@@ -1532,8 +1552,9 @@ app.get("/stream/video", async (req, res) => {
         url: streamUrl,
         responseType: "stream",
         headers: headersOptions,
-        decompress: false, // ExoPlayer uyumluluğu için ham veriyi (byte) bozmadan gönderiyoruz
-        validateStatus: (status) => status < 400
+        decompress: false,
+        validateStatus: (status) => status < 400,
+        ...getProxyAxiosConfig()
       });
     } catch (fetchErr) {
       // Eğer YouTube URL'sinin süresi dolmuş veya IP'ye bloke konmuşsa (403), önbelleği temizleyip anında taze kopyayı çek
@@ -1554,7 +1575,8 @@ app.get("/stream/video", async (req, res) => {
           responseType: "stream",
           headers: headersOptions,
           decompress: false,
-          validateStatus: (status) => status < 400
+          validateStatus: (status) => status < 400,
+          ...getProxyAxiosConfig()
         });
       } else {
         throw fetchErr;
@@ -1616,8 +1638,8 @@ app.get("/download/mp3", async (req, res) => {
   try {
     const { videoId } = req.query;
 
-    if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
+    if (!videoId || !isValidVideoId(videoId)) {
+      return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
     const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
@@ -1694,8 +1716,8 @@ app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
 
-    if (!videoId) {
-      return res.status(400).json({ error: "videoId required" });
+    if (!videoId || !isValidVideoId(videoId)) {
+      return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
     const typeStr = "video";
