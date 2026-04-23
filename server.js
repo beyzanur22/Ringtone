@@ -1673,11 +1673,13 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    const response = await axios({
+    const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 20000,
+      validateStatus: (status) => status < 400,
+      ...getProxyAxiosConfig(),
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
@@ -1768,7 +1770,7 @@ app.get("/download/mp4", async (req, res) => {
 
     // Fallback'te de dosyayı ÖNCE diske yaz
     const fallbackTempFile = localFile + ".fallback.tmp";
-    const response = await axios({
+    const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
@@ -1776,7 +1778,9 @@ app.get("/download/mp4", async (req, res) => {
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
-      }
+      },
+      validateStatus: (status) => status < 400,
+      ...getProxyAxiosConfig()
     });
 
     const writer = fs.createWriteStream(fallbackTempFile);
@@ -1793,7 +1797,7 @@ app.get("/download/mp4", async (req, res) => {
     }
 
     const fallbackStats = fs.statSync(fallbackTempFile);
-    if (fallbackStats.size < 500 * 1024) { // 500KB'den küçükse bozuk
+    if (fallbackStats.size < 150 * 1024) { // 150KB'den küçükse bozuk
       fs.unlinkSync(fallbackTempFile);
       return res.status(500).json({ error: "İndirilen dosya çok küçük, muhtemelen bot algılaması" });
     }
