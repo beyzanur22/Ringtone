@@ -18,6 +18,7 @@
     "dotenv": "^17.3.1",
     "express": "^4.21.2",
     "express-rate-limit": "^8.2.1",
+    "http-proxy-agent": "^9.0.0",
     "https-proxy-agent": "^5.0.1",
     "ioredis": "^5.10.0",
     "p-queue": "^9.1.0",

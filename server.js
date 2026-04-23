@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -1736,25 +1736,8 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. BİRİNCİL YÖNTEM: yt-dlp ile dosyayı sunucu diskine TAM indir
-    try {
-      console.log(`[DOWNLOAD_MP4] yt-dlp direct download başlatılıyor: ${videoId}`);
-      const downloadedFile = await queue.add(() => ytdlpDirectDownload(videoId, "video"));
-
-      if (downloadedFile && fs.existsSync(downloadedFile)) {
-        const fileStats = fs.statSync(downloadedFile);
-        console.log(`[DOWNLOAD_MP4] yt-dlp başarılı! Dosya gönderiliyor: ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Length", fileStats.size);
-        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-        return res.sendFile(downloadedFile);
-      }
-    } catch (directErr) {
-      console.warn(`[DOWNLOAD_MP4] yt-dlp direct download başarısız: ${directErr.message}`);
-    }
-
-    // 3. FALLBACK: URL çözümle + axios ile diske indir + sonra gönder (ASLA pipe etme!)
-    console.log(`[DOWNLOAD_MP4] Fallback: URL çözümlenip diske indiriliyor: ${videoId}`);
+    // 2. URL çözümle (Piped/Invidious) + axios ile diske indir + sonra gönder
+    console.log(`[DOWNLOAD_MP4] URL çözümlenip diske indiriliyor: ${videoId}`);
     const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -1804,7 +1787,7 @@ app.get("/download/mp4", async (req, res) => {
 
     // Başarılı! Kalıcı dosyaya taşı
     fs.renameSync(fallbackTempFile, localFile);
-    console.log(`[DOWNLOAD_MP4] Fallback başarılı! Dosya gönderiliyor: ${videoId} (${(fallbackStats.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[DOWNLOAD_MP4] Başarılı! Dosya gönderiliyor: ${videoId} (${(fallbackStats.size / 1024 / 1024).toFixed(2)} MB)`);
 
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Length", fallbackStats.size);
