@@ -752,12 +752,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
 // Dinamik + statik Piped instance listesi
 let PIPED_INSTANCES = [
-  "https://api.piped.private.coffee",
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.adminforge.de",
-  "https://pipedapi.darkness.services",
-  "https://pipedapi.leptons.xyz",
-  "https://pipedapi.ngn.tf"
+  "https://api.piped.private.coffee"   // Tek güvenilir instance (%99.5 uptime)
 ];
 
 // Başlangıçta güncel Piped instance'larını çek
@@ -766,11 +761,11 @@ async function refreshPipedInstances() {
     const res = await axiosClient.get("https://piped-instances.kavin.rocks/", { timeout: 5000 });
     if (Array.isArray(res.data)) {
       const working = res.data
-        .filter(i => i.up_to_date && i.uptime_24h > 80)
+        .filter(i => i.up_to_date && i.uptime_24h > 90)
         .map(i => i.api_url)
         .filter(url => url && url.startsWith("https"));
       if (working.length > 0) {
-        PIPED_INSTANCES = Array.from(new Set([...PIPED_INSTANCES, ...working]));
+        PIPED_INSTANCES = working; // Eski ölü instance'ları KOMPLE değiştir
         console.log(`[PIPED_REFRESH] ${PIPED_INSTANCES.length} aktif instance havuzda`);
       }
     }
@@ -783,11 +778,10 @@ setInterval(refreshPipedInstances, 30 * 60 * 1000);
 
 // Dinamik + statik Invidious instance listesi
 let INVIDIOUS_INSTANCES = [
-  "https://inv.thepixora.com",
-  "https://inv.nadeko.net",
-  "https://invidious.nerdvpn.de",
-  "https://yt.chocolatemoo53.com",
-  "https://yewtu.be"
+  "https://inv.nadeko.net",          // %99.9 uptime, Şili
+  "https://inv.thepixora.com",       // %98.5 uptime, Kanada (API açık)
+  "https://invidious.nerdvpn.de",    // %99.9 uptime, Ukrayna
+  "https://yt.chocolatemoo53.com"    // %88.9 uptime, ABD
 ];
 
 // Başlangıçta güncel Invidious instance'larını çek
