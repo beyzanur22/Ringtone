@@ -125,6 +125,72 @@ async function initYoutubei() {
 }
 initYoutubei();
 
+/* =========================
+   ANTI-BOT FAZ 2: HESAP ISITMA (ZOMBİ HESAP KORUMASI)
+   OAuth oturumu varsa 24 saatte bir YouTube anasayfasında gezinir,
+   rastgele video bilgisi çeker ve %30 ihtimalle beğeni atar.
+   Hesap "sadece indirme botu" yerine "gerçek kullanıcı" profili kazanır.
+   OAuth yoksa sessizce atlanır, sistemi etkilemez.
+========================= */
+async function warmupAccount() {
+  try {
+    if (!yt) return;
+    // OAuth oturumu yoksa çalışma
+    if (!yt.session || !yt.session.logged_in) {
+      console.log("[WARMUP] OAuth oturumu yok, ısıtma atlanıyor.");
+      return;
+    }
+
+    console.log("[WARMUP] Hesap ısıtma rutini başladı...");
+
+    // Anasayfadan video listesi çek
+    const home = await yt.getHomeFeed();
+    const videos = home?.videos || home?.contents?.filter(c => c.id) || [];
+
+    if (videos.length === 0) {
+      console.log("[WARMUP] Anasayfada video bulunamadı, atlanıyor.");
+      return;
+    }
+
+    // Rastgele 1-2 videonun bilgisini çek (izleme simülasyonu)
+    const pickCount = Math.floor(Math.random() * 2) + 1;
+    for (let i = 0; i < pickCount && i < videos.length; i++) {
+      const randomIdx = Math.floor(Math.random() * Math.min(10, videos.length));
+      const video = videos[randomIdx];
+      if (!video || !video.id) continue;
+
+      try {
+        await yt.getBasicInfo(video.id);
+        console.log(`[WARMUP] Video bilgisi çekildi: ${video.id}`);
+
+        // %30 ihtimalle beğeni at
+        if (Math.random() > 0.7) {
+          try {
+            await yt.interact.like(video.id);
+            console.log(`[WARMUP] 👍 Rastgele beğeni atıldı: ${video.id}`);
+          } catch (likeErr) {
+            // Like başarısız olabilir, önemsiz
+          }
+        }
+      } catch (videoErr) {
+        // Tek video hatası tüm rutini durdurmasın
+      }
+
+      // İnsan davranışı: 3-8 saniye arası bekle
+      await new Promise(r => setTimeout(r, 3000 + Math.random() * 5000));
+    }
+
+    console.log("[WARMUP] Hesap ısıtma rutini tamamlandı ✅");
+  } catch (e) {
+    console.warn("[WARMUP] Isıtma başarısız (önemsiz, sistem etkilenmez):", e.message);
+  }
+}
+
+// İlk ısıtma: sunucu açıldıktan 5 dakika sonra
+setTimeout(warmupAccount, 5 * 60 * 1000);
+// Sonraki ısıtmalar: 24 saatte bir
+setInterval(warmupAccount, 24 * 60 * 60 * 1000);
+
 const queue = new PQueue({
   concurrency: 5,      // YouTube bot tespitini önlemek için düşük tutuldu
   interval: 2000,
