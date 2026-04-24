@@ -906,7 +906,7 @@ async function tryInvidiousFallback(videoId, type) {
   const shuffled = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
   for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 8000 });
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3000 });
       if (res && res.data) {
         if (res.data.error) throw new Error(res.data.error);
         if (type === "audio") {
@@ -939,89 +939,93 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  // ★ YENİ SIRA: 3rd Party API'ler ÖNCE, YouTube'a direkt istek SON
-  // Bu sayede kendi IP'miz YouTube'a neredeyse hiç gitmez
+  // ★ TÜM KATMANLAR PARALEL YARIŞIR — En hızlı cevap veren kazanır
+  // Bu sayede ölü sunucularda bekleme süresi sıfıra iner
 
-  // KATMAN 1: Piped / Invidious / Cobalt (Kendi IP'miz YouTube'a GİTMEZ)
-  try {
-    console.log(`[RESOLVE] 3rd Party API'ler deneniyor (Piped/Inv/Cobalt): ${videoId}`);
-    const promises = [
-      (async () => {
-        const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-        if (type === "audio") {
-          const streams = pipedRes.data.audioStreams || [];
-          const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-          if (best && best.url) return { source: "piped", url: best.url, type: "audio" };
-        } else {
-          const streams = pipedRes.data.videoStreams || [];
-          const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-            streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
-          if (best && best.url) return { source: "piped", url: best.url, type: "video" };
-        }
-        throw new Error("Piped bulunamadı");
-      })(),
-      (async () => {
-        const invidiousUrl = await tryInvidiousFallback(videoId, type);
-        if (invidiousUrl) return { source: "invidious", url: invidiousUrl, type: type };
-        throw new Error("Invidious bulunamadı");
-      })(),
-      (async () => {
-        const payload = {
-          url: `https://www.youtube.com/watch?v=${videoId}`,
-          videoQuality: "720",
-          downloadMode: type === "audio" ? "audio" : "auto",
-          audioFormat: "mp3",
-          youtubeVideoCodec: "h264"
-        };
-        const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
-          headers: {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          },
-          timeout: 5000
-        });
-        if (cobaltRes.data && cobaltRes.data.url) {
-          return { source: "cobalt", url: cobaltRes.data.url, type: type };
-        }
-        throw new Error("Cobalt bulunamadı");
-      })()
-    ];
+  const allPromises = [];
 
-    const fastest = await Promise.any(promises);
-    console.log(`[RESOLVE] ✅ ${fastest.source.toUpperCase()} başarılı: ${videoId} (IP korundu)`);
-    stats.proxyFallbackSuccess++;
-    return fastest.url;
-
-  } catch (thirdPartyErr) {
-    console.warn(`[RESOLVE] 3rd Party API'ler başarısız: ${thirdPartyErr.message}. yt-dlp'ye geçiliyor (proxy ile)...`);
-  }
-
-  // KATMAN 2: yt-dlp (PROXY ÜZERİNDEN — kendi IP'miz gitmez)
-  if (!forceProxy) {
-    try {
-      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      console.log(`[RESOLVE] yt-dlp deneniyor (proxy: ${process.env.PROXY_URL ? 'EVET' : 'HAYIR'}): ${videoId}`);
-      return await resolveStreamUrl(url, format, ua, countryClient);
-    } catch (err) {
-      console.warn(`[RESOLVE] yt-dlp başarısız: ${err.message}. Youtubei.js deneniyor...`);
-    }
-
-    // KATMAN 3: Youtubei.js (Son çare)
-    try {
-      const ytUrl = await resolveWithYoutubei(videoId, type);
-      if (ytUrl) {
-        console.log(`[RESOLVE] Youtubei.js başarılı: ${videoId}`);
-        return ytUrl;
+  // KATMAN 1: Piped
+  allPromises.push(
+    (async () => {
+      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
+      if (type === "audio") {
+        const streams = pipedRes.data.audioStreams || [];
+        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
+        if (best && best.url) return { source: "piped", url: best.url };
+      } else {
+        const streams = pipedRes.data.videoStreams || [];
+        const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
+          streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
+        if (best && best.url) return { source: "piped", url: best.url };
       }
-    } catch (ytErr) {
-      logError("ALL_METHODS_FAIL", videoId, `Youtubei.js de başarısız: ${ytErr.message}`);
-    }
+      throw new Error("Piped bulunamadı");
+    })()
+  );
+
+  // KATMAN 2: Invidious
+  allPromises.push(
+    (async () => {
+      const invidiousUrl = await tryInvidiousFallback(videoId, type);
+      if (invidiousUrl) return { source: "invidious", url: invidiousUrl };
+      throw new Error("Invidious bulunamadı");
+    })()
+  );
+
+  // KATMAN 3: Cobalt
+  allPromises.push(
+    (async () => {
+      const payload = {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        videoQuality: "720",
+        downloadMode: type === "audio" ? "audio" : "auto",
+        audioFormat: "mp3",
+        youtubeVideoCodec: "h264"
+      };
+      const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        },
+        timeout: 4000
+      });
+      if (cobaltRes.data && cobaltRes.data.url) return { source: "cobalt", url: cobaltRes.data.url };
+      throw new Error("Cobalt bulunamadı");
+    })()
+  );
+
+  // KATMAN 4: yt-dlp (aynı anda yarışır)
+  if (!forceProxy) {
+    allPromises.push(
+      (async () => {
+        const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
+        const url = `https://www.youtube.com/watch?v=${videoId}`;
+        const result = await resolveStreamUrl(url, format, ua, countryClient);
+        if (result) return { source: "yt-dlp", url: result };
+        throw new Error("yt-dlp başarısız");
+      })()
+    );
+
+    // KATMAN 5: Youtubei.js (aynı anda yarışır)
+    allPromises.push(
+      (async () => {
+        const ytUrl = await resolveWithYoutubei(videoId, type);
+        if (ytUrl) return { source: "youtubei", url: ytUrl };
+        throw new Error("Youtubei başarısız");
+      })()
+    );
   }
 
-  stats.proxyFallbackFail++;
-  throw new Error("Tüm yöntemler başarısız oldu (3rd Party + yt-dlp + Youtubei.js).");
+  try {
+    const winner = await Promise.any(allPromises);
+    console.log(`[RESOLVE] ✅ ${winner.source.toUpperCase()} kazandı (en hızlı): ${videoId}`);
+    stats.proxyFallbackSuccess++;
+    return winner.url;
+  } catch (allErr) {
+    stats.proxyFallbackFail++;
+    logError("ALL_METHODS_FAIL", videoId, `Tüm yöntemler başarısız: ${allErr.message}`);
+    throw new Error("Tüm yöntemler başarısız oldu (Piped + Invidious + Cobalt + yt-dlp + Youtubei.js).");
+  }
 }
 
 const axiosClient = axios.create({
