@@ -1800,13 +1800,31 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. URL çözümle (Piped/Invidious) + axios ile diske indir + sonra gönder
-    console.log(`[DOWNLOAD_MP4] URL çözümlenip diske indiriliyor: ${videoId}`);
+    // 2. YÖNTEM A: yt-dlp ile doğrudan diske indir (en güvenilir — 504 timeout olmaz)
+    console.log(`[DOWNLOAD_MP4] yt-dlp ile doğrudan indiriliyor: ${videoId}`);
+    try {
+      const downloadedFile = await ytdlpDirectDownload(videoId, "video");
+      if (downloadedFile && fs.existsSync(downloadedFile)) {
+        const dlStats = fs.statSync(downloadedFile);
+        console.log(`[DOWNLOAD_MP4] yt-dlp başarılı! Dosya gönderiliyor: ${videoId} (${(dlStats.size / 1024 / 1024).toFixed(2)} MB)`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", dlStats.size);
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+        // Arka planda R2'ye yükle
+        const r2Key = `video/${videoId}.mp4`;
+        uploadToR2(r2Key, downloadedFile).catch(() => {});
+        return res.sendFile(downloadedFile);
+      }
+    } catch (ytdlpErr) {
+      console.warn(`[DOWNLOAD_MP4] yt-dlp başarısız: ${ytdlpErr.message}. Fallback deneniyor...`);
+    }
+
+    // 3. YÖNTEM B: URL çözümle + axios ile diske indir (yedek)
+    console.log(`[DOWNLOAD_MP4] Fallback: URL çözümlenip diske indiriliyor: ${videoId}`);
     const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
 
-    await randomJitter();
     const streamUrl = await queue.add(() =>
       resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
     );
@@ -1815,13 +1833,12 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    // Fallback'te de dosyayı ÖNCE diske yaz
     const fallbackTempFile = localFile + ".fallback.tmp";
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
-      timeout: 300000, // 5 dakika timeout
+      timeout: 300000,
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
@@ -1838,20 +1855,18 @@ app.get("/download/mp4", async (req, res) => {
       writer.on('error', reject);
     });
 
-    // Dosya boyutu kontrol
     if (!fs.existsSync(fallbackTempFile)) {
       return res.status(500).json({ error: "Dosya indirilemedi" });
     }
 
     const fallbackStats = fs.statSync(fallbackTempFile);
-    if (fallbackStats.size < 150 * 1024) { // 150KB'den küçükse bozuk
+    if (fallbackStats.size < 150 * 1024) {
       fs.unlinkSync(fallbackTempFile);
       return res.status(500).json({ error: "İndirilen dosya çok küçük, muhtemelen bot algılaması" });
     }
 
-    // Başarılı! Kalıcı dosyaya taşı
     fs.renameSync(fallbackTempFile, localFile);
-    console.log(`[DOWNLOAD_MP4] Başarılı! Dosya gönderiliyor: ${videoId} (${(fallbackStats.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`[DOWNLOAD_MP4] Fallback başarılı! Dosya gönderiliyor: ${videoId} (${(fallbackStats.size / 1024 / 1024).toFixed(2)} MB)`);
 
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Length", fallbackStats.size);
