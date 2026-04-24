@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -33,11 +33,64 @@ const ytdlp = require("yt-dlp-exec");
 const YT_DLP_PATH = process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
 const cors = require("cors");
 const fs = require("fs");
+const path = require("path");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 
 const PQueue = require("p-queue").default;
 const { Innertube, UniversalCache } = require("youtubei.js");
+
+/* =========================
+   ANTI-BOT FAZ 1: COOKIE & PROXY ROTASYONU
+   yt_cookies/ klasörüne koyduğunuz tüm .txt dosyaları otomatik algılanır.
+   proxies.txt dosyasındaki proxy adresleri rotasyona sokulur.
+   Klasör/dosya boşsa mevcut cookies.txt ve PROXY_URL kullanılır.
+========================= */
+let cookiePool = [];
+let proxyPool  = [];
+
+function loadRotationAssets() {
+  try {
+    // Cookie havuzunu yükle
+    const cookieDir = path.join(__dirname, "yt_cookies");
+    if (!fs.existsSync(cookieDir)) fs.mkdirSync(cookieDir, { recursive: true });
+    const cookieFiles = fs.readdirSync(cookieDir).filter(f => f.endsWith(".txt"));
+    cookiePool = cookieFiles.map(f => path.join(cookieDir, f));
+    
+    // Proxy havuzunu yükle
+    const proxyFile = path.join(__dirname, "proxies.txt");
+    if (fs.existsSync(proxyFile)) {
+      proxyPool = fs.readFileSync(proxyFile, "utf-8")
+        .split("\n")
+        .map(l => l.trim())
+        .filter(l => l.startsWith("http"));
+    }
+    
+    console.log(`[ROTATION] Yüklendi: ${cookiePool.length} cookie dosyası, ${proxyPool.length} proxy adresi`);
+  } catch (e) {
+    console.warn("[ROTATION] Asset yükleme hatası (sistem eski ayarlarla devam eder):", e.message);
+  }
+}
+
+function getRandomCookie() {
+  // Havuzda dosya varsa rastgele seç, yoksa varsayılan cookies.txt
+  if (cookiePool.length > 0) {
+    return cookiePool[Math.floor(Math.random() * cookiePool.length)];
+  }
+  return fs.existsSync(path.join(__dirname, "cookies.txt")) ? path.join(__dirname, "cookies.txt") : null;
+}
+
+function getRandomProxy() {
+  // Havuzda proxy varsa rastgele seç, yoksa env var
+  if (proxyPool.length > 0) {
+    return proxyPool[Math.floor(Math.random() * proxyPool.length)];
+  }
+  return process.env.PROXY_URL || null;
+}
+
+// Başlangıçta yükle + her 10 dakikada bir yeniden tara (yeni dosya eklerseniz otomatik algılanır)
+loadRotationAssets();
+setInterval(loadRotationAssets, 10 * 60 * 1000);
 
 /* =========================
    YOUTUBEI.JS OAUTH2 SETUP
@@ -251,7 +304,6 @@ setTimeout(cleanupR2, 2 * 60 * 1000);
 /* =========================
    PHASE 6: DISK CACHING
 ========================= */
-const path = require("path");
 const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
@@ -548,11 +600,15 @@ function ytdlpStream(videoId, type, req, res) {
       "--quiet", "--no-warnings"
     ];
 
-    if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
-      args.push("--cookies", "cookies.txt");
+    // Cookie Rotasyonu (Faz 1)
+    const streamCookie = getRandomCookie();
+    if (process.env.USE_COOKIES !== "false" && streamCookie) {
+      args.push("--cookies", streamCookie);
     }
-    if (process.env.PROXY_URL) {
-      args.push("--proxy", process.env.PROXY_URL);
+    // Proxy Rotasyonu (Faz 1)
+    const streamProxy = getRandomProxy();
+    if (streamProxy) {
+      args.push("--proxy", streamProxy);
     }
 
     console.log(`[YTDL_STREAM] Başlatılıyor: ${videoId} (${type})`);
@@ -639,14 +695,16 @@ function ytdlpDirectDownload(videoId, type) {
     // Video ise çıktıyı direkt mp4 olarak alıyoruz (merge gerekmez)
     // args.push("--merge-output-format", "mp4");
 
-    // Cookies ekle
-    if (process.env.USE_COOKIES !== "false" && fs.existsSync("cookies.txt")) {
-      args.push("--cookies", "cookies.txt");
+    // Cookie Rotasyonu (Faz 1)
+    const dlCookie = getRandomCookie();
+    if (process.env.USE_COOKIES !== "false" && dlCookie) {
+      args.push("--cookies", dlCookie);
     }
 
-    // Proxy ekle
-    if (process.env.PROXY_URL) {
-      args.push("--proxy", process.env.PROXY_URL);
+    // Proxy Rotasyonu (Faz 1)
+    const dlProxy = getRandomProxy();
+    if (dlProxy) {
+      args.push("--proxy", dlProxy);
     }
 
     console.log(`[YTDL_DIRECT] İndiriliyor: ${videoId} (${type})`);
@@ -706,15 +764,17 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         ]
       };
 
-      // cookies.txt varsa ve USE_COOKIES=false değilse ekle
+      // Cookie Rotasyonu (Faz 1)
       const useCookies = process.env.USE_COOKIES !== "false";
-      if (useCookies && fs.existsSync("cookies.txt")) {
-        opts.cookies = "cookies.txt";
+      const resolveCookie = getRandomCookie();
+      if (useCookies && resolveCookie) {
+        opts.cookies = resolveCookie;
       }
 
-      // Proxy desteği
-      if (process.env.PROXY_URL) {
-        opts.proxy = process.env.PROXY_URL;
+      // Proxy Rotasyonu (Faz 1)
+      const resolveProxy = getRandomProxy();
+      if (resolveProxy) {
+        opts.proxy = resolveProxy;
       }
 
       // "default" = yt-dlp kendi seçsin
