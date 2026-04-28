@@ -1715,7 +1715,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 
     const result = { nextPageToken: nextToken, data: resultData };
     await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
-    res.setHeader("Cache-Control", `public, max-age=${SEARCH_CACHE_DURATION}`);
+    res.setHeader("Cache-Control", "no-store");
     res.json(result);
   } catch (error) {
     logError("SEARCH", null, error.message);
