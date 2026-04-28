@@ -2059,15 +2059,13 @@ app.get("/download/mp3", async (req, res) => {
     const extStr = "m4a";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // 1. Disk cache kontrolü — dosya zaten varsa direkt gönder (Content-Length ile!)
+    // 1. Disk cache — dosya varsa Content-Length ile anında gönder (progress %0→%100)
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = 20 * 1024;
-      if (stats.size < minSize) {
-        console.warn(`[DOWNLOAD_MP3] Bozuk cache dosyası siliniyor: ${localFile}`);
+      if (stats.size < 20 * 1024) {
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DOWNLOAD_MP3] Cache hit! Dosya gönderiliyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[DOWNLOAD_MP3] Cache hit! ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         res.setHeader("Content-Type", "audio/mp4");
         res.setHeader("Content-Length", stats.size);
         res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
@@ -2088,8 +2086,7 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
-    // 3. Önce diske indir (Content-Length bilmek için)
-    const tempFile = localFile + ".dl.tmp";
+    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar, beklemez!)
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
@@ -2103,47 +2100,23 @@ app.get("/download/mp3", async (req, res) => {
       }
     });
 
-    const writer = fs.createWriteStream(tempFile);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    if (!fs.existsSync(tempFile)) {
-      return res.status(500).json({ error: "Dosya indirilemedi" });
-    }
-
-    const dlStats = fs.statSync(tempFile);
-    if (dlStats.size < 20 * 1024) {
-      fs.unlinkSync(tempFile);
-      return res.status(500).json({ error: "İndirilen dosya çok küçük" });
-    }
-
-    // Kalıcı cache dosyasına taşı
-    fs.renameSync(tempFile, localFile);
-
-    // 4. Content-Length ile gönder → Android progress bar çalışır!
-    console.log(`[DOWNLOAD_MP3] Başarılı! Dosya gönderiliyor: ${videoId} (${(dlStats.size / 1024 / 1024).toFixed(2)} MB)`);
     res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Content-Length", dlStats.size);
     res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
 
-    // Arka planda R2'ye yükle
-    const r2Key = `audio/${videoId}.m4a`;
-    uploadToR2(r2Key, localFile).catch(() => { });
+    // Content-Length varsa gönder → Android gerçek % gösterir
+    // Yoksa Android tahmini % hesaplar
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
 
-    return res.sendFile(localFile);
+    response.data.pipe(res);
+
+    // Arka planda diske + R2'ye cache'le
+    downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
 
   } catch (err) {
     logError("DOWNLOAD_MP3", req.query.videoId, err.message);
     console.error("MP3 ERROR:", err.message);
-    // Temp dosyasını temizle
-    const tempCleanup = path.join(CACHE_DIR, `audio_${req.query.videoId}.m4a.dl.tmp`);
-    if (fs.existsSync(tempCleanup)) {
-      try { fs.unlinkSync(tempCleanup); } catch (e) { }
-    }
     if (!res.headersSent) {
       res.status(500).json({ error: "Audio download failed" });
     } else {
