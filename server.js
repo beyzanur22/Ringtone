@@ -47,7 +47,7 @@ const { Innertube, UniversalCache } = require("youtubei.js");
    Klasör/dosya boşsa mevcut cookies.txt ve PROXY_URL kullanılır.
 ========================= */
 let cookiePool = [];
-let proxyPool  = [];
+let proxyPool = [];
 
 function loadRotationAssets() {
   try {
@@ -56,7 +56,7 @@ function loadRotationAssets() {
     if (!fs.existsSync(cookieDir)) fs.mkdirSync(cookieDir, { recursive: true });
     const cookieFiles = fs.readdirSync(cookieDir).filter(f => f.endsWith(".txt"));
     cookiePool = cookieFiles.map(f => path.join(cookieDir, f));
-    
+
     // Proxy havuzunu yükle
     const proxyFile = path.join(__dirname, "proxies.txt");
     if (fs.existsSync(proxyFile)) {
@@ -65,7 +65,7 @@ function loadRotationAssets() {
         .map(l => l.trim())
         .filter(l => l.startsWith("http"));
     }
-    
+
     console.log(`[ROTATION] Yüklendi: ${cookiePool.length} cookie dosyası, ${proxyPool.length} proxy adresi`);
   } catch (e) {
     console.warn("[ROTATION] Asset yükleme hatası (sistem eski ayarlarla devam eder):", e.message);
@@ -164,14 +164,16 @@ async function warmupAccount() {
         console.log(`[WARMUP] Video bilgisi çekildi: ${video.id}`);
 
         // %30 ihtimalle beğeni at
-        if (Math.random() > 0.7) {
-          try {
-            await yt.interact.like(video.id);
-            console.log(`[WARMUP] 👍 Rastgele beğeni atıldı: ${video.id}`);
-          } catch (likeErr) {
-            // Like başarısız olabilir, önemsiz
-          }
-        }
+        //    if (Math.random() > 0.7) {
+        //     try {
+        //      await yt.interact.like(video.id);
+        //   console.log(`[WARMUP]  Rastgele beğeni atıldı: ${video.id}`);
+        //  } catch (likeErr) {
+        // Like başarısız olabilir, önemsiz
+        //      }
+        //      }
+        // Beğeni KALDIRILDI — YouTube watch_time=0 + like=1 pattern'ını
+        // zombie hesap olarak işaretliyor
       } catch (videoErr) {
         // Tek video hatası tüm rutini durdurmasın
       }
@@ -186,10 +188,10 @@ async function warmupAccount() {
   }
 }
 
-// İlk ısıtma: sunucu açıldıktan 5 dakika sonra
-setTimeout(warmupAccount, 5 * 60 * 1000);
-// Sonraki ısıtmalar: 24 saatte bir
-setInterval(warmupAccount, 24 * 60 * 60 * 1000);
+// İlk ısıtma: sunucu açıldıktan 15 dakika sonra (hemen başlamamak daha doğal)
+setTimeout(warmupAccount, 15 * 60 * 1000);
+// Sonraki ısıtmalar: 48 saatte bir (daha az şüpheli, YouTube'un radar aralığı dışında)
+setInterval(warmupAccount, 48 * 60 * 60 * 1000);
 
 const queue = new PQueue({
   concurrency: 5,      // YouTube bot tespitini önlemek için düşük tutuldu
@@ -1005,12 +1007,17 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  // ★ TÜM KATMANLAR PARALEL YARIŞIR — En hızlı cevap veren kazanır
-  // Bu sayede ölü sunucularda bekleme süresi sıfıra iner
+  // ★ AKILLI ZAMANLI YARIŞ SİSTEMİ
+  // Piped/Invidious/Cobalt HEMEN başlar (YouTube'a hiç gitmez)
+  // yt-dlp/Youtubei 2 SANİYE GECİKMELİ başlar (proxy korumalı)
+  // Promise.any → ilk cevap veren kazanır
+  // Eğer Piped 1sn'de cevap verirse yt-dlp hiç YouTube'a istek göndermez!
 
   const allPromises = [];
 
-  // KATMAN 1: Piped
+  // ═══════ HEMEN BAŞLAYANLAR (YouTube'a gitmez, ücretsiz) ═══════
+
+  // KATMAN 1: Piped (anında başlar)
   allPromises.push(
     (async () => {
       const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
@@ -1028,7 +1035,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     })()
   );
 
-  // KATMAN 2: Invidious
+  // KATMAN 2: Invidious (anında başlar)
   allPromises.push(
     (async () => {
       const invidiousUrl = await tryInvidiousFallback(videoId, type);
@@ -1037,7 +1044,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     })()
   );
 
-  // KATMAN 3: Cobalt
+  // KATMAN 3: Cobalt (anında başlar)
   allPromises.push(
     (async () => {
       const payload = {
@@ -1060,10 +1067,15 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     })()
   );
 
-  // KATMAN 4: yt-dlp (aynı anda yarışır)
+  // ═══════ 2 SANİYE GECİKMELİ BAŞLAYANLAR (YouTube-direkt, proxy korumalı) ═══════
+  // Piped/Invidious/Cobalt 2sn içinde cevap verirse bunlar hiç başlamaz!
+
   if (!forceProxy) {
+    // KATMAN 4: yt-dlp (2sn gecikme + jitter ile)
     allPromises.push(
       (async () => {
+        await new Promise(r => setTimeout(r, 2000)); // 2sn bekle — 3.parti API'lere şans ver
+        await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
         const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
         const url = `https://www.youtube.com/watch?v=${videoId}`;
         const result = await resolveStreamUrl(url, format, ua, countryClient);
@@ -1072,9 +1084,11 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
       })()
     );
 
-    // KATMAN 5: Youtubei.js (aynı anda yarışır)
+    // KATMAN 5: Youtubei.js (2sn gecikme + jitter ile)
     allPromises.push(
       (async () => {
+        await new Promise(r => setTimeout(r, 2000)); // 2sn bekle — 3.parti API'lere şans ver
+        await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
         const ytUrl = await resolveWithYoutubei(videoId, type);
         if (ytUrl) return { source: "youtubei", url: ytUrl };
         throw new Error("Youtubei başarısız");
@@ -1099,13 +1113,20 @@ const axiosClient = axios.create({
   httpsAgent: new https.Agent({ keepAlive: true })
 });
 
-// ★ PROXY AXIOS CLIENT: YouTube stream fetch istekleri için (googlevideo.com)
+// ★ AKILLI PROXY ROUTING: Proxy SADECE YouTube/googlevideo URL'lerinde kullanılır
+// Piped/Invidious URL'lerinde proxy kullanılmaz → bandwidth tasarrufu
 function getProxyAxiosConfig(extraConfig = {}) {
   const config = { ...extraConfig };
-  if (process.env.PROXY_URL) {
+  const targetUrl = config._targetUrl || "";
+  const needsProxy = targetUrl.includes("googlevideo.com") || 
+                     targetUrl.includes("youtube.com") ||
+                     targetUrl.includes("ytimg.com") ||
+                     targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
+  if (process.env.PROXY_URL && needsProxy) {
     config.httpsAgent = new HttpsProxyAgent(process.env.PROXY_URL);
     config.httpAgent = undefined; // proxy agent kullanılacak
   }
+  delete config._targetUrl; // axios'a göndermeden önce temizle
   return config;
 }
 
@@ -1202,7 +1223,7 @@ async function validateStreamToken(token, videoId) {
 
   if (entry.expires < Date.now()) {
     activeStreamTokens.delete(token);
-    try { if (redis) await redis.del(`drm:token:${token}`); } catch (e) {}
+    try { if (redis) await redis.del(`drm:token:${token}`); } catch (e) { }
     return { valid: false, reason: "Token süresi dolmuş" };
   }
   if (entry.videoId !== videoId) return { valid: false, reason: "Video ID uyuşmuyor" };
@@ -1213,7 +1234,7 @@ async function validateStreamToken(token, videoId) {
   activeStreamTokens.set(token, entry);
   try {
     if (redis) await redis.set(`drm:token:${token}`, JSON.stringify(entry), "EX", 60); // 1 dk sonra otomatik silinir
-  } catch (e) {}
+  } catch (e) { }
 
   console.log(`[DRM] Token doğrulandı: ${token.substring(0, 8)}... | videoId: ${videoId}`);
   return { valid: true };
@@ -1707,7 +1728,7 @@ app.get("/stream", async (req, res) => {
         responseType: "stream",
         headers: headersOptions,
         validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig()
+        ...getProxyAxiosConfig({ _targetUrl: streamUrl })
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
@@ -1727,7 +1748,7 @@ app.get("/stream", async (req, res) => {
           responseType: "stream",
           headers: headersOptions,
           validateStatus: (status) => status < 400,
-          ...getProxyAxiosConfig()
+          ...getProxyAxiosConfig({ _targetUrl: streamUrl })
         });
       } else {
         throw fetchErr;
@@ -1839,7 +1860,7 @@ app.get("/stream/video", async (req, res) => {
         headers: headersOptions,
         decompress: false,
         validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig()
+        ...getProxyAxiosConfig({ _targetUrl: streamUrl })
       });
     } catch (fetchErr) {
       // Eğer YouTube URL'sinin süresi dolmuş veya IP'ye bloke konmuşsa (403), önbelleği temizleyip anında taze kopyayı çek
@@ -1861,7 +1882,7 @@ app.get("/stream/video", async (req, res) => {
           headers: headersOptions,
           decompress: false,
           validateStatus: (status) => status < 400,
-          ...getProxyAxiosConfig()
+          ...getProxyAxiosConfig({ _targetUrl: streamUrl })
         });
       } else {
         throw fetchErr;
@@ -2039,7 +2060,7 @@ app.get("/download/mp4", async (req, res) => {
         res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
         // Arka planda R2'ye yükle
         const r2Key = `video/${videoId}.mp4`;
-        uploadToR2(r2Key, downloadedFile).catch(() => {});
+        uploadToR2(r2Key, downloadedFile).catch(() => { });
         return res.sendFile(downloadedFile);
       }
     } catch (ytdlpErr) {
