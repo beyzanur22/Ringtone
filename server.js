@@ -1145,15 +1145,106 @@ app.use((req, res, next) => {
 
 /* =========================
    HMAC SECURITY AUTH MIDDLEWARE
+   + SERVER-SIDE TOKEN EXCHANGE (APK güvenliği)
 ========================= */
 const crypto = require("crypto");
 
+// ★ TOKEN EXCHANGE: Geçici API token'ları yönetimi
+// APK'daki secret key sadece 1 kez /auth/token için kullanılır
+// Sonraki tüm istekler geçici token ile yapılır
+const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
+const API_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 saat (ms)
+
+// Token oluşturma endpoint'i — HMAC ile çağrılır, geçici token döner
+app.post("/auth/token", async (req, res) => {
+  try {
+    const timestamp = req.headers['x-timestamp'];
+    const signature = req.headers['x-signature'];
+    const EXPECTED_SECRET = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
+
+    if (!timestamp || !signature) {
+      return res.status(403).json({ error: "Missing credentials" });
+    }
+
+    // Replay attack koruması
+    if (Math.abs(Date.now() - parseInt(timestamp)) > 5 * 60 * 1000) {
+      return res.status(403).json({ error: "Request expired" });
+    }
+
+    // HMAC doğrulama
+    const payload = timestamp + ":" + "/auth/token";
+    const expectedSignature = crypto.createHmac("sha256", EXPECTED_SECRET).update(payload).digest("base64");
+    if (signature !== expectedSignature) {
+      console.warn(`[AUTH_TOKEN] Hatalı HMAC ile token istendi: IP: ${req.ip}`);
+      return res.status(403).json({ error: "Invalid signature" });
+    }
+
+    // Geçici token oluştur
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenData = {
+      createdAt: Date.now(),
+      expiresAt: Date.now() + API_TOKEN_TTL,
+      ip: req.ip
+    };
+
+    activeApiTokens.set(token, tokenData);
+
+    // Redis'e de kaydet (sunucu restart'larında korunsun)
+    try {
+      if (redis) await redis.set(`api:token:${token}`, JSON.stringify(tokenData), "EX", Math.floor(API_TOKEN_TTL / 1000));
+    } catch (e) { }
+
+    // Eski expired token'ları temizle (bellek yönetimi)
+    for (const [t, d] of activeApiTokens) {
+      if (d.expiresAt < Date.now()) activeApiTokens.delete(t);
+    }
+
+    console.log(`[AUTH_TOKEN] ✅ Yeni API token verildi: IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
+    res.json({ token, expiresIn: API_TOKEN_TTL / 1000 }); // saniye cinsinden süre
+  } catch (err) {
+    console.error("[AUTH_TOKEN] Token oluşturma hatası:", err.message);
+    res.status(500).json({ error: "Token generation failed" });
+  }
+});
+
 app.use(async (req, res, next) => {
-  // Sadece health ve config tamamen açık. stream ve download artık imza kontrolüne tabi!
-  if (req.path === "/health" || req.path === "/config") {
+  // Tamamen açık endpoint'ler
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token") {
     return next();
   }
 
+  // ★ YÖNTEM 1: Bearer Token ile erişim (tercih edilen, daha güvenli)
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+
+    // Önce memory'den kontrol
+    let tokenData = activeApiTokens.get(token);
+
+    // Memory'de yoksa Redis'ten kontrol
+    if (!tokenData && redis) {
+      try {
+        const redisData = await redis.get(`api:token:${token}`);
+        if (redisData) {
+          tokenData = JSON.parse(redisData);
+          activeApiTokens.set(token, tokenData); // memory'e de ekle
+        }
+      } catch (e) { }
+    }
+
+    if (tokenData && tokenData.expiresAt > Date.now()) {
+      return next(); // ✅ Geçerli token — erişim izni
+    }
+
+    // Token geçersiz veya süresi dolmuş
+    if (tokenData) {
+      activeApiTokens.delete(token);
+      try { if (redis) await redis.del(`api:token:${token}`); } catch (e) { }
+    }
+    // Token geçersizse HMAC'a düş (geriye uyumluluk)
+  }
+
+  // ★ YÖNTEM 2: HMAC Signature ile erişim (eski yöntem, geriye uyumlu)
   const timestamp = req.headers['x-timestamp'];
   const signature = req.headers['x-signature'];
   const EXPECTED_SECRET = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
@@ -1509,28 +1600,64 @@ app.get("/search", searchLimiter, async (req, res) => {
 
     let resultData, nextToken = "";
     try {
-      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
-        params: {
-          part: "snippet",
-          q: query,
-          type: "video",
-          maxResults: 20,
-          pageToken: pageToken,
-          key: YOUTUBE_API_KEY
-        }
-      });
-      resultData = filterBlockedChannels(response.data.items);
-      nextToken = response.data.nextPageToken;
-      youtubeApiStatus = "ok";
-    } catch (apiError) {
-      if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
-        logError("API_FALLBACK", null, `YouTube API Quota exceeded. Trying youtubei.js for fast search: ${query}`);
-        youtubeApiStatus = "quota_exceeded";
-        stats.youtubeApiQuotaExceeded++;
+      // ★ ÖNCE ÜCRETSİZ KAYNAKLAR — YouTube API kotası korunur!
+      // Sıra: Piped → Invidious → Youtubei → YouTube API (son çare)
 
+      let searchSuccess = false;
+
+      // KATMAN 1: Piped Search (ücretsiz, hızlı)
+      if (!searchSuccess) {
         try {
-          if (!yt) throw new Error("Youtubei.js is not initialized yet");
+          const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+          if (pipedRes.data && pipedRes.data.length > 0) {
+            const pipedItems = pipedRes.data.map(item => ({
+              id: { videoId: (item.url || "").split("?v=")[1] },
+              snippet: {
+                title: item.title,
+                channelTitle: item.uploaderName,
+                channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
+                thumbnails: { high: { url: item.thumbnail || "" } }
+              }
+            }));
+            resultData = filterBlockedChannels(pipedItems);
+            nextToken = "";
+            searchSuccess = true;
+            console.log(`[SEARCH] ✅ Piped kazandı: "${query}"`);
+          }
+        } catch (pipedErr) {
+          console.warn(`[SEARCH] Piped başarısız, Invidious deneniyor: ${pipedErr.message}`);
+        }
+      }
 
+      // KATMAN 2: Invidious Search (ücretsiz)
+      if (!searchSuccess) {
+        const shuffledInv = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
+        for (const instance of shuffledInv) {
+          try {
+            const invRes = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { timeout: 4000 });
+            if (invRes && invRes.data && invRes.data.length > 0) {
+              const invItems = invRes.data.map(item => ({
+                id: { videoId: item.videoId },
+                snippet: {
+                  title: item.title,
+                  channelTitle: item.author,
+                  channelId: item.authorId || "",
+                  thumbnails: { high: { url: item.videoThumbnails?.find(t => t.quality === "high")?.url || "" } }
+                }
+              }));
+              resultData = filterBlockedChannels(invItems);
+              nextToken = "";
+              searchSuccess = true;
+              console.log(`[SEARCH] ✅ Invidious kazandı: "${query}"`);
+              break;
+            }
+          } catch (e) { }
+        }
+      }
+
+      // KATMAN 3: Youtubei.js Search (YouTube'a gider ama OAuth korumalı)
+      if (!searchSuccess && yt) {
+        try {
           const searchResults = await yt.search(query, { type: 'video' });
           const ytItems = searchResults.videos.map(item => ({
             id: { videoId: item.id },
@@ -1543,59 +1670,39 @@ app.get("/search", searchLimiter, async (req, res) => {
               }
             }
           }));
-
-          if (ytItems.length === 0) throw new Error("No results from youtubei.js");
-
-          resultData = filterBlockedChannels(ytItems);
-          nextToken = ""; // Simple pagination for youtubei fallback
-        } catch (ytErr) {
-          logError("YOUTUBEI_FALLBACK_FAIL", null, `Youtubei.js search failed, falling back to Piped & Invidious: ${ytErr.message}`);
-
-          try {
-            // Önce Piped API'den hızlı arama
-            const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-            const pipedItems = pipedRes.data.map(item => ({
-              id: { videoId: (item.url || "").split("?v=")[1] },
-              snippet: {
-                title: item.title,
-                channelTitle: item.uploaderName,
-                channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
-                thumbnails: { high: { url: item.thumbnail || "" } }
-              }
-            }));
-            resultData = filterBlockedChannels(pipedItems);
+          if (ytItems.length > 0) {
+            resultData = filterBlockedChannels(ytItems);
             nextToken = "";
-          } catch (pipedErr) {
-            logError("PIPED_SEARCH_FAIL", null, `Piped failed, falling back to Invidious Search: ${pipedErr.message}`);
-            // Piped çökerse Invidious'dan arama
-            let invidiousRes = null;
-            for (const instance of INVIDIOUS_INSTANCES) {
-              try {
-                const res = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { timeout: 4000 });
-                if (res && res.data && res.data.length > 0) {
-                  invidiousRes = res.data;
-                  break;
-                }
-              } catch (e) { }
-            }
-            if (!invidiousRes) throw new Error("Arama için tüm Invidious sunucuları çöktü");
-
-            const invItems = invidiousRes.map(item => ({
-              id: { videoId: item.videoId },
-              snippet: {
-                title: item.title,
-                channelTitle: item.author,
-                channelId: item.authorId || "",
-                thumbnails: { high: { url: item.videoThumbnails?.find(t => t.quality === "high")?.url || "" } }
-              }
-            }));
-            resultData = filterBlockedChannels(invItems);
-            nextToken = "";
+            searchSuccess = true;
+            console.log(`[SEARCH] ✅ Youtubei kazandı: "${query}"`);
           }
+        } catch (ytErr) {
+          console.warn(`[SEARCH] Youtubei başarısız: ${ytErr.message}`);
         }
-      } else {
-        throw apiError;
       }
+
+      // KATMAN 4: YouTube Data API v3 (SON ÇARE — kota harcar)
+      if (!searchSuccess) {
+        console.warn(`[SEARCH] ⚠️ Tüm ücretsiz kaynaklar başarısız, YouTube API kullanılıyor (kota harcanır): "${query}"`);
+        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+          params: {
+            part: "snippet",
+            q: query,
+            type: "video",
+            maxResults: 20,
+            pageToken: pageToken,
+            key: YOUTUBE_API_KEY
+          }
+        });
+        resultData = filterBlockedChannels(response.data.items);
+        nextToken = response.data.nextPageToken;
+        youtubeApiStatus = "ok";
+        console.log(`[SEARCH] ✅ YouTube API son çare olarak kullanıldı: "${query}"`);
+      }
+
+    } catch (apiError) {
+      logError("SEARCH_ALL_FAIL", null, `Tüm arama kaynakları başarısız: ${apiError.message}`);
+      throw apiError;
     }
 
     const result = { nextPageToken: nextToken, data: resultData };
