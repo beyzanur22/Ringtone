@@ -2055,31 +2055,27 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    const typeStr = req.path.includes("video") || req.path.includes("mp4") ? "video" : "audio";
-    const extStr = typeStr === "audio" ? "m4a" : "mp4";
+    const typeStr = "audio";
+    const extStr = "m4a";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
+    // 1. Disk cache kontrolü — dosya zaten varsa direkt gönder (Content-Length ile!)
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 150 * 1024 : 20 * 1024;
+      const minSize = 20 * 1024;
       if (stats.size < minSize) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
+        console.warn(`[DOWNLOAD_MP3] Bozuk cache dosyası siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-        if (req.path.includes("download")) {
-          res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
-        }
-        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        console.log(`[DOWNLOAD_MP3] Cache hit! Dosya gönderiliyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        res.setHeader("Content-Type", "audio/mp4");
+        res.setHeader("Content-Length", stats.size);
+        res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
         return res.sendFile(localFile);
       }
     }
 
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
-
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Content-Disposition", "attachment; filename=audio.m4a");
-
+    // 2. Stream URL çöz
     const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -2092,32 +2088,62 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(500).json({ error: "Invalid stream url" });
     }
 
+    // 3. Önce diske indir (Content-Length bilmek için)
+    const tempFile = localFile + ".dl.tmp";
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
-      timeout: 20000,
+      timeout: 60000,
       validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig(),
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }),
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
       }
     });
 
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
+    const writer = fs.createWriteStream(tempFile);
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    if (!fs.existsSync(tempFile)) {
+      return res.status(500).json({ error: "Dosya indirilemedi" });
     }
 
-    response.data.pipe(res);
-
-    if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
+    const dlStats = fs.statSync(tempFile);
+    if (dlStats.size < 20 * 1024) {
+      fs.unlinkSync(tempFile);
+      return res.status(500).json({ error: "İndirilen dosya çok küçük" });
     }
+
+    // Kalıcı cache dosyasına taşı
+    fs.renameSync(tempFile, localFile);
+
+    // 4. Content-Length ile gönder → Android progress bar çalışır!
+    console.log(`[DOWNLOAD_MP3] Başarılı! Dosya gönderiliyor: ${videoId} (${(dlStats.size / 1024 / 1024).toFixed(2)} MB)`);
+    res.setHeader("Content-Type", "audio/mp4");
+    res.setHeader("Content-Length", dlStats.size);
+    res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+
+    // Arka planda R2'ye yükle
+    const r2Key = `audio/${videoId}.m4a`;
+    uploadToR2(r2Key, localFile).catch(() => { });
+
+    return res.sendFile(localFile);
 
   } catch (err) {
     logError("DOWNLOAD_MP3", req.query.videoId, err.message);
     console.error("MP3 ERROR:", err.message);
+    // Temp dosyasını temizle
+    const tempCleanup = path.join(CACHE_DIR, `audio_${req.query.videoId}.m4a.dl.tmp`);
+    if (fs.existsSync(tempCleanup)) {
+      try { fs.unlinkSync(tempCleanup); } catch (e) { }
+    }
     if (!res.headersSent) {
       res.status(500).json({ error: "Audio download failed" });
     } else {
@@ -2199,7 +2225,7 @@ app.get("/download/mp4", async (req, res) => {
         "Referer": "https://www.youtube.com/"
       },
       validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig()
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() })
     });
 
     const writer = fs.createWriteStream(fallbackTempFile);
