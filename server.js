@@ -2125,7 +2125,7 @@ app.get("/download/mp3", async (req, res) => {
   }
 });
 
-//mp4 - GERÇEK İNDİRME: Önce diske tam indir, sonra Content-Length ile gönder
+//mp4 - VERİ ANINDA AKAR — progress bar çalışır!
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -2138,15 +2138,13 @@ app.get("/download/mp4", async (req, res) => {
     const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // 1. Disk cache kontrolü - dosya zaten varsa direkt gönder
+    // 1. Disk cache — dosya varsa Content-Length ile anında gönder
     if (fs.existsSync(localFile)) {
       const fileStats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 150 * 1024 : 20 * 1024;
-      if (fileStats.size < minSize) {
-        console.warn(`[DOWNLOAD_MP4] Bozuk cache dosyası siliniyor: ${localFile}`);
+      if (fileStats.size < 150 * 1024) {
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DOWNLOAD_MP4] Cache hit! Dosya gönderiliyor: ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[DOWNLOAD_MP4] Cache hit! ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
         res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Content-Length", fileStats.size);
         res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
@@ -2154,27 +2152,8 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. YÖNTEM A: yt-dlp ile doğrudan diske indir (en güvenilir — 504 timeout olmaz)
-    console.log(`[DOWNLOAD_MP4] yt-dlp ile doğrudan indiriliyor: ${videoId}`);
-    try {
-      const downloadedFile = await ytdlpDirectDownload(videoId, "video");
-      if (downloadedFile && fs.existsSync(downloadedFile)) {
-        const dlStats = fs.statSync(downloadedFile);
-        console.log(`[DOWNLOAD_MP4] yt-dlp başarılı! Dosya gönderiliyor: ${videoId} (${(dlStats.size / 1024 / 1024).toFixed(2)} MB)`);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Length", dlStats.size);
-        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-        // Arka planda R2'ye yükle
-        const r2Key = `video/${videoId}.mp4`;
-        uploadToR2(r2Key, downloadedFile).catch(() => { });
-        return res.sendFile(downloadedFile);
-      }
-    } catch (ytdlpErr) {
-      console.warn(`[DOWNLOAD_MP4] yt-dlp başarısız: ${ytdlpErr.message}. Fallback deneniyor...`);
-    }
-
-    // 3. YÖNTEM B: URL çözümle + axios ile diske indir (yedek)
-    console.log(`[DOWNLOAD_MP4] Fallback: URL çözümlenip diske indiriliyor: ${videoId}`);
+    // 2. Stream URL çöz (Piped/Invidious/Cobalt → yt-dlp → Youtubei)
+    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
     const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -2187,7 +2166,8 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    const fallbackTempFile = localFile + ".fallback.tmp";
+    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar!)
+    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
@@ -2201,40 +2181,22 @@ app.get("/download/mp4", async (req, res) => {
       ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() })
     });
 
-    const writer = fs.createWriteStream(fallbackTempFile);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    if (!fs.existsSync(fallbackTempFile)) {
-      return res.status(500).json({ error: "Dosya indirilemedi" });
-    }
-
-    const fallbackStats = fs.statSync(fallbackTempFile);
-    if (fallbackStats.size < 150 * 1024) {
-      fs.unlinkSync(fallbackTempFile);
-      return res.status(500).json({ error: "İndirilen dosya çok küçük, muhtemelen bot algılaması" });
-    }
-
-    fs.renameSync(fallbackTempFile, localFile);
-    console.log(`[DOWNLOAD_MP4] Fallback başarılı! Dosya gönderiliyor: ${videoId} (${(fallbackStats.size / 1024 / 1024).toFixed(2)} MB)`);
-
     res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Length", fallbackStats.size);
     res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-    return res.sendFile(localFile);
+
+    // Content-Length varsa gönder → Android gerçek % gösterir
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+
+    response.data.pipe(res);
+
+    // Arka planda diske + R2'ye cache'le
+    downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);
     console.error("MP4 ERROR:", err.message);
-    // Fallback temp dosyasını temizle
-    const tempCleanup = path.join(CACHE_DIR, `video_${req.query.videoId}.mp4.fallback.tmp`);
-    if (fs.existsSync(tempCleanup)) {
-      try { fs.unlinkSync(tempCleanup); } catch (e) { }
-    }
     if (!res.headersSent) {
       res.status(500).json({ error: "MP4 download failed" });
     } else {
