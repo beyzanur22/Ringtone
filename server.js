@@ -1161,6 +1161,113 @@ app.use(async (req, res, next) => {
   }
 });
 
+/* =========================
+   DRM FAZ 2: STREAM TOKEN SİSTEMİ (Redis destekli)
+   Her stream isteği için tek kullanımlık, süresi dolan token üretilir.
+   Token'lar mevcut cache key'lerinden tamamen bağımsızdır (drm:token:* prefix).
+========================= */
+const DRM_TOKEN_TTL = 15 * 60; // 15 dakika (saniye)
+const activeStreamTokens = new Map(); // Redis yoksa fallback
+
+async function generateStreamToken(videoId, userId, type = "audio") {
+  const token = crypto.randomBytes(32).toString("hex");
+  const expires = Date.now() + (DRM_TOKEN_TTL * 1000);
+  const tokenData = { videoId, userId, type, expires, used: false, createdAt: Date.now() };
+
+  try {
+    if (redis) {
+      await redis.set(`drm:token:${token}`, JSON.stringify(tokenData), "EX", DRM_TOKEN_TTL);
+    }
+  } catch (e) { /* Redis hata, in-memory fallback */ }
+  activeStreamTokens.set(token, tokenData);
+
+  console.log(`[DRM] Token üretildi: ${token.substring(0, 8)}... | videoId: ${videoId} | type: ${type}`);
+  return { token, expires };
+}
+
+async function validateStreamToken(token, videoId) {
+  let entry = null;
+
+  // Önce Redis'ten kontrol et
+  try {
+    if (redis) {
+      const redisData = await redis.get(`drm:token:${token}`);
+      if (redisData) entry = JSON.parse(redisData);
+    }
+  } catch (e) { /* Redis hata, in-memory fallback */ }
+
+  // Redis'te yoksa in-memory'den bak
+  if (!entry) entry = activeStreamTokens.get(token);
+  if (!entry) return { valid: false, reason: "Token bulunamadı" };
+
+  if (entry.expires < Date.now()) {
+    activeStreamTokens.delete(token);
+    try { if (redis) await redis.del(`drm:token:${token}`); } catch (e) {}
+    return { valid: false, reason: "Token süresi dolmuş" };
+  }
+  if (entry.videoId !== videoId) return { valid: false, reason: "Video ID uyuşmuyor" };
+  if (entry.used) return { valid: false, reason: "Token zaten kullanıldı" };
+
+  // Token'ı kullanıldı olarak işaretle (tek kullanımlık)
+  entry.used = true;
+  activeStreamTokens.set(token, entry);
+  try {
+    if (redis) await redis.set(`drm:token:${token}`, JSON.stringify(entry), "EX", 60); // 1 dk sonra otomatik silinir
+  } catch (e) {}
+
+  console.log(`[DRM] Token doğrulandı: ${token.substring(0, 8)}... | videoId: ${videoId}`);
+  return { valid: true };
+}
+
+// Token temizleyici: Süresi dolmuş in-memory token'ları her 5 dakikada temizle
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of activeStreamTokens) {
+    if (val.expires < now || val.used) activeStreamTokens.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+/* =========================
+   DRM FAZ 5: ERİŞİM İZLEME & ABUSE TESPİTİ
+   Her kullanıcının stream erişimini takip eder.
+   1 saatte 100+ farklı video = şüpheli aktivite → otomatik engel.
+========================= */
+const userStreamTracker = new Map();
+
+function trackStreamAccess(userId, videoId, type) {
+  if (!userStreamTracker.has(userId)) {
+    userStreamTracker.set(userId, { count: 0, videos: new Set(), firstSeen: Date.now(), lastSeen: Date.now() });
+  }
+  const tracker = userStreamTracker.get(userId);
+  tracker.count++;
+  tracker.videos.add(videoId);
+  tracker.lastSeen = Date.now();
+
+  // Abuse tespiti: 1 saatte 100'den fazla farklı video = şüpheli
+  const hourMs = 60 * 60 * 1000;
+  if (tracker.videos.size > 100 && (Date.now() - tracker.firstSeen) < hourMs) {
+    console.warn(`[DRM_ABUSE] ⚠️ Şüpheli aktivite: IP ${userId} - ${tracker.videos.size} video / ${tracker.count} istek`);
+    return false; // Erişimi engelle
+  }
+  return true;
+}
+
+// Tracker temizleyici (her saat eski kayıtları sil)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of userStreamTracker) {
+    if (now - val.lastSeen > 2 * 60 * 60 * 1000) userStreamTracker.delete(key);
+  }
+}, 60 * 60 * 1000);
+
+// DRM yardımcı: Koruma header'larını ekle
+function setDrmHeaders(res) {
+  res.setHeader("X-DRM-Protected", "true");
+  res.setHeader("X-Content-Protection", "RingtoneMaster-DRM/1.0");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+}
+
 
 /* =========================
    FILES & CONFIG
@@ -1481,6 +1588,22 @@ app.get("/search", searchLimiter, async (req, res) => {
   }
 });
 
+// DRM FAZ 2: Stream Token Endpoint — İstemci önce token alır
+app.post("/stream/token", async (req, res) => {
+  try {
+    const { videoId, type } = req.body;
+    if (!videoId || !isValidVideoId(videoId)) {
+      return res.status(400).json({ error: "Invalid videoId" });
+    }
+    const userId = req.headers["x-device-id"] || req.ip;
+    const tokenData = await generateStreamToken(videoId, userId, type || "audio");
+    res.json(tokenData);
+  } catch (err) {
+    console.error("[DRM] Token üretme hatası:", err.message);
+    res.status(500).json({ error: "Token generation failed" });
+  }
+});
+
 // STREAM (Direct Pipe)
 // STREAM 
 
@@ -1490,6 +1613,25 @@ app.get("/stream", async (req, res) => {
     if (!videoId || !isValidVideoId(videoId)) {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
+
+    // DRM FAZ 2: Stream token doğrulaması
+    const streamToken = req.query.token || req.headers["x-stream-token"];
+    if (streamToken) {
+      const tokenCheck = await validateStreamToken(streamToken, videoId);
+      if (!tokenCheck.valid) {
+        console.warn(`[DRM] Token reddedildi: ${tokenCheck.reason} | videoId: ${videoId} | IP: ${req.ip}`);
+        return res.status(403).json({ error: "Invalid or expired stream token", reason: tokenCheck.reason });
+      }
+    }
+
+    // DRM FAZ 5: Erişim izleme & abuse tespiti
+    const accessAllowed = trackStreamAccess(req.ip, videoId, "audio");
+    if (!accessAllowed) {
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+
+    // DRM: Koruma header'ları
+    setDrmHeaders(res);
 
     const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
     const extStr = typeStr === "audio" ? "m4a" : "mp4";
@@ -1623,6 +1765,25 @@ app.get("/stream/video", async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
+
+    // DRM FAZ 2: Stream token doğrulaması
+    const streamToken = req.query.token || req.headers["x-stream-token"];
+    if (streamToken) {
+      const tokenCheck = await validateStreamToken(streamToken, videoId);
+      if (!tokenCheck.valid) {
+        console.warn(`[DRM] Video token reddedildi: ${tokenCheck.reason} | videoId: ${videoId} | IP: ${req.ip}`);
+        return res.status(403).json({ error: "Invalid or expired stream token", reason: tokenCheck.reason });
+      }
+    }
+
+    // DRM FAZ 5: Erişim izleme & abuse tespiti
+    const accessAllowed = trackStreamAccess(req.ip, videoId, "video");
+    if (!accessAllowed) {
+      return res.status(429).json({ error: "Too many requests. Please try again later." });
+    }
+
+    // DRM: Koruma header'ları
+    setDrmHeaders(res);
 
     // ★ KATMAN 0: CLOUDFLARE R2 (Video için de en hızlı yol)
     const r2Key = `video/${videoId}.mp4`;
