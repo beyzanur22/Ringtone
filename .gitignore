@@ -7,4 +7,6 @@ yt_cache/
 proxies.txt
 error.log
 cache/
+# Cookie dosyaları HARİÇ tüm .txt'leri ignore et
 *.txt
+!yt_cookies/*.txt
