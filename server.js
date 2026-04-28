@@ -1609,20 +1609,28 @@ app.get("/search", searchLimiter, async (req, res) => {
       if (!searchSuccess) {
         try {
           const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-          if (pipedRes.data && pipedRes.data.length > 0) {
-            const pipedItems = pipedRes.data.map(item => ({
-              id: { videoId: (item.url || "").split("?v=")[1] },
-              snippet: {
-                title: item.title,
-                channelTitle: item.uploaderName,
-                channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
-                thumbnails: { high: { url: item.thumbnail || "" } }
-              }
-            }));
-            resultData = filterBlockedChannels(pipedItems);
-            nextToken = "";
-            searchSuccess = true;
-            console.log(`[SEARCH] ✅ Piped kazandı: "${query}"`);
+          const pipedData = pipedRes.data?.items || (Array.isArray(pipedRes.data) ? pipedRes.data : []);
+          if (pipedData.length > 0) {
+            const pipedItems = pipedData
+              .filter(item => item.url && item.url.includes("?v="))
+              .map(item => {
+                const videoId = (item.url || "").split("?v=")[1];
+                return {
+                  id: { videoId },
+                  snippet: {
+                    title: item.title,
+                    channelTitle: item.uploaderName,
+                    channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
+                    thumbnails: { high: { url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } }
+                  }
+                };
+              });
+            if (pipedItems.length > 0) {
+              resultData = filterBlockedChannels(pipedItems);
+              nextToken = "";
+              searchSuccess = true;
+              console.log(`[SEARCH] ✅ Piped kazandı: "${query}" (${pipedItems.length} sonuç)`);
+            }
           }
         } catch (pipedErr) {
           console.warn(`[SEARCH] Piped başarısız, Invidious deneniyor: ${pipedErr.message}`);
@@ -1642,7 +1650,7 @@ app.get("/search", searchLimiter, async (req, res) => {
                   title: item.title,
                   channelTitle: item.author,
                   channelId: item.authorId || "",
-                  thumbnails: { high: { url: item.videoThumbnails?.find(t => t.quality === "high")?.url || "" } }
+                  thumbnails: { high: { url: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg` } }
                 }
               }));
               resultData = filterBlockedChannels(invItems);
@@ -2043,6 +2051,21 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
   console.log(`Redis: ${redis ? "bağlı" : "in-memory fallback"}`);
+
+  // Eski kırık thumbnail cache'ini temizle
+  try {
+    if (redis) {
+      const searchKeys = await redis.keys("search:*");
+      const top50Keys = await redis.keys("top50:*");
+      const allKeys = [...searchKeys, ...top50Keys];
+      if (allKeys.length > 0) {
+        await redis.del(...allKeys);
+        console.log(`[STARTUP] ${allKeys.length} eski cache kaydı temizlendi`);
+      }
+    }
+    memoryCache.clear();
+  } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
+
   await warmTop50();
 });
 
