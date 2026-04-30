@@ -1791,21 +1791,43 @@ app.get("/stream", async (req, res) => {
     const r2Key = `${typeStr}/${videoId}.${extStr}`;
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz, YouTube'a HİÇ gitmez)
+    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz)
     const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
     if (mediaTrack && mediaTrack.files) {
       const mediaFile = mediaTrack.files[extStr === "m4a" ? "m4a" : "mp4"];
       if (mediaFile && fs.existsSync(mediaFile)) {
         console.log(`[MEDIA_LIB_HIT] 🎵 Kendi diskimizden sunuluyor: ${videoId}`);
         mediaLib.recordAccess(videoId);
+        const fSize = fs.statSync(mediaFile).size;
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/mp4");
-        res.setHeader("Content-Length", fs.statSync(mediaFile).size);
+        res.setHeader("Content-Length", fSize);
         res.setHeader("Accept-Ranges", "bytes");
         return res.sendFile(mediaFile);
       }
     }
 
-    // ★ KATMAN 0: CLOUDFLARE R2 (En hızlı — YouTube'a hiç gitmez)
+    // ★ KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
+    if (fs.existsSync(localFile)) {
+      const stats = fs.statSync(localFile);
+      const minSize = typeStr === "video" ? 100 * 1024 : 20 * 1024;
+      if (stats.size < minSize) {
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DISK_CACHE_HIT] ⚡ Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        if (req.path.includes("download")) {
+          res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+        }
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        res.setHeader("Content-Length", stats.size);
+        res.setHeader("Accept-Ranges", "bytes");
+        // Arka planda R2'ye yükle
+        uploadToR2(r2Key, localFile).catch(() => { });
+        return res.sendFile(localFile);
+      }
+    }
+
+    // ★ KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
     try {
       const r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
@@ -1815,26 +1837,7 @@ app.get("/stream", async (req, res) => {
         r2Data.stream.pipe(res);
         return;
       }
-    } catch (r2Err) { /* R2 yoksa disk/YouTube'a devam */ }
-
-    // KATMAN 1: DISK CACHE
-    if (fs.existsSync(localFile)) {
-      const stats = fs.statSync(localFile);
-      const minSize = typeStr === "video" ? 1024 * 1024 : 200 * 1024;
-      if (stats.size < minSize) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya (çok küçük), siliniyor: ${localFile}`);
-        fs.unlinkSync(localFile);
-      } else {
-        console.log(`[DISK_CACHE_HIT] Serving local ${typeStr} for`, videoId);
-        if (req.path.includes("download")) {
-          res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
-        }
-        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
-        // Arka planda R2'ye yükle (bir sonraki istek R2'den gelsin)
-        uploadToR2(r2Key, localFile).catch(() => { });
-        return res.sendFile(localFile);
-      }
-    }
+    } catch (r2Err) { /* R2 yoksa YouTube'a devam */ }
 
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -1971,19 +1974,50 @@ app.get("/stream/video", async (req, res) => {
     // DRM: Koruma header'ları
     setDrmHeaders(res);
 
-    // ★ KATMAN 0: CLOUDFLARE R2 (Video için de en hızlı yol)
     const r2Key = `video/${videoId}.mp4`;
+    const localVideoFile = path.join(CACHE_DIR, `video_${videoId}.mp4`);
+
+    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (Kendi diskimizden video)
+    const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
+    if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
+      const videoFile = mediaTrack.files.mp4;
+      const fStats = fs.statSync(videoFile);
+      console.log(`[MEDIA_VIDEO_HIT] 🎬 Video diskten sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      mediaLib.recordAccess(videoId);
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Length", fStats.size);
+      res.setHeader("Accept-Ranges", "bytes");
+      return res.sendFile(videoFile);
+    }
+
+    // ★ KATMAN 0: DISK CACHE (Anlık)
+    if (fs.existsSync(localVideoFile)) {
+      const vStats = fs.statSync(localVideoFile);
+      if (vStats.size > 100 * 1024) {
+        console.log(`[DISK_VIDEO_HIT] ⚡ Video diskten: ${videoId} (${(vStats.size / 1024 / 1024).toFixed(2)} MB)`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", vStats.size);
+        res.setHeader("Accept-Ranges", "bytes");
+        uploadToR2(r2Key, localVideoFile).catch(() => { });
+        return res.sendFile(localVideoFile);
+      } else {
+        fs.unlinkSync(localVideoFile);
+      }
+    }
+
+    // ★ KATMAN 1: CLOUDFLARE R2
     try {
       const r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
-        console.log(`[R2_VIDEO_HIT] ☁️ Video Cloudflare'den sunuluyor: ${videoId}`);
+        console.log(`[R2_VIDEO_HIT] ☁️ Video R2'den sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
         r2Data.stream.pipe(res);
         return;
       }
-    } catch (r2Err) { /* R2 yoksa YouTube'a devam */ }
+    } catch (r2Err) { }
 
+    // KATMAN 2: YouTube'dan çöz
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -1992,7 +2026,7 @@ app.get("/stream/video", async (req, res) => {
       streamUrl = cachedData.url;
       console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
     } else {
-      console.log(`[VIDEO_RESOLVE] Akıllı Algoritma ve Fallback ile YouTube'dan doğrudan hızlı URL çekiliyor: ${videoId}`);
+      console.log(`[VIDEO_RESOLVE] YouTube'dan video URL çözümleniyor: ${videoId}`);
       const ua = getRandomUA();
       const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
       const countryClient = getPlayerClientForCountry(country);
@@ -2006,13 +2040,12 @@ app.get("/stream/video", async (req, res) => {
     const headersOptions = {
       "User-Agent": getRandomUA(),
       "Referer": "https://www.youtube.com/",
-      "Accept-Encoding": "identity" // Hayati önem taşıyor: YouTube'un videoyu GZIP ile gönderip ExoPlayer'ı bozmasını engeller.
+      "Accept-Encoding": "identity"
     };
     if (req.headers.range) headersOptions["Range"] = req.headers.range;
 
-    // M3U8 kontrolüne artık gerek yok, çünkü HTTP Progressive zorladık. Fakat M3U8 gelirse direkt proxy yapıp bozulmasına izin vermemek için son güvenlik bırakılır.
     if (streamUrl.includes(".m3u8") || streamUrl.includes("manifest/")) {
-      console.warn(`[STREAM_VIDEO_HLS] Zorunlu MP4 yerine M3U8 geldi! Android HlsMediaSource gerektirir. Yönlendiriliyor...`);
+      console.warn(`[STREAM_VIDEO_HLS] M3U8 geldi, yönlendiriliyor...`);
       return res.redirect(streamUrl);
     }
 
@@ -2028,9 +2061,8 @@ app.get("/stream/video", async (req, res) => {
         ...getProxyAxiosConfig({ _targetUrl: streamUrl })
       });
     } catch (fetchErr) {
-      // Eğer YouTube URL'sinin süresi dolmuş veya IP'ye bloke konmuşsa (403), önbelleği temizleyip anında taze kopyayı çek
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.warn(`[STREAM_VIDEO] YouTube URL süresi doldu (403/404). Önbellek silinip taze link alınıyor: ${videoId}`);
+        console.warn(`[STREAM_VIDEO] 403/404 — taze link alınıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
 
@@ -2061,6 +2093,23 @@ app.get("/stream/video", async (req, res) => {
     if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
     response.data.pipe(res);
+
+    // ★ ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet (bir sonraki izlemede diskten gelir)
+    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+      const cookiePath = getRandomCookie();
+      const proxyUrl = getRandomProxy();
+      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+        .then(result => {
+          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
+          if (result.mp4) {
+            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch(e) {}
+          }
+          console.log(`[FFMPEG_VIDEO_BG] ✅ Video kalıcı kaydedildi: ${videoId}`);
+        })
+        .catch(err => {
+          console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+        });
+    }
 
   } catch (err) {
     logError("STREAM_VIDEO_PROXY", req.query.videoId, err.message);
