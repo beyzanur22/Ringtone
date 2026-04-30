@@ -40,6 +40,10 @@ const Redis = require("ioredis");
 const PQueue = require("p-queue").default;
 const { Innertube, UniversalCache } = require("youtubei.js");
 
+// ★ FFmpeg Worker & Media Library
+const ffmpegWorker = require("./ffmpeg_worker");
+const mediaLib = require("./media_library");
+
 /* =========================
    ANTI-BOT FAZ 1: COOKIE & PROXY ROTASYONU
    yt_cookies/ klasörüne koyduğunuz tüm .txt dosyaları otomatik algılanır.
@@ -1118,10 +1122,10 @@ const axiosClient = axios.create({
 function getProxyAxiosConfig(extraConfig = {}) {
   const config = { ...extraConfig };
   const targetUrl = config._targetUrl || "";
-  const needsProxy = targetUrl.includes("googlevideo.com") || 
-                     targetUrl.includes("youtube.com") ||
-                     targetUrl.includes("ytimg.com") ||
-                     targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
+  const needsProxy = targetUrl.includes("googlevideo.com") ||
+    targetUrl.includes("youtube.com") ||
+    targetUrl.includes("ytimg.com") ||
+    targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
   if (process.env.PROXY_URL && needsProxy) {
     config.httpsAgent = new HttpsProxyAgent(process.env.PROXY_URL);
     config.httpAgent = undefined; // proxy agent kullanılacak
@@ -1498,13 +1502,15 @@ function getPlayerClientForCountry(countryCode) {
 ========================= */
 
 app.get("/health", (req, res) => {
+  const mStats = mediaLib.getStats();
   res.json({
     status: "ok",
     uptimeSeconds: Math.floor(process.uptime()),
     memoryRssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
     redis: redis ? "connected" : "disconnected",
     ytDlp: Date.now() < ytDlpCircuitBreakerUntil ? "circuit_breaker_open" : "ok",
-    youtubeApi: youtubeApiStatus
+    youtubeApi: youtubeApiStatus,
+    mediaLibrary: { tracks: mStats.readyTracks, diskMB: mStats.totalDiskMB }
   });
 });
 
@@ -1513,7 +1519,18 @@ app.get("/admin/stats", (req, res) => {
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-    stats: stats
+    stats: stats,
+    mediaLibrary: mediaLib.getStats(),
+    mediaDisk: ffmpegWorker.getMediaDiskUsage()
+  });
+});
+
+// ★ Medya kütüphanesi detaylı istatistikler
+app.get("/admin/media-stats", (req, res) => {
+  res.json({
+    library: mediaLib.getStats(),
+    disk: ffmpegWorker.getMediaDiskUsage(),
+    recentTracks: mediaLib.getAllTracks({ sortBy: "lastAccessed", limit: 20 })
   });
 });
 
@@ -1774,6 +1791,20 @@ app.get("/stream", async (req, res) => {
     const r2Key = `${typeStr}/${videoId}.${extStr}`;
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
+    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz, YouTube'a HİÇ gitmez)
+    const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
+    if (mediaTrack && mediaTrack.files) {
+      const mediaFile = mediaTrack.files[extStr === "m4a" ? "m4a" : "mp4"];
+      if (mediaFile && fs.existsSync(mediaFile)) {
+        console.log(`[MEDIA_LIB_HIT] 🎵 Kendi diskimizden sunuluyor: ${videoId}`);
+        mediaLib.recordAccess(videoId);
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/mp4");
+        res.setHeader("Content-Length", fs.statSync(mediaFile).size);
+        res.setHeader("Accept-Ranges", "bytes");
+        return res.sendFile(mediaFile);
+      }
+    }
+
     // ★ KATMAN 0: CLOUDFLARE R2 (En hızlı — YouTube'a hiç gitmez)
     try {
       const r2Data = await getR2Stream(r2Key);
@@ -1880,6 +1911,25 @@ app.get("/stream", async (req, res) => {
 
     if (typeof streamUrl !== 'undefined') {
       downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
+
+      // ★ ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
+      if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+        mediaLib.upsertTrack(videoId, { status: "processing" });
+        const cookiePath = getRandomCookie();
+        const proxyUrl = getRandomProxy();
+        ffmpegWorker.processAudio(videoId, {}, { format: "m4a", cookiePath, proxyUrl })
+          .then(result => {
+            mediaLib.markReady(videoId, result);
+            ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
+              if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
+            }).catch(() => {});
+            console.log(`[FFMPEG_BG] ✅ Arka planda kalıcı dosya oluşturuldu: ${videoId}`);
+          })
+          .catch(err => {
+            mediaLib.markFailed(videoId, err.message);
+            console.warn(`[FFMPEG_BG] ❌ Arka plan işleme başarısız: ${videoId}: ${err.message}`);
+          });
+      }
     }
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
@@ -2081,6 +2131,19 @@ app.get("/download/mp3", async (req, res) => {
     const typeStr = "audio";
     const extStr = "m4a";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    // ★ KATMAN 0: FFmpeg Media Library (kalıcı M4A dosyası)
+    const mediaTrack = mediaLib.getReadyTrack(videoId, "m4a");
+    if (mediaTrack && mediaTrack.files?.m4a && fs.existsSync(mediaTrack.files.m4a)) {
+      const filePath = mediaTrack.files.m4a;
+      const fStats = fs.statSync(filePath);
+      console.log(`[DOWNLOAD_MP3] 🎵 Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      mediaLib.recordAccess(videoId);
+      res.setHeader("Content-Type", "audio/mp4");
+      res.setHeader("Content-Length", fStats.size);
+      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+      return res.sendFile(filePath);
+    }
 
     // 1. Disk cache — dosya varsa Content-Length ile anında gönder (progress %0→%100)
     if (fs.existsSync(localFile)) {
