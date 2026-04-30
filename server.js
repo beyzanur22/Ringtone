@@ -1078,7 +1078,6 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     // KATMAN 4: yt-dlp (2sn gecikme + jitter ile)
     allPromises.push(
       (async () => {
-        await new Promise(r => setTimeout(r, 2000)); // 2sn bekle — 3.parti API'lere şans ver
         await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
         const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
         const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -1091,7 +1090,6 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     // KATMAN 5: Youtubei.js (2sn gecikme + jitter ile)
     allPromises.push(
       (async () => {
-        await new Promise(r => setTimeout(r, 2000)); // 2sn bekle — 3.parti API'lere şans ver
         await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
         const ytUrl = await resolveWithYoutubei(videoId, type);
         if (ytUrl) return { source: "youtubei", url: ytUrl };
@@ -1734,6 +1732,31 @@ app.get("/search", searchLimiter, async (req, res) => {
     await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
     res.setHeader("Cache-Control", "no-store");
     res.json(result);
+
+    // ★ ARAMA SONUÇLARI ÖN-ISITMA: İlk 5 şarkının URL'ini arka planda çöz
+    // Kullanıcı tıkladığında anında açılsın diye
+    if (resultData && Array.isArray(resultData)) {
+      const top5 = resultData.slice(0, 5);
+      top5.forEach((item, i) => {
+        const vid = typeof item.id === "object" ? item.id.videoId : item.id;
+        if (!vid) return;
+        const pKey = `stream:audio:${vid}`;
+        cacheGet(pKey).then(cached => {
+          if (!cached) {
+            setTimeout(() => {
+              queue.add(async () => {
+                try {
+                  const pua = getRandomUA();
+                  const pUrl = await resolveStreamUrlWithFallback(vid, "audio", pua, "web");
+                  await cacheSet(pKey, { url: pUrl, ua: pua }, STREAM_CACHE_DURATION);
+                  console.log(`[SEARCH_PREWARM] ⚡ Hazırlandı: ${vid}`);
+                } catch (e) { /* sessiz */ }
+              }).catch(() => {});
+            }, i * 1500); // 1.5sn arayla, YouTube'u boğmamak için
+          }
+        });
+      });
+    }
   } catch (error) {
     logError("SEARCH", null, error.message);
     console.error("SEARCH ERROR:", error.message);
