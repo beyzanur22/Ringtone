@@ -1984,24 +1984,70 @@ app.get("/stream/video", async (req, res) => {
     if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
       const videoFile = mediaTrack.files.mp4;
       const fStats = fs.statSync(videoFile);
-      console.log(`[MEDIA_VIDEO_HIT] 🎬 Video diskten sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      const fileSize = fStats.size;
+      console.log(`[MEDIA_VIDEO_HIT] 🎬 Video diskten sunuluyor: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
       mediaLib.recordAccess(videoId);
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Length", fStats.size);
-      res.setHeader("Accept-Ranges", "bytes");
-      return res.sendFile(videoFile);
+
+      // ★ Range Request desteği (ExoPlayer için ZORUNLU)
+      const range = req.headers.range;
+      if (range) {
+        const parts = range.replace(/bytes=/, "").split("-");
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+        const chunkSize = (end - start) + 1;
+
+        res.writeHead(206, {
+          "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunkSize,
+          "Content-Type": "video/mp4",
+        });
+        const fileStream = fs.createReadStream(videoFile, { start, end });
+        return fileStream.pipe(res);
+      } else {
+        res.writeHead(200, {
+          "Content-Length": fileSize,
+          "Content-Type": "video/mp4",
+          "Accept-Ranges": "bytes",
+        });
+        const fileStream = fs.createReadStream(videoFile);
+        return fileStream.pipe(res);
+      }
     }
 
     // ★ KATMAN 0: DISK CACHE (Anlık)
     if (fs.existsSync(localVideoFile)) {
       const vStats = fs.statSync(localVideoFile);
       if (vStats.size > 100 * 1024) {
-        console.log(`[DISK_VIDEO_HIT] ⚡ Video diskten: ${videoId} (${(vStats.size / 1024 / 1024).toFixed(2)} MB)`);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Length", vStats.size);
-        res.setHeader("Accept-Ranges", "bytes");
+        const fileSize = vStats.size;
+        console.log(`[DISK_VIDEO_HIT] ⚡ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
         uploadToR2(r2Key, localVideoFile).catch(() => { });
-        return res.sendFile(localVideoFile);
+
+        // ★ Range Request desteği (ExoPlayer için ZORUNLU)
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+          const chunkSize = (end - start) + 1;
+
+          res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${fileSize}`,
+            "Accept-Ranges": "bytes",
+            "Content-Length": chunkSize,
+            "Content-Type": "video/mp4",
+          });
+          const fileStream = fs.createReadStream(localVideoFile, { start, end });
+          return fileStream.pipe(res);
+        } else {
+          res.writeHead(200, {
+            "Content-Length": fileSize,
+            "Content-Type": "video/mp4",
+            "Accept-Ranges": "bytes",
+          });
+          const fileStream = fs.createReadStream(localVideoFile);
+          return fileStream.pipe(res);
+        }
       } else {
         fs.unlinkSync(localVideoFile);
       }
