@@ -84,12 +84,28 @@ function getRandomCookie() {
   return fs.existsSync(path.join(__dirname, "cookies.txt")) ? path.join(__dirname, "cookies.txt") : null;
 }
 
-function getRandomProxy() {
+function getRandomProxy(videoId = null) {
   // Havuzda proxy varsa rastgele seç, yoksa env var
+  let proxyStr = null;
   if (proxyPool.length > 0) {
-    return proxyPool[Math.floor(Math.random() * proxyPool.length)];
+    if (videoId) {
+      let hash = 0;
+      for (let i = 0; i < videoId.length; i++) hash += videoId.charCodeAt(i);
+      proxyStr = proxyPool[hash % proxyPool.length];
+    } else {
+      proxyStr = proxyPool[Math.floor(Math.random() * proxyPool.length)];
+    }
+  } else {
+    proxyStr = process.env.PROXY_URL || null;
   }
-  return process.env.PROXY_URL || null;
+  
+  // IPRoyal Session IP sabitleme: yt-dlp ile axios'un aynı IP'yi kullanması için
+  if (proxyStr && proxyStr.includes("iproyal") && videoId) {
+    const sessionId = videoId.replace(/[^a-zA-Z0-9]/g, 'x').substring(0, 8).padEnd(8, 'x');
+    // IPRoyal format: username:password_session-ID_lifetime-10m@...
+    return proxyStr.replace(/([a-zA-Z0-9]+):([a-zA-Z0-9]+)@/, `$1:$2_session-${sessionId}_lifetime-10m@`);
+  }
+  return proxyStr;
 }
 
 // Başlangıçta yükle + her 10 dakikada bir yeniden tara (yeni dosya eklerseniz otomatik algılanır)
@@ -678,7 +694,7 @@ function ytdlpStream(videoId, type, req, res) {
       args.push("--cookies", streamCookie);
     }
     // Proxy Rotasyonu (Faz 1)
-    const streamProxy = getRandomProxy();
+    const streamProxy = getRandomProxy(videoId);
     if (streamProxy) {
       args.push("--proxy", streamProxy);
     }
@@ -774,7 +790,7 @@ function ytdlpDirectDownload(videoId, type) {
     }
 
     // Proxy Rotasyonu (Faz 1)
-    const dlProxy = getRandomProxy();
+    const dlProxy = getRandomProxy(videoId);
     if (dlProxy) {
       args.push("--proxy", dlProxy);
     }
@@ -844,7 +860,9 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
       }
 
       // Proxy Rotasyonu (Faz 1)
-      const resolveProxy = getRandomProxy();
+      const vIdMatch = videoUrl.match(/v=([^&]+)/);
+      const vId = vIdMatch ? vIdMatch[1] : null;
+      const resolveProxy = getRandomProxy(vId);
       if (resolveProxy) {
         opts.proxy = resolveProxy;
       }
@@ -943,7 +961,7 @@ async function fetchFromPiped(endpointPath) {
   const shuffled = [...PIPED_INSTANCES].sort(() => Math.random() - 0.5);
   for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 5000 });
+      const res = await axiosClient.get(`${instance}${endpointPath}`, { timeout: 1500 });
       if (res && res.data) {
         if (res.data.error) throw new Error(`API Error: ${res.data.error}`);
         if (!res.data.audioStreams && endpointPath.includes("/streams/")) throw new Error("API returned no valid streams.");
@@ -960,7 +978,7 @@ async function fetchFromPiped(endpointPath) {
 // HIZLI PARALEL PIPED — Search için (Promise.any ile en hızlı yanıt)
 async function fetchFromPipedFast(endpointPath) {
   const promises = PIPED_INSTANCES.map(instance =>
-    axiosClient.get(`${instance}${endpointPath}`, { timeout: 3000 })
+    axiosClient.get(`${instance}${endpointPath}`, { timeout: 1500 })
       .then(res => {
         if (res && res.data && !res.data.error) return res;
         throw new Error("Invalid response");
@@ -978,7 +996,7 @@ async function tryInvidiousFallback(videoId, type) {
   const shuffled = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
   for (const instance of shuffled) {
     try {
-      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 3000 });
+      const res = await axiosClient.get(`${instance}/api/v1/videos/${videoId}`, { timeout: 1500 });
       if (res && res.data) {
         if (res.data.error) throw new Error(res.data.error);
         if (type === "audio") {
@@ -1064,39 +1082,36 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
           "Content-Type": "application/json",
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         },
-        timeout: 4000
+        timeout: 1500
       });
       if (cobaltRes.data && cobaltRes.data.url) return { source: "cobalt", url: cobaltRes.data.url };
       throw new Error("Cobalt bulunamadı");
     })()
   );
 
-  // ═══════ 2 SANİYE GECİKMELİ BAŞLAYANLAR (YouTube-direkt, proxy korumalı) ═══════
-  // Piped/Invidious/Cobalt 2sn içinde cevap verirse bunlar hiç başlamaz!
+  // ═══════ YT-DLP + YOUTUBEI — HER ZAMAN ÇALIŞIR (ana kaynaklar) ═══════
+  // Piped/Invidious/Cobalt genelde ölü, yt-dlp artık ana kaynak
+  // forceProxy bayrağı KALDIRILDI → yt-dlp HER DURUMDA yarışa katılır
 
-  if (!forceProxy) {
-    // KATMAN 4: yt-dlp (2sn gecikme + jitter ile)
-    allPromises.push(
-      (async () => {
-        await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
-        const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
-        const url = `https://www.youtube.com/watch?v=${videoId}`;
-        const result = await resolveStreamUrl(url, format, ua, countryClient);
-        if (result) return { source: "yt-dlp", url: result };
-        throw new Error("yt-dlp başarısız");
-      })()
-    );
+  // KATMAN 4: yt-dlp (GECİKMESİZ — ana kaynak)
+  allPromises.push(
+    (async () => {
+      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      const result = await resolveStreamUrl(url, format, ua, countryClient);
+      if (result) return { source: "yt-dlp", url: result };
+      throw new Error("yt-dlp başarısız");
+    })()
+  );
 
-    // KATMAN 5: Youtubei.js (2sn gecikme + jitter ile)
-    allPromises.push(
-      (async () => {
-        await randomJitter(); // Bot tespitini önlemek için ek rastgele gecikme
-        const ytUrl = await resolveWithYoutubei(videoId, type);
-        if (ytUrl) return { source: "youtubei", url: ytUrl };
-        throw new Error("Youtubei başarısız");
-      })()
-    );
-  }
+  // KATMAN 5: Youtubei.js (GECİKMESİZ — paralel)
+  allPromises.push(
+    (async () => {
+      const ytUrl = await resolveWithYoutubei(videoId, type);
+      if (ytUrl) return { source: "youtubei", url: ytUrl };
+      throw new Error("Youtubei başarısız");
+    })()
+  );
 
   try {
     const winner = await Promise.any(allPromises);
@@ -1117,15 +1132,17 @@ const axiosClient = axios.create({
 
 // ★ AKILLI PROXY ROUTING: Proxy SADECE YouTube/googlevideo URL'lerinde kullanılır
 // Piped/Invidious URL'lerinde proxy kullanılmaz → bandwidth tasarrufu
-function getProxyAxiosConfig(extraConfig = {}) {
+function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
   const config = { ...extraConfig };
   const targetUrl = config._targetUrl || "";
   const needsProxy = targetUrl.includes("googlevideo.com") ||
     targetUrl.includes("youtube.com") ||
     targetUrl.includes("ytimg.com") ||
     targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
-  if (process.env.PROXY_URL && needsProxy) {
-    config.httpsAgent = new HttpsProxyAgent(process.env.PROXY_URL);
+  
+  const proxyUrl = getRandomProxy(videoId);
+  if (proxyUrl && needsProxy) {
+    config.httpsAgent = new HttpsProxyAgent(proxyUrl);
     config.httpAgent = undefined; // proxy agent kullanılacak
   }
   delete config._targetUrl; // axios'a göndermeden önce temizle
@@ -1900,28 +1917,33 @@ app.get("/stream", async (req, res) => {
         responseType: "stream",
         headers: headersOptions,
         validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig({ _targetUrl: streamUrl })
+        ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
       });
     } catch (fetchErr) {
       if (fetchErr.response && fetchErr.response.status === 403) {
-        console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Cache silinip taze link alınıyor: ${videoId}`);
+        console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
 
-        const freshUrl = await queue.add(async () => {
-          return await resolveStreamUrlWithFallback(videoId, "audio", getRandomUA(), countryClient, true);
-        });
-        streamUrl = freshUrl;
-        await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
-
-        response = await axiosClient({
-          method: "GET",
-          url: streamUrl,
-          responseType: "stream",
-          headers: headersOptions,
-          validateStatus: (status) => status < 400,
-          ...getProxyAxiosConfig({ _targetUrl: streamUrl })
-        });
+        // Arka planda kalıcı indirmeyi başlat
+        if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+          mediaLib.upsertTrack(videoId, { status: "processing" });
+          const cookiePath = getRandomCookie();
+          const proxyUrl = getRandomProxy(videoId);
+          ffmpegWorker.processAudio(videoId, {}, { format: "m4a", cookiePath, proxyUrl })
+            .then(result => {
+              mediaLib.markReady(videoId, result);
+              ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
+                if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
+              }).catch(() => {});
+            }).catch(err => {
+              mediaLib.markFailed(videoId, err.message);
+            });
+        }
+        
+        // Kullanıcıyı bekletmemek için direkt stream et ve fonksiyonu bitir
+        await ytdlpStream(videoId, "audio", req, res);
+        return;
       } else {
         throw fetchErr;
       }
@@ -1942,7 +1964,7 @@ app.get("/stream", async (req, res) => {
       if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
         mediaLib.upsertTrack(videoId, { status: "processing" });
         const cookiePath = getRandomCookie();
-        const proxyUrl = getRandomProxy();
+        const proxyUrl = getRandomProxy(videoId);
         ffmpegWorker.processAudio(videoId, {}, { format: "m4a", cookiePath, proxyUrl })
           .then(result => {
             mediaLib.markReady(videoId, result);
@@ -2081,29 +2103,32 @@ app.get("/stream/video", async (req, res) => {
         headers: headersOptions,
         decompress: false,
         validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig({ _targetUrl: streamUrl })
+        ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
       });
     } catch (fetchErr) {
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.warn(`[STREAM_VIDEO] 403/404 — taze link alınıyor: ${videoId}`);
+        console.warn(`[STREAM_VIDEO] 403/404 — Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
 
-        const freshUrl = await queue.add(async () => {
-          return await resolveStreamUrlWithFallback(videoId, "video", getRandomUA(), req.headers["cf-ipcountry"] || "UNKNOWN", true);
-        });
-        streamUrl = freshUrl;
-        await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
+        // Arka planda indirme başlat
+        if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+          const cookiePath = getRandomCookie();
+          const proxyUrl = getRandomProxy(videoId);
+          ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+            .then(result => {
+              mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
+              if (result.mp4) {
+                try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch(e) {}
+              }
+            })
+            .catch(err => {
+              console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+            });
+        }
 
-        response = await axiosClient({
-          method: "GET",
-          url: streamUrl,
-          responseType: "stream",
-          headers: headersOptions,
-          decompress: false,
-          validateStatus: (status) => status < 400,
-          ...getProxyAxiosConfig({ _targetUrl: streamUrl })
-        });
+        await ytdlpStream(videoId, "video", req, res);
+        return;
       } else {
         throw fetchErr;
       }
@@ -2120,7 +2145,7 @@ app.get("/stream/video", async (req, res) => {
     // ★ ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet (bir sonraki izlemede diskten gelir)
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
       const cookiePath = getRandomCookie();
-      const proxyUrl = getRandomProxy();
+      const proxyUrl = getRandomProxy(videoId);
       ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
         .then(result => {
           mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
@@ -2251,7 +2276,7 @@ app.get("/download/mp3", async (req, res) => {
       responseType: "stream",
       timeout: 60000,
       validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }),
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId),
       headers: {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
@@ -2336,7 +2361,7 @@ app.get("/download/mp4", async (req, res) => {
         "Referer": "https://www.youtube.com/"
       },
       validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() })
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
     });
 
     res.setHeader("Content-Type", "video/mp4");
