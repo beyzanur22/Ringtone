@@ -98,7 +98,7 @@ function getRandomProxy(videoId = null) {
   } else {
     proxyStr = process.env.PROXY_URL || null;
   }
-  
+
   // IPRoyal Session IP sabitleme: yt-dlp ile axios'un aynı IP'yi kullanması için
   if (proxyStr && proxyStr.includes("iproyal") && videoId) {
     const sessionId = videoId.replace(/[^a-zA-Z0-9]/g, 'x').substring(0, 8).padEnd(8, 'x');
@@ -144,6 +144,9 @@ async function initYoutubei() {
   }
 }
 initYoutubei();
+
+// ★ ÇAKIŞMA ÖNLEYİCİ (Aynı anda birden fazla yt-dlp çalışmasını engeller)
+const ongoingResolutions = new Map();
 
 /* =========================
    ANTI-BOT FAZ 2: HESAP ISITMA (ZOMBİ HESAP KORUMASI)
@@ -1096,7 +1099,7 @@ function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
     targetUrl.includes("youtube.com") ||
     targetUrl.includes("ytimg.com") ||
     targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
-  
+
   const proxyUrl = getRandomProxy(videoId);
   if (proxyUrl && needsProxy) {
     config.httpsAgent = new HttpsProxyAgent(proxyUrl);
@@ -1725,7 +1728,7 @@ app.get("/search", searchLimiter, async (req, res) => {
                   await cacheSet(pKey, { url: pUrl, ua: pua }, STREAM_CACHE_DURATION);
                   console.log(`[SEARCH_PREWARM] ⚡ Hazırlandı: ${vid}`);
                 } catch (e) { /* sessiz */ }
-              }).catch(() => {});
+              }).catch(() => { });
             }, i * 1500); // 1.5sn arayla, YouTube'u boğmamak için
           }
         });
@@ -1758,11 +1761,26 @@ app.post("/stream/token", async (req, res) => {
 // STREAM 
 
 app.get("/stream", async (req, res) => {
-  try {
-    const { videoId } = req.query;
-    if (!videoId || !isValidVideoId(videoId)) {
-      return res.status(400).json({ error: "Invalid or missing videoId" });
+  const { videoId } = req.query;
+  if (!videoId || !isValidVideoId(videoId)) {
+    return res.status(400).json({ error: "Invalid or missing videoId" });
+  }
+
+  const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
+  const cacheKey = `ongoing:${typeStr}:${videoId}`;
+
+  // ★ KİLİT MEKANİZMASI: Eğer bu şarkı şu an çözümleniyorsa, mevcut işlemi bekle
+  if (ongoingResolutions.has(cacheKey)) {
+    console.log(`[DEBOUNCE] 🛡️ ${videoId} zaten çözümleniyor, bekletiliyor...`);
+    try {
+      await ongoingResolutions.get(cacheKey);
+      // İlk işlem bittiğinde akış aşağıdan (cache hit ile) devam edecek
+    } catch (err) {
+      // Önceki hata aldıysa biz yine de bir şans verelim veya hata döndürelim
     }
+  }
+
+  try {
 
     // DRM FAZ 2: Stream token doğrulaması
     const streamToken = req.query.token || req.headers["x-stream-token"];
@@ -1849,10 +1867,24 @@ app.get("/stream", async (req, res) => {
       console.log("AUDIO CACHE HIT:", videoId);
     } else {
       ua = getRandomUA();
-      // Queue ile sıralı çalıştır — jitter KALDIRILDI (hız için)
-      streamUrl = await queue.add(async () => {
-        return resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
+
+      // ÇAKIŞMA ÖNLEYİCİ: Bu videoyu çözme işlemini bir Promise olarak başlat ve Map'e koy
+      const resolutionPromise = queue.add(async () => {
+        try {
+          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
+          return url;
+        } finally {
+          // İşlem bittiğinde (başarılı veya başarısız) Map'ten sil
+          const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+          ongoingResolutions.delete(ongoingKey);
+        }
       });
+
+      const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+      ongoingResolutions.set(ongoingKey, resolutionPromise);
+
+      streamUrl = await resolutionPromise;
+
       // Stream URL'leri 5 saat cache'le (YouTube URL'leri ~6 saat geçerli)
       await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
       console.log("AUDIO CACHE SAVE:", videoId);
@@ -1892,12 +1924,12 @@ app.get("/stream", async (req, res) => {
               mediaLib.markReady(videoId, result);
               ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
                 if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
-              }).catch(() => {});
+              }).catch(() => { });
             }).catch(err => {
               mediaLib.markFailed(videoId, err.message);
             });
         }
-        
+
         // Kullanıcıyı bekletmemek için direkt stream et ve fonksiyonu bitir
         await ytdlpStream(videoId, "audio", req, res);
         return;
@@ -1927,7 +1959,7 @@ app.get("/stream", async (req, res) => {
             mediaLib.markReady(videoId, result);
             ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
               if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
-            }).catch(() => {});
+            }).catch(() => { });
             console.log(`[FFMPEG_BG] ✅ Arka planda kalıcı dosya oluşturuldu: ${videoId}`);
           })
           .catch(err => {
@@ -2122,7 +2154,7 @@ app.get("/stream/video", async (req, res) => {
             .then(result => {
               mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
               if (result.mp4) {
-                try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch(e) {}
+                try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
               }
             })
             .catch(err => {
@@ -2153,7 +2185,7 @@ app.get("/stream/video", async (req, res) => {
         .then(result => {
           mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
           if (result.mp4) {
-            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch(e) {}
+            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
           }
           console.log(`[FFMPEG_VIDEO_BG] ✅ Video kalıcı kaydedildi: ${videoId}`);
         })
@@ -2297,8 +2329,22 @@ app.get("/download/mp3", async (req, res) => {
 
     response.data.pipe(res);
 
-    // Arka planda diske + R2'ye cache'le
-    downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
+    // ★ ARKA PLANDA: FFmpeg ile sesi kalıcı kaydet
+    if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId + "_audio")) {
+      const cookiePath = getRandomCookie();
+      const proxyUrl = getRandomProxy(videoId);
+      ffmpegWorker.processAudio(videoId, {}, { cookiePath, proxyUrl })
+        .then(result => {
+          mediaLib.upsertTrack(videoId, { m4a: result.m4a, status: "ready" });
+          if (result.m4a) {
+            try { mediaLib.upsertTrack(videoId, { m4aSize: fs.statSync(result.m4a).size }); } catch (e) { }
+          }
+          console.log(`[FFMPEG_AUDIO_BG] ✅ Ses kalıcı kaydedildi: ${videoId}`);
+        })
+        .catch(err => {
+          console.warn(`[FFMPEG_AUDIO_BG] ❌ Ses işleme başarısız: ${videoId}: ${err.message}`);
+        });
+    }
 
   } catch (err) {
     logError("DOWNLOAD_MP3", req.query.videoId, err.message);
@@ -2323,6 +2369,19 @@ app.get("/download/mp4", async (req, res) => {
     const typeStr = "video";
     const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+
+    // ★ KATMAN 0: FFmpeg Media Library (kalıcı MP4 dosyası)
+    const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
+    if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
+      const filePath = mediaTrack.files.mp4;
+      const fStats = fs.statSync(filePath);
+      console.log(`[DOWNLOAD_MP4] 🎥 Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      mediaLib.recordAccess(videoId);
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Length", fStats.size);
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+      return res.sendFile(filePath);
+    }
 
     // 1. Disk cache — dosya varsa Content-Length ile anında gönder
     if (fs.existsSync(localFile)) {
@@ -2377,8 +2436,22 @@ app.get("/download/mp4", async (req, res) => {
 
     response.data.pipe(res);
 
-    // Arka planda diske + R2'ye cache'le
-    downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
+    // ★ ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
+    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+      const cookiePath = getRandomCookie();
+      const proxyUrl = getRandomProxy(videoId);
+      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+        .then(result => {
+          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
+          if (result.mp4) {
+            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
+          }
+          console.log(`[FFMPEG_VIDEO_BG] ✅ Video kalıcı kaydedildi: ${videoId}`);
+        })
+        .catch(err => {
+          console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+        });
+    }
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);

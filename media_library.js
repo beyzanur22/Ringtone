@@ -14,7 +14,6 @@
 
 const fs = require("fs");
 const path = require("path");
-
 const DB_FILE = path.join(__dirname, "media_db.json");
 const SAVE_INTERVAL = 30 * 1000; // 30 saniyede bir diske yaz
 
@@ -82,6 +81,7 @@ function upsertTrack(videoId, data) {
       m4a: data.m4aSize || existing.fileSize?.m4a || 0,
       mp3: data.mp3Size || existing.fileSize?.mp3 || 0,
       mp4: data.mp4Size || existing.fileSize?.mp4 || 0
+
     },
     status: data.status || existing.status || "processing",
     source: data.source || existing.source || "youtube",
@@ -159,13 +159,13 @@ function getReadyTrack(videoId, type = "m4a") {
   const filePath = track.files?.[type];
   if (!filePath) return null;
 
-  // Dosya gerçekten var mı kontrol et
+  // Dosya gerçekten var mı kontrol et.
   if (!fs.existsSync(filePath)) {
     // Dosya silinmiş, kaydı güncelle
     track.files[type] = null;
     track.status = "missing";
     dirty = true;
-    return null;
+    return null
   }
 
   return track;
