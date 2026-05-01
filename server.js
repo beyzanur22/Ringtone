@@ -842,49 +842,63 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   }
 
   for (const client of clientsToTry) {
-    try {
-      const opts = {
-        format: format,
-        getUrl: true,
-        addHeader: [
-          "referer:https://www.youtube.com/",
-          `user-agent:${ua}`
-        ]
-      };
+    // İki deneme: önce proxy ile, proxy 402 verirse proxy'siz
+    for (const useProxy of [true, false]) {
+      try {
+        const opts = {
+          format: format,
+          getUrl: true,
+          addHeader: [
+            "referer:https://www.youtube.com/",
+            `user-agent:${ua}`
+          ]
+        };
 
-      // Cookie Rotasyonu (Faz 1)
-      const useCookies = process.env.USE_COOKIES !== "false";
-      const resolveCookie = getRandomCookie();
-      if (useCookies && resolveCookie) {
-        opts.cookies = resolveCookie;
+        // Cookie Rotasyonu (Faz 1)
+        const useCookies = process.env.USE_COOKIES !== "false";
+        const resolveCookie = getRandomCookie();
+        if (useCookies && resolveCookie) {
+          opts.cookies = resolveCookie;
+        }
+
+        // Proxy Rotasyonu — 402 aldıysa proxy'siz dene
+        if (useProxy) {
+          const vIdMatch = videoUrl.match(/v=([^&]+)/);
+          const vId = vIdMatch ? vIdMatch[1] : null;
+          const resolveProxy = getRandomProxy(vId);
+          if (resolveProxy) {
+            opts.proxy = resolveProxy;
+          }
+        } else {
+          console.log(`[yt-dlp] Proxy'siz deneniyor (proxy kotası bitmiş olabilir)`);
+        }
+
+        // "default" = yt-dlp kendi seçsin
+        if (client !== "default") {
+          opts.extractorArgs = `youtube:player_client=${client}`;
+        }
+
+        console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}${useProxy ? '' : ' (NO PROXY)'}`);
+        const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
+        const url = result.toString().trim();
+
+        if (url && url.startsWith("http")) {
+          console.log(`[yt-dlp] Başarılı: client=${client}${useProxy ? '' : ' (proxy-siz)'}`);
+          ytDlpFailCount = 0; // reset on success
+          stats.ytDlpSuccess++;
+          return url;
+        }
+      } catch (err) {
+        const errMsg = (err.stderr || err.message || '').toString();
+        // Proxy 402 (kota bitmiş) hatası → proxy'siz tekrar dene
+        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy'))) {
+          console.warn(`[yt-dlp] Proxy hatası (402/bağlantı hatası). Proxy'siz deneniyor...`);
+          continue; // useProxy=false döngüsüne geç
+        }
+        console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
+        lastError = err;
+        break; // proxy'siz de deneme, bir sonraki client'a geç
       }
-
-      // Proxy Rotasyonu (Faz 1)
-      const vIdMatch = videoUrl.match(/v=([^&]+)/);
-      const vId = vIdMatch ? vIdMatch[1] : null;
-      const resolveProxy = getRandomProxy(vId);
-      if (resolveProxy) {
-        opts.proxy = resolveProxy;
-      }
-
-      // "default" = yt-dlp kendi seçsin
-      if (client !== "default") {
-        opts.extractorArgs = `youtube:player_client=${client}`;
-      }
-
-      console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}`);
-      const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
-      const url = result.toString().trim();
-
-      if (url && url.startsWith("http")) {
-        console.log(`[yt-dlp] Başarılı: client=${client}`);
-        ytDlpFailCount = 0; // reset on success
-        stats.ytDlpSuccess++;
-        return url;
-      }
-    } catch (err) {
-      console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
-      lastError = err;
     }
   }
 
@@ -1029,71 +1043,14 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  // ★ AKILLI ZAMANLI YARIŞ SİSTEMİ
-  // Piped/Invidious/Cobalt HEMEN başlar (YouTube'a hiç gitmez)
-  // yt-dlp/Youtubei 2 SANİYE GECİKMELİ başlar (proxy korumalı)
-  // Promise.any → ilk cevap veren kazanır
-  // Eğer Piped 1sn'de cevap verirse yt-dlp hiç YouTube'a istek göndermez!
+  // ★ SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
+  // Piped/Invidious/Cobalt şu an dünya genelinde ölü (YouTube tarafından engelleniyor)
+  // Gereksiz hata logları ve gecikme yaratıyorlardı → DEVRE DIŞI BIRAKILDI
+  // İleride düzelirlerse tekrar eklenebilir
 
   const allPromises = [];
 
-  // ═══════ HEMEN BAŞLAYANLAR (YouTube'a gitmez, ücretsiz) ═══════
-
-  // KATMAN 1: Piped (anında başlar)
-  allPromises.push(
-    (async () => {
-      const pipedRes = await fetchFromPiped(`/streams/${videoId}`);
-      if (type === "audio") {
-        const streams = pipedRes.data.audioStreams || [];
-        const best = streams.find(s => (s.mimeType && s.mimeType.includes("mp4a")) || s.format === "M4A") || streams[0];
-        if (best && best.url) return { source: "piped", url: best.url };
-      } else {
-        const streams = pipedRes.data.videoStreams || [];
-        const best = streams.find(s => s.videoOnly === false && s.format === "MPEG_4" && s.quality === "720p") ||
-          streams.find(s => s.videoOnly === false && s.format === "MPEG_4") || streams[0];
-        if (best && best.url) return { source: "piped", url: best.url };
-      }
-      throw new Error("Piped bulunamadı");
-    })()
-  );
-
-  // KATMAN 2: Invidious (anında başlar)
-  allPromises.push(
-    (async () => {
-      const invidiousUrl = await tryInvidiousFallback(videoId, type);
-      if (invidiousUrl) return { source: "invidious", url: invidiousUrl };
-      throw new Error("Invidious bulunamadı");
-    })()
-  );
-
-  // KATMAN 3: Cobalt (anında başlar)
-  allPromises.push(
-    (async () => {
-      const payload = {
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        videoQuality: "720",
-        downloadMode: type === "audio" ? "audio" : "auto",
-        audioFormat: "mp3",
-        youtubeVideoCodec: "h264"
-      };
-      const cobaltRes = await axios.post("https://api.cobalt.tools/", payload, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        },
-        timeout: 1500
-      });
-      if (cobaltRes.data && cobaltRes.data.url) return { source: "cobalt", url: cobaltRes.data.url };
-      throw new Error("Cobalt bulunamadı");
-    })()
-  );
-
-  // ═══════ YT-DLP + YOUTUBEI — HER ZAMAN ÇALIŞIR (ana kaynaklar) ═══════
-  // Piped/Invidious/Cobalt genelde ölü, yt-dlp artık ana kaynak
-  // forceProxy bayrağı KALDIRILDI → yt-dlp HER DURUMDA yarışa katılır
-
-  // KATMAN 4: yt-dlp (GECİKMESİZ — ana kaynak)
+  // KATMAN 1: yt-dlp (ANA KAYNAK — proxy + cookies ile çalışır)
   allPromises.push(
     (async () => {
       const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
@@ -1104,7 +1061,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
     })()
   );
 
-  // KATMAN 5: Youtubei.js (GECİKMESİZ — paralel)
+  // KATMAN 2: Youtubei.js (YEDEK — paralel çalışır)
   allPromises.push(
     (async () => {
       const ytUrl = await resolveWithYoutubei(videoId, type);
