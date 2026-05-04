@@ -28,7 +28,7 @@ const TEMP_DIR = path.join(MEDIA_DIR, "temp");
 });
 
 // FFmpeg işlem kuyruğu — aynı anda max 2 dönüşüm (CPU koruması)
-const ffmpegQueue = new PQueue({ concurrency: 2, timeout: 300000 });
+const ffmpegQueue = new PQueue({ concurrency: 2, timeout: 1200000 });
 
 // yt-dlp binary yolu
 function getYtDlpBin() {
@@ -74,7 +74,7 @@ async function processAudio(videoId, metadata = {}, options = {}) {
       const wantMp3 = options.format === "mp3" || options.format === "both";
 
       if (wantM4a && fs.existsSync(m4aFile) && isValidFile(m4aFile, 20 * 1024)) {
-        console.log(`[FFMPEG_WORKER] ✅ M4A zaten var: ${videoId}`);
+        console.log(`[FFMPEG_WORKER]  M4A zaten var: ${videoId}`);
         if (!wantMp3 || (fs.existsSync(mp3File) && isValidFile(mp3File, 20 * 1024))) {
           return buildResult(videoId, m4aFile, mp3File);
         }
@@ -471,9 +471,9 @@ function cleanupTemp() {
 // Her 5 dakikada temp temizliği
 setInterval(cleanupTemp, 5 * 60 * 1000);
 
-// ═══════════════════════════════════════
+// ════════════════════════════════════
 //  EXPORTS
-// ═══════════════════════════════════════
+// ════════════════════════════════════
 
 module.exports = {
   processAudio,

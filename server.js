@@ -40,7 +40,7 @@ const Redis = require("ioredis");
 const PQueue = require("p-queue").default;
 const { Innertube, UniversalCache } = require("youtubei.js");
 
-// ★ FFmpeg Worker & Media Library
+// FFmpeg Worker & Media Library
 const ffmpegWorker = require("./ffmpeg_worker");
 const mediaLib = require("./media_library");
 
@@ -145,7 +145,7 @@ async function initYoutubei() {
 }
 initYoutubei();
 
-// ★ ÇAKIŞMA ÖNLEYİCİ (Aynı anda birden fazla yt-dlp çalışmasını engeller)
+//  ÇAKIŞMA ÖNLEYİCİ (Aynı anda birden fazla yt-dlp çalışmasını engeller)
 const ongoingResolutions = new Map();
 
 /* =========================
@@ -205,7 +205,7 @@ async function warmupAccount() {
       await new Promise(r => setTimeout(r, 3000 + Math.random() * 5000));
     }
 
-    console.log("[WARMUP] Hesap ısıtma rutini tamamlandı ✅");
+    console.log("[WARMUP] Hesap ısıtma rutini tamamlandı ");
   } catch (e) {
     console.warn("[WARMUP] Isıtma başarısız (önemsiz, sistem etkilenmez):", e.message);
   }
@@ -222,7 +222,7 @@ const queue = new PQueue({
   intervalCap: 3       // 2 saniyede max 3 istek (insan davranışı)
 });
 
-// ★ VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
+//  VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 function isValidVideoId(id) {
   return id && VIDEO_ID_REGEX.test(id);
@@ -303,7 +303,7 @@ async function getR2Stream(key) {
   }
 }
 
-// ★ R2 ERİŞİM TAKİBİ: Her dinlemede son erişim zamanını Redis'e kaydet
+// R2 ERİŞİM TAKİBİ: Her dinlemede son erişim zamanını Redis'e kaydet
 async function trackR2Access(key) {
   try {
     if (redis) {
@@ -312,7 +312,7 @@ async function trackR2Access(key) {
   } catch (err) { /* sessizce devam */ }
 }
 
-// ★ R2 OTOMATİK TEMİZLEYİCİ: 30 gündür dinlenmeyen şarkıları siler
+//  R2 OTOMATİK TEMİZLEYİCİ: 30 gündür dinlenmeyen şarkıları siler
 async function cleanupR2() {
   if (!r2Client) return;
   try {
@@ -483,7 +483,7 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
     }
 
     console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-    // ★ Arka planda R2'ye de yükle (kalıcı bulut cache)
+    // Arka planda R2'ye de yükle (kalıcı bulut cache)
     const r2Key = `${type}/${videoId}.${ext}`;
     uploadToR2(r2Key, filePath).catch(() => { });
   } catch (err) {
@@ -786,13 +786,13 @@ function ytdlpDirectDownload(videoId, type) {
     // Video ise çıktıyı direkt mp4 olarak alıyoruz (merge gerekmez)
     // args.push("--merge-output-format", "mp4");
 
-    // Cookie Rotasyonu (Faz 1)
+    // Cookie Rotasyonu 
     const dlCookie = getRandomCookie();
     if (process.env.USE_COOKIES !== "false" && dlCookie) {
       args.push("--cookies", dlCookie);
     }
 
-    // Proxy Rotasyonu (Faz 1)
+    // Proxy Rotasyonu 
     const dlProxy = getRandomProxy(videoId);
     if (dlProxy) {
       args.push("--proxy", dlProxy);
@@ -857,7 +857,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           ]
         };
 
-        // Cookie Rotasyonu (Faz 1)
+        // Cookie Rotasyonu 
         const useCookies = process.env.USE_COOKIES !== "false";
         const resolveCookie = getRandomCookie();
         if (useCookies && resolveCookie) {
@@ -1046,7 +1046,7 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  // ★ SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
+  // SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
   // Piped/Invidious/Cobalt şu an dünya genelinde ölü (YouTube tarafından engelleniyor)
   // Gereksiz hata logları ve gecikme yaratıyorlardı → DEVRE DIŞI BIRAKILDI
   // İleride düzelirlerse tekrar eklenebilir
@@ -1075,7 +1075,7 @@ async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, fo
 
   try {
     const winner = await Promise.any(allPromises);
-    console.log(`[RESOLVE] ✅ ${winner.source.toUpperCase()} kazandı (en hızlı): ${videoId}`);
+    console.log(`[RESOLVE] --> ${winner.source.toUpperCase()} kazandı (en hızlı): ${videoId}`);
     stats.proxyFallbackSuccess++;
     return winner.url;
   } catch (allErr) {
@@ -1090,7 +1090,7 @@ const axiosClient = axios.create({
   httpsAgent: new https.Agent({ keepAlive: true })
 });
 
-// ★ AKILLI PROXY ROUTING: Proxy SADECE YouTube/googlevideo URL'lerinde kullanılır
+//  AKILLI PROXY ROUTING: Proxy SADECE YouTube/googlevideo URL'lerinde kullanılır
 // Piped/Invidious URL'lerinde proxy kullanılmaz → bandwidth tasarrufu
 function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
   const config = { ...extraConfig };
@@ -1128,7 +1128,7 @@ app.use((req, res, next) => {
 ========================= */
 const crypto = require("crypto");
 
-// ★ TOKEN EXCHANGE: Geçici API token'ları yönetimi
+// TOKEN EXCHANGE: Geçici API token'ları yönetimi
 // APK'daki secret key sadece 1 kez /auth/token için kullanılır
 // Sonraki tüm istekler geçici token ile yapılır
 const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
@@ -1178,7 +1178,7 @@ app.post("/auth/token", async (req, res) => {
       if (d.expiresAt < Date.now()) activeApiTokens.delete(t);
     }
 
-    console.log(`[AUTH_TOKEN] ✅ Yeni API token verildi: IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
+    console.log(`[AUTH_TOKEN] --> Yeni API token verildi: IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
     res.json({ token, expiresIn: API_TOKEN_TTL / 1000 }); // saniye cinsinden süre
   } catch (err) {
     console.error("[AUTH_TOKEN] Token oluşturma hatası:", err.message);
@@ -1192,7 +1192,7 @@ app.use(async (req, res, next) => {
     return next();
   }
 
-  // ★ YÖNTEM 1: Bearer Token ile erişim (tercih edilen, daha güvenli)
+  //  YÖNTEM 1: Bearer Token ile erişim (tercih edilen, daha güvenli)
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
@@ -1212,7 +1212,7 @@ app.use(async (req, res, next) => {
     }
 
     if (tokenData && tokenData.expiresAt > Date.now()) {
-      return next(); // ✅ Geçerli token — erişim izni
+      return next(); //  Geçerli token — erişim izni
     }
 
     // Token geçersiz veya süresi dolmuş
@@ -1223,7 +1223,7 @@ app.use(async (req, res, next) => {
     // Token geçersizse HMAC'a düş (geriye uyumluluk)
   }
 
-  // ★ YÖNTEM 2: HMAC Signature ile erişim (eski yöntem, geriye uyumlu)
+  // YÖNTEM 2: HMAC Signature ile erişim (eski yöntem, geriye uyumlu)
   const timestamp = req.headers['x-timestamp'];
   const signature = req.headers['x-signature'];
   const EXPECTED_SECRET = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
@@ -1337,7 +1337,7 @@ function trackStreamAccess(userId, videoId, type) {
   // Abuse tespiti: 1 saatte 100'den fazla farklı video = şüpheli
   const hourMs = 60 * 60 * 1000;
   if (tracker.videos.size > 100 && (Date.now() - tracker.firstSeen) < hourMs) {
-    console.warn(`[DRM_ABUSE] ⚠️ Şüpheli aktivite: IP ${userId} - ${tracker.videos.size} video / ${tracker.count} istek`);
+    console.warn(`[DRM_ABUSE] *** Şüpheli aktivite: IP ${userId} - ${tracker.videos.size} video / ${tracker.count} istek`);
     return false; // Erişimi engelle
   }
   return true;
@@ -1500,7 +1500,7 @@ app.get("/admin/stats", (req, res) => {
   });
 });
 
-// ★ Medya kütüphanesi detaylı istatistikler
+//  Medya kütüphanesi detaylı istatistikler
 app.get("/admin/media-stats", (req, res) => {
   res.json({
     library: mediaLib.getStats(),
@@ -1592,7 +1592,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 
     let resultData, nextToken = "";
     try {
-      // ★ ÖNCE ÜCRETSİZ KAYNAKLAR — YouTube API kotası korunur!
+      // ÖNCE ÜCRETSİZ KAYNAKLAR — YouTube API kotası korunur!
       // Sıra: Piped → Invidious → Youtubei → YouTube API (son çare)
 
       let searchSuccess = false;
@@ -1621,7 +1621,7 @@ app.get("/search", searchLimiter, async (req, res) => {
               resultData = filterBlockedChannels(pipedItems);
               nextToken = "";
               searchSuccess = true;
-              console.log(`[SEARCH] ✅ Piped kazandı: "${query}" (${pipedItems.length} sonuç)`);
+              console.log(`[SEARCH] +++ Piped kazandı: "${query}" (${pipedItems.length} sonuç)`);
             }
           }
         } catch (pipedErr) {
@@ -1648,7 +1648,7 @@ app.get("/search", searchLimiter, async (req, res) => {
               resultData = filterBlockedChannels(invItems);
               nextToken = "";
               searchSuccess = true;
-              console.log(`[SEARCH] ✅ Invidious kazandı: "${query}"`);
+              console.log(`[SEARCH] +++ Invidious kazandı: "${query}"`);
               break;
             }
           } catch (e) { }
@@ -1674,7 +1674,7 @@ app.get("/search", searchLimiter, async (req, res) => {
             resultData = filterBlockedChannels(ytItems);
             nextToken = "";
             searchSuccess = true;
-            console.log(`[SEARCH] ✅ Youtubei kazandı: "${query}"`);
+            console.log(`[SEARCH] +++ Youtubei kazandı: "${query}"`);
           }
         } catch (ytErr) {
           console.warn(`[SEARCH] Youtubei başarısız: ${ytErr.message}`);
@@ -1683,7 +1683,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 
       // KATMAN 4: YouTube Data API v3 (SON ÇARE — kota harcar)
       if (!searchSuccess) {
-        console.warn(`[SEARCH] ⚠️ Tüm ücretsiz kaynaklar başarısız, YouTube API kullanılıyor (kota harcanır): "${query}"`);
+        console.warn(`[SEARCH] *** Tüm ücretsiz kaynaklar başarısız, YouTube API kullanılıyor (kota harcanır): "${query}"`);
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
           params: {
             part: "snippet",
@@ -1697,7 +1697,7 @@ app.get("/search", searchLimiter, async (req, res) => {
         resultData = filterBlockedChannels(response.data.items);
         nextToken = response.data.nextPageToken;
         youtubeApiStatus = "ok";
-        console.log(`[SEARCH] ✅ YouTube API son çare olarak kullanıldı: "${query}"`);
+        console.log(`[SEARCH] +++ YouTube API son çare olarak kullanıldı: "${query}"`);
       }
 
     } catch (apiError) {
@@ -1710,7 +1710,7 @@ app.get("/search", searchLimiter, async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json(result);
 
-    // ★ ARAMA SONUÇLARI ÖN-ISITMA: İlk 5 şarkının URL'ini arka planda çöz
+    //  ARAMA SONUÇLARI ÖN-ISITMA: İlk 5 şarkının URL'ini arka planda çöz
     // Kullanıcı tıkladığında anında açılsın diye
     if (resultData && Array.isArray(resultData)) {
       const top5 = resultData.slice(0, 5);
@@ -1726,7 +1726,7 @@ app.get("/search", searchLimiter, async (req, res) => {
                   const pua = getRandomUA();
                   const pUrl = await resolveStreamUrlWithFallback(vid, "audio", pua, "web");
                   await cacheSet(pKey, { url: pUrl, ua: pua }, STREAM_CACHE_DURATION);
-                  console.log(`[SEARCH_PREWARM] ⚡ Hazırlandı: ${vid}`);
+                  console.log(`[SEARCH_PREWARM]  Hazırlandı: ${vid}`);
                 } catch (e) { /* sessiz */ }
               }).catch(() => { });
             }, i * 1500); // 1.5sn arayla, YouTube'u boğmamak için
@@ -1769,9 +1769,9 @@ app.get("/stream", async (req, res) => {
   const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
   const cacheKey = `ongoing:${typeStr}:${videoId}`;
 
-  // ★ KİLİT MEKANİZMASI: Eğer bu şarkı şu an çözümleniyorsa, mevcut işlemi bekle
+  //  KİLİT MEKANİZMASI: Eğer bu şarkı şu an çözümleniyorsa, mevcut işlemi bekle
   if (ongoingResolutions.has(cacheKey)) {
-    console.log(`[DEBOUNCE] 🛡️ ${videoId} zaten çözümleniyor, bekletiliyor...`);
+    console.log(`[DEBOUNCE] +++ ${videoId} zaten çözümleniyor, bekletiliyor...`);
     try {
       await ongoingResolutions.get(cacheKey);
       // İlk işlem bittiğinde akış aşağıdan (cache hit ile) devam edecek
@@ -1821,7 +1821,7 @@ app.get("/stream", async (req, res) => {
       }
     }
 
-    // ★ KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
+    // KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
     if (fs.existsSync(localFile)) {
       const stats = fs.statSync(localFile);
       const minSize = typeStr === "video" ? 100 * 1024 : 20 * 1024;
@@ -1829,7 +1829,7 @@ app.get("/stream", async (req, res) => {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
         fs.unlinkSync(localFile);
       } else {
-        console.log(`[DISK_CACHE_HIT] ⚡ Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[DISK_CACHE_HIT]  Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         if (req.path.includes("download")) {
           res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
         }
@@ -1842,11 +1842,11 @@ app.get("/stream", async (req, res) => {
       }
     }
 
-    // ★ KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
+    //  KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
     try {
       const r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
-        console.log(`[R2_CACHE_HIT] ☁️ Cloudflare'den sunuluyor: ${videoId}`);
+        console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId}`);
         if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
         r2Data.stream.pipe(res);
@@ -1949,7 +1949,7 @@ app.get("/stream", async (req, res) => {
     if (typeof streamUrl !== 'undefined') {
       downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
 
-      // ★ ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
+      //  ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
       if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
         mediaLib.upsertTrack(videoId, { status: "processing" });
         const cookiePath = getRandomCookie();
@@ -1960,11 +1960,11 @@ app.get("/stream", async (req, res) => {
             ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
               if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
             }).catch(() => { });
-            console.log(`[FFMPEG_BG] ✅ Arka planda kalıcı dosya oluşturuldu: ${videoId}`);
+            console.log(`[FFMPEG_BG] +++ Arka planda kalıcı dosya oluşturuldu: ${videoId}`);
           })
           .catch(err => {
             mediaLib.markFailed(videoId, err.message);
-            console.warn(`[FFMPEG_BG] ❌ Arka plan işleme başarısız: ${videoId}: ${err.message}`);
+            console.warn(`[FFMPEG_BG] *** Arka plan işleme başarısız: ${videoId}: ${err.message}`);
           });
       }
     }
@@ -2017,10 +2017,10 @@ app.get("/stream/video", async (req, res) => {
       const videoFile = mediaTrack.files.mp4;
       const fStats = fs.statSync(videoFile);
       const fileSize = fStats.size;
-      console.log(`[MEDIA_VIDEO_HIT] 🎬 Video diskten sunuluyor: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`[MEDIA_VIDEO_HIT] +++ Video diskten sunuluyor: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
       mediaLib.recordAccess(videoId);
 
-      // ★ Range Request desteği (ExoPlayer için ZORUNLU)
+      // Range Request desteği (ExoPlayer için ZORUNLU)
       const range = req.headers.range;
       if (range) {
         const parts = range.replace(/bytes=/, "").split("-");
@@ -2047,15 +2047,15 @@ app.get("/stream/video", async (req, res) => {
       }
     }
 
-    // ★ KATMAN 0: DISK CACHE (Anlık)
+    //  KATMAN 0: DISK CACHE (Anlık)
     if (fs.existsSync(localVideoFile)) {
       const vStats = fs.statSync(localVideoFile);
       if (vStats.size > 100 * 1024) {
         const fileSize = vStats.size;
-        console.log(`[DISK_VIDEO_HIT] ⚡ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[DISK_VIDEO_HIT] +++ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
         uploadToR2(r2Key, localVideoFile).catch(() => { });
 
-        // ★ Range Request desteği (ExoPlayer için ZORUNLU)
+        //  Range Request desteği (ExoPlayer için ZORUNLU)
         const range = req.headers.range;
         if (range) {
           const parts = range.replace(/bytes=/, "").split("-");
@@ -2085,11 +2085,11 @@ app.get("/stream/video", async (req, res) => {
       }
     }
 
-    // ★ KATMAN 1: CLOUDFLARE R2
+    // KATMAN 1: CLOUDFLARE R2
     try {
       const r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
-        console.log(`[R2_VIDEO_HIT] ☁️ Video R2'den sunuluyor: ${videoId}`);
+        console.log(`[R2_VIDEO_HIT] --> Video R2'den sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
         r2Data.stream.pipe(res);
@@ -2158,7 +2158,7 @@ app.get("/stream/video", async (req, res) => {
               }
             })
             .catch(err => {
-              console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+              console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
             });
         }
 
@@ -2177,7 +2177,7 @@ app.get("/stream/video", async (req, res) => {
 
     response.data.pipe(res);
 
-    // ★ ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet (bir sonraki izlemede diskten gelir)
+    // ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet (bir sonraki izlemede diskten gelir)
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
       const cookiePath = getRandomCookie();
       const proxyUrl = getRandomProxy(videoId);
@@ -2187,10 +2187,10 @@ app.get("/stream/video", async (req, res) => {
           if (result.mp4) {
             try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
           }
-          console.log(`[FFMPEG_VIDEO_BG] ✅ Video kalıcı kaydedildi: ${videoId}`);
+          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
         })
         .catch(err => {
-          console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+          console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
         });
     }
 
@@ -2289,18 +2289,18 @@ app.get("/download/mp3", async (req, res) => {
       if (response.headers['content-length']) {
         const cLength = parseInt(response.headers['content-length']);
         if (cLength < 100 * 1024) { // 100KB'dan küçükse bu kesinlikle hata mesajıdır!
-           throw new Error(`Gelen dosya çok küçük (${cLength} bytes), hata mesajı olabilir.`);
+          throw new Error(`Gelen dosya çok küçük (${cLength} bytes), hata mesajı olabilir.`);
         }
         res.setHeader('Content-Length', cLength);
       }
 
       response.data.pipe(res);
 
-      try { mediaLib.recordAccess(videoId); } catch (e) {}
+      try { mediaLib.recordAccess(videoId); } catch (e) { }
 
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP3] ⚠️ BAZOCAM BAŞARISIZ (${apiErr.message}). YEDEK sisteme (kendi sunucunuza) geçiliyor...`);
-      
+      console.warn(`[DOWNLOAD_MP3] !! BAZOCAM BAŞARISIZ (${apiErr.message}). YEDEK sisteme (kendi sunucunuza) geçiliyor...`);
+
       // BAZOCAM hata verirse YEDEK sisteme (ytdlpStream) düş
       res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
       await ytdlpStream(videoId, "audio", req, res);
@@ -2329,12 +2329,12 @@ app.get("/download/mp4", async (req, res) => {
     const extStr = "mp4";
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // ★ KATMAN 0: FFmpeg Media Library (kalıcı MP4 dosyası)
+    // KATMAN 0: FFmpeg Media Library (kalıcı MP4 dosyası)
     const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
     if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
       const filePath = mediaTrack.files.mp4;
       const fStats = fs.statSync(filePath);
-      console.log(`[DOWNLOAD_MP4] 🎥 Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      console.log(`[DOWNLOAD_MP4]  Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
       mediaLib.recordAccess(videoId);
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Length", fStats.size);
@@ -2395,7 +2395,7 @@ app.get("/download/mp4", async (req, res) => {
 
     response.data.pipe(res);
 
-    // ★ ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
+    //  ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
       const cookiePath = getRandomCookie();
       const proxyUrl = getRandomProxy(videoId);
@@ -2405,10 +2405,10 @@ app.get("/download/mp4", async (req, res) => {
           if (result.mp4) {
             try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
           }
-          console.log(`[FFMPEG_VIDEO_BG] ✅ Video kalıcı kaydedildi: ${videoId}`);
+          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
         })
         .catch(err => {
-          console.warn(`[FFMPEG_VIDEO_BG] ❌ Video işleme başarısız: ${videoId}: ${err.message}`);
+          console.warn(`[FFMPEG_VIDEO_BG] --- Video işleme başarısız: ${videoId}: ${err.message}`);
         });
     }
 
