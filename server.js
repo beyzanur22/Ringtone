@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2260,97 +2260,39 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    const typeStr = "audio";
-    const extStr = "m4a";
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    // Patronunuzun harika API'sine istek atıyoruz
+    const bossApiUrl = `https://bazocam.net/auto.php?PASS=BEYZA&youtubeID=${videoId}`;
 
-    // ★ KATMAN 0: FFmpeg Media Library (kalıcı M4A dosyası)
-    const mediaTrack = mediaLib.getReadyTrack(videoId, "m4a");
-    if (mediaTrack && mediaTrack.files?.m4a && fs.existsSync(mediaTrack.files.m4a)) {
-      const filePath = mediaTrack.files.m4a;
-      const fStats = fs.statSync(filePath);
-      console.log(`[DOWNLOAD_MP3] 🎵 Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
-      mediaLib.recordAccess(videoId);
-      res.setHeader("Content-Type", "audio/mp4");
-      res.setHeader("Content-Length", fStats.size);
-      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-      return res.sendFile(filePath);
-    }
+    console.log(`[DOWNLOAD_MP3] 🎵 BAZOCAM'den çekiliyor: ${videoId}`);
 
-    // 1. Disk cache — dosya varsa Content-Length ile anında gönder (progress %0→%100)
-    if (fs.existsSync(localFile)) {
-      const stats = fs.statSync(localFile);
-      if (stats.size < 20 * 1024) {
-        fs.unlinkSync(localFile);
-      } else {
-        console.log(`[DOWNLOAD_MP3] Cache hit! ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-        res.setHeader("Content-Type", "audio/mp4");
-        res.setHeader("Content-Length", stats.size);
-        res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-        return res.sendFile(localFile);
-      }
-    }
-
-    // 2. Stream URL çöz
-    const ua = getRandomUA();
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
-
-    const streamUrl = await queue.add(() =>
-      resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient)
-    );
-
-    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
-      return res.status(500).json({ error: "Invalid stream url" });
-    }
-
-    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar, beklemez!)
+    // API'den dosyayı stream olarak çekiyoruz
     const response = await axiosClient({
       method: "GET",
-      url: streamUrl.toString().trim(),
+      url: bossApiUrl,
       responseType: "stream",
-      timeout: 60000,
-      validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId),
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      }
+      timeout: 120000, // 2 dakika bekleme süresi
+      validateStatus: (status) => status < 400
     });
 
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+    // Kullanıcıya gönderilecek dosya adını ayarlıyoruz
+    res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.mp3`);
+    res.setHeader("Content-Type", "audio/mpeg");
 
-    // Content-Length varsa gönder → Android gerçek % gösterir
-    // Yoksa Android tahmini % hesaplar
+    // Android'in indirme çubuğu (progress bar) için Content-Length varsa iletiyoruz
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
     }
 
+    // Veriyi patronun sunucusundan Android uygulamaya ANINDA akıtıyoruz (Proxy)
     response.data.pipe(res);
 
-    // ★ ARKA PLANDA: FFmpeg ile sesi kalıcı kaydet
-    if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId + "_audio")) {
-      const cookiePath = getRandomCookie();
-      const proxyUrl = getRandomProxy(videoId);
-      ffmpegWorker.processAudio(videoId, {}, { cookiePath, proxyUrl })
-        .then(result => {
-          mediaLib.upsertTrack(videoId, { m4a: result.m4a, status: "ready" });
-          if (result.m4a) {
-            try { mediaLib.upsertTrack(videoId, { m4aSize: fs.statSync(result.m4a).size }); } catch (e) { }
-          }
-          console.log(`[FFMPEG_AUDIO_BG] ✅ Ses kalıcı kaydedildi: ${videoId}`);
-        })
-        .catch(err => {
-          console.warn(`[FFMPEG_AUDIO_BG] ❌ Ses işleme başarısız: ${videoId}: ${err.message}`);
-        });
-    }
+    // Arka planda dinlenme sayısını kaydetmek isterseniz
+    try { mediaLib.recordAccess(videoId); } catch (e) {}
 
   } catch (err) {
-    logError("DOWNLOAD_MP3", req.query.videoId, err.message);
-    console.error("MP3 ERROR:", err.message);
+    console.error("MP3 ERROR (Bazocam API Proxy):", err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Audio download failed" });
+      res.status(500).json({ error: "Audio download failed from external server" });
     } else {
       res.end();
     }
