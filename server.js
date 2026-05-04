@@ -2260,7 +2260,7 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    // Patronunuzun harika API'sine istek atıyoruz
+    // BAZOCAM API'sine istek atıyoruz
     const bossApiUrl = `https://bazocam.net/auto.php?PASS=BEYZA&youtubeID=${videoId}`;
 
     console.log(`[DOWNLOAD_MP3] 🎵 BAZOCAM'den çekiliyor: ${videoId}`);
