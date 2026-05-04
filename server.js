@@ -2262,37 +2262,54 @@ app.get("/download/mp3", async (req, res) => {
 
     // BAZOCAM API'sine istek atıyoruz
     const bossApiUrl = `https://bazocam.net/auto.php?PASS=BEYZA&youtubeID=${videoId}`;
-
     console.log(`[DOWNLOAD_MP3] 🎵 BAZOCAM'den çekiliyor: ${videoId}`);
 
-    // API'den dosyayı stream olarak çekiyoruz
-    const response = await axiosClient({
-      method: "GET",
-      url: bossApiUrl,
-      responseType: "stream",
-      timeout: 120000, // 2 dakika bekleme süresi
-      validateStatus: (status) => status < 400
-    });
+    try {
+      const response = await axiosClient({
+        method: "GET",
+        url: bossApiUrl,
+        responseType: "stream",
+        timeout: 120000,
+        headers: {
+          "User-Agent": getRandomUA(),
+          "Accept": "audio/mpeg, audio/*, */*"
+        },
+        validateStatus: (status) => status === 200
+      });
 
-    // Kullanıcıya gönderilecek dosya adını ayarlıyoruz
-    res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.mp3`);
-    res.setHeader("Content-Type", "audio/mpeg");
+      // Cloudflare veya PHP hatası gelirse engelle (dosya çok küçük hatasını önler)
+      const contentType = response.headers['content-type'] || '';
+      if (contentType.includes('text/html') || contentType.includes('application/json')) {
+        throw new Error(`Bazocam geçersiz yanıt döndürdü (Muhtemelen hata sayfası): ${contentType}`);
+      }
 
-    // Android'in indirme çubuğu (progress bar) için Content-Length varsa iletiyoruz
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
+      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.mp3`);
+      res.setHeader("Content-Type", "audio/mpeg");
+
+      if (response.headers['content-length']) {
+        const cLength = parseInt(response.headers['content-length']);
+        if (cLength < 100 * 1024) { // 100KB'dan küçükse bu kesinlikle hata mesajıdır!
+           throw new Error(`Gelen dosya çok küçük (${cLength} bytes), hata mesajı olabilir.`);
+        }
+        res.setHeader('Content-Length', cLength);
+      }
+
+      response.data.pipe(res);
+
+      try { mediaLib.recordAccess(videoId); } catch (e) {}
+
+    } catch (apiErr) {
+      console.warn(`[DOWNLOAD_MP3] ⚠️ BAZOCAM BAŞARISIZ (${apiErr.message}). YEDEK sisteme (kendi sunucunuza) geçiliyor...`);
+      
+      // BAZOCAM hata verirse YEDEK sisteme (ytdlpStream) düş
+      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+      await ytdlpStream(videoId, "audio", req, res);
     }
 
-    // Veriyi patronun sunucusundan Android uygulamaya ANINDA akıtıyoruz (Proxy)
-    response.data.pipe(res);
-
-    // Arka planda dinlenme sayısını kaydetmek isterseniz
-    try { mediaLib.recordAccess(videoId); } catch (e) {}
-
   } catch (err) {
-    console.error("MP3 ERROR (Bazocam API Proxy):", err.message);
+    console.error("MP3 ERROR:", err.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Audio download failed from external server" });
+      res.status(500).json({ error: "Audio download failed" });
     } else {
       res.end();
     }
