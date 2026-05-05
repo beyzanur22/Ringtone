@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2359,18 +2359,18 @@ app.get("/download/mp3", async (req, res) => {
 
       console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | job=${data.job_id || "?"}`);
 
-      if (data.status === "cached" && data.download_url) {
+      if (data.status === "cached" && (data.download || data.download_url)) {
         // Cache'de var — doğrudan MP3'ü çek ve Android'e aktar
         console.log(`[DOWNLOAD_MP3] Bazocam CACHE HIT: ${videoId}`);
-        return await streamMp3FromUrl(data.download_url, videoId, data.title, res);
+        return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
       }
 
-      if (data.status === "converting" && data.status_url && data.download_url) {
+      if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
         // Dönüştürme başladı — tamamlanana kadar bekle
         console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
 
-        // İlk istekten aldığımız download_url'yi pollConversionStatus'a geçiriyoruz
-        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download_url, 120000);
+        // İlk istekten aldığımız linki pollConversionStatus'a geçiriyoruz
+        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
 
         console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
         return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
