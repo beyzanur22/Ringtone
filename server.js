@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2244,63 +2244,142 @@ app.listen(PORT, "0.0.0.0", async () => {
   await warmTop50();
 });
 
-//mp3 
+/* =========================
+   BAZOCAM.NET YARDIMCI FONKSİYONLAR
+   converter.php API entegrasyonu için
+========================= */
+
+// Bazocam'dan MP3 dosyasını çekip Android'e pipe et
+async function streamMp3FromUrl(downloadUrl, videoId, title, res) {
+  const response = await axiosClient({
+    method: "GET",
+    url: downloadUrl,
+    responseType: "stream",
+    timeout: 120000,
+    headers: {
+      "User-Agent": getRandomUA(),
+      "Accept": "audio/mpeg, audio/*, */*"
+    },
+    validateStatus: (status) => status === 200
+  });
+
+  // Gelen veri gerçekten audio mu kontrol et
+  const contentType = response.headers['content-type'] || '';
+  if (contentType.includes('text/html')) {
+    throw new Error(`Bazocam download URL HTML döndürdü: ${contentType}`);
+  }
+
+  const safeTitle = (title || `audio_${videoId}`)
+    .replace(/[^\w\s\-\.]/g, "")
+    .trim()
+    .substring(0, 100) || `audio_${videoId}`;
+
+  res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+  res.setHeader("Content-Type", "audio/mpeg");
+
+  if (response.headers['content-length']) {
+    const cLength = parseInt(response.headers['content-length']);
+    if (cLength < 50 * 1024) { // 50KB'dan küçükse hata mesajı olabilir
+      throw new Error(`Bazocam dosya çok küçük (${cLength} bytes)`);
+    }
+    res.setHeader("Content-Length", cLength);
+  }
+
+  response.data.pipe(res);
+  try { mediaLib.recordAccess(videoId); } catch (e) { }
+}
+
+// Bazocam converter.php dönüştürme durumunu poll et
+async function pollConversionStatus(statusUrl, maxWaitMs = 120000) {
+  const startTime = Date.now();
+  const pollInterval = 2000; // 2 saniye aralıklarla kontrol
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const statusRes = await axiosClient.get(statusUrl, { timeout: 10000 });
+      const data = statusRes.data;
+
+      // Tamamlandı — download URL döndür
+      if (data.status === "completed" && data.download) {
+        return data.download;
+      }
+      // Cache'e alınmış — download URL döndür
+      if (data.status === "cached" && data.download) {
+        return data.download;
+      }
+      // Başarısız oldu
+      if (data.status === "failed" || data.status === "error") {
+        throw new Error(`Bazocam dönüştürme başarısız: ${data.error || "Bilinmeyen hata"}`);
+      }
+
+      // Hâlâ dönüştürülüyor — bekle ve tekrar dene
+      const progress = data.progress || "?";
+      console.log(`[BAZOCAM_POLL] ⏳ Dönüştürülüyor... (%${progress}) | ${Math.round((Date.now() - startTime) / 1000)}s`);
+
+    } catch (err) {
+      // "Dönüştürme başarısız" hatasını yukarı fırlat
+      if (err.message.includes("başarısız")) throw err;
+      // Network hatası — bir sonraki poll'da tekrar dene
+      console.warn(`[BAZOCAM_POLL] Poll hatası (tekrar deneniyor): ${err.message}`);
+    }
+
+    await new Promise(r => setTimeout(r, pollInterval));
+  }
+
+  throw new Error(`Bazocam dönüştürme zaman aşımı (${maxWaitMs / 1000} saniye)`);
+}
+
+// MP3 İndirme — Bazocam converter.php API Entegrasyonu
 app.get("/download/mp3", async (req, res) => {
   try {
-    const { videoId } = req.query;
+    const { videoId, kbps } = req.query;
 
     if (!videoId || !isValidVideoId(videoId)) {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    // BAZOCAM API'sine istek atıyoruz
-    const bossApiUrl = `https://bazocam.net/auto.php?PASS=BEYZA&youtubeID=${videoId}`;
-    console.log(`[DOWNLOAD_MP3] 🎵 BAZOCAM'den çekiliyor: ${videoId}`);
+    // Kalite seçimi: 128, 192 veya 320 kbps
+    const quality = ["128", "192", "320"].includes(kbps) ? kbps : "128";
 
     try {
-      const response = await axiosClient({
-        method: "GET",
-        url: bossApiUrl,
-        responseType: "stream",
-        timeout: 120000,
-        headers: {
-          "User-Agent": getRandomUA(),
-          "Accept": "audio/mpeg, audio/*, */*"
-        },
-        validateStatus: (status) => status === 200
-      });
+      // ADIM 1: Bazocam converter.php API'sine istek at (JSON yanıt döner)
+      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=BEYZA&youtubeID=${videoId}&kbps=${quality}`;
+      console.log(`[DOWNLOAD_MP3] 🎵 Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
 
-      // Cloudflare veya PHP hatası gelirse engelle (dosya çok küçük hatasını önler)
-      const contentType = response.headers['content-type'] || '';
-      if (contentType.includes('text/html') || contentType.includes('application/json')) {
-        throw new Error(`Bazocam geçersiz yanıt döndürdü (Muhtemelen hata sayfası): ${contentType}`);
+      const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
+      const data = apiResponse.data;
+
+      console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | title=${data.title || "?"}`);
+
+      if (data.status === "cached" && data.download) {
+        // ✅ Cache'de var — doğrudan MP3'ü çek ve Android'e aktar
+        console.log(`[DOWNLOAD_MP3] ✅ Bazocam CACHE HIT: ${videoId}`);
+        return await streamMp3FromUrl(data.download, videoId, data.title, res);
       }
 
-      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.mp3`);
-      res.setHeader("Content-Type", "audio/mpeg");
-
-      if (response.headers['content-length']) {
-        const cLength = parseInt(response.headers['content-length']);
-        if (cLength < 100 * 1024) { // 100KB'dan küçükse bu kesinlikle hata mesajıdır!
-          throw new Error(`Gelen dosya çok küçük (${cLength} bytes), hata mesajı olabilir.`);
-        }
-        res.setHeader('Content-Length', cLength);
+      if (data.status === "converting" && data.status_url) {
+        // ⏳ Dönüştürme başladı — tamamlanana kadar bekle
+        console.log(`[DOWNLOAD_MP3] ⏳ Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
+        const downloadUrl = await pollConversionStatus(data.status_url, 120000);
+        console.log(`[DOWNLOAD_MP3] ✅ Dönüştürme tamamlandı: ${videoId}`);
+        return await streamMp3FromUrl(downloadUrl, videoId, data.title, res);
       }
 
-      response.data.pipe(res);
-
-      try { mediaLib.recordAccess(videoId); } catch (e) { }
+      // Beklenmeyen yanıt formatı — yedek sisteme düş
+      throw new Error(`Bazocam beklenmeyen yanıt: ${JSON.stringify(data).substring(0, 200)}`);
 
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP3] !! BAZOCAM BAŞARISIZ (${apiErr.message}). YEDEK sisteme (kendi sunucunuza) geçiliyor...`);
+      console.warn(`[DOWNLOAD_MP3] ⚠️ BAZOCAM BAŞARISIZ (${apiErr.message}). Yedek sisteme geçiliyor...`);
 
-      // BAZOCAM hata verirse YEDEK sisteme (ytdlpStream) düş
-      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-      await ytdlpStream(videoId, "audio", req, res);
+      // YEDEK: Kendi yt-dlp pipeline'ı (Bazocam çökerse diye)
+      if (!res.headersSent) {
+        res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+        await ytdlpStream(videoId, "audio", req, res);
+      }
     }
 
   } catch (err) {
-    console.error("MP3 ERROR:", err.message);
+    console.error("[DOWNLOAD_MP3] FATAL ERROR:", err.message);
     if (!res.headersSent) {
       res.status(500).json({ error: "Audio download failed" });
     } else {
