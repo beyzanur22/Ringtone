@@ -894,8 +894,9 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
       } catch (err) {
         const errMsg = (err.stderr || err.message || '').toString();
         // Proxy 402 (kota bitmiş) hatası → proxy'siz tekrar dene
-        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy'))) {
-          console.warn(`[yt-dlp] Proxy hatası (402/bağlantı hatası). Proxy'siz deneniyor...`);
+        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy') || errMsg.includes('407') || errMsg.includes('Proxy Authentication Required'))) {
+          console.warn(`[PROXY_UYARISI] 🚨 PROXY BİTİYOR VEYA BAĞLANTI KOPTU! Lütfen kotanızı kontrol edin.`);
+          console.warn(`[yt-dlp] Proxy hatası (402/407/bağlantı). Proxy'siz deneniyor...`);
           continue; // useProxy=false döngüsüne geç
         }
         console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
@@ -1565,8 +1566,8 @@ app.get("/top50", async (req, res) => {
 
     await cacheSet("top50", items, CACHE_DURATION);
 
-    // Arkada ilk 10 şarkıyı çözmeye başla, kullanıcı tıklayınca anında açılsın!
-    prewarmTop10(items);
+    // Ön-ısıtma (Prewarm) proxy kotasını korumak için devre dışı bırakıldı.
+    // prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
     res.json({ source: "youtube", data: items });
@@ -1710,30 +1711,8 @@ app.get("/search", searchLimiter, async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json(result);
 
-    //  ARAMA SONUÇLARI ÖN-ISITMA: İlk 5 şarkının URL'ini arka planda çöz
-    // Kullanıcı tıkladığında anında açılsın diye
-    if (resultData && Array.isArray(resultData)) {
-      const top5 = resultData.slice(0, 5);
-      top5.forEach((item, i) => {
-        const vid = typeof item.id === "object" ? item.id.videoId : item.id;
-        if (!vid) return;
-        const pKey = `stream:audio:${vid}`;
-        cacheGet(pKey).then(cached => {
-          if (!cached) {
-            setTimeout(() => {
-              queue.add(async () => {
-                try {
-                  const pua = getRandomUA();
-                  const pUrl = await resolveStreamUrlWithFallback(vid, "audio", pua, "web");
-                  await cacheSet(pKey, { url: pUrl, ua: pua }, STREAM_CACHE_DURATION);
-                  console.log(`[SEARCH_PREWARM]  Hazırlandı: ${vid}`);
-                } catch (e) { /* sessiz */ }
-              }).catch(() => { });
-            }, i * 1500); // 1.5sn arayla, YouTube'u boğmamak için
-          }
-        });
-      });
-    }
+    // Ön-ısıtma (Prewarm) proxy kotasını korumak için devre dışı bırakıldı.
+
   } catch (error) {
     logError("SEARCH", null, error.message);
     console.error("SEARCH ERROR:", error.message);
@@ -1909,6 +1888,13 @@ app.get("/stream", async (req, res) => {
         ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
       });
     } catch (fetchErr) {
+      // Proxy hatası tespiti
+      if (fetchErr.response && (fetchErr.response.status === 402 || fetchErr.response.status === 407)) {
+        console.warn(`[PROXY_UYARISI]  AXIOS PROXY BİTİYOR VEYA REDDEDİLDİ! Status: ${fetchErr.response.status}`);
+      } else if (fetchErr.code && (fetchErr.code === 'ECONNRESET' || fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND')) {
+        console.warn(`[PROXY_UYARISI]  AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
+      }
+
       if (fetchErr.response && fetchErr.response.status === 403) {
         console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
@@ -2141,6 +2127,13 @@ app.get("/stream/video", async (req, res) => {
         ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
       });
     } catch (fetchErr) {
+      // Proxy hatası tespiti
+      if (fetchErr.response && (fetchErr.response.status === 402 || fetchErr.response.status === 407)) {
+        console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BİTİYOR VEYA REDDEDİLDİ! Status: ${fetchErr.response.status}`);
+      } else if (fetchErr.code && (fetchErr.code === 'ECONNRESET' || fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND')) {
+        console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
+      }
+
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
         console.warn(`[STREAM_VIDEO] 403/404 — Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
