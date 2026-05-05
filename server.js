@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2305,12 +2305,12 @@ async function pollConversionStatus(statusUrl, downloadUrl, maxWaitMs = 120000) 
         // Eğer data içinde download linki varsa onu kullan, yoksa ilk istekten geleni kullan
         return data.download || downloadUrl;
       }
-      
+
       // Cache'e alınmış
       if (data.status === "cached" && data.download) {
         return data.download;
       }
-      
+
       // Progress %100 ise tamamlanmış sayabiliriz
       if (data.progress === 100 || data.progress === "100" || data.progress === "100.0") {
         console.log(`[BAZOCAM_POLL] Progress %100 ulaştı!`);
@@ -2368,10 +2368,10 @@ app.get("/download/mp3", async (req, res) => {
       if (data.status === "converting" && data.status_url && data.download_url) {
         // Dönüştürme başladı — tamamlanana kadar bekle
         console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
-        
+
         // İlk istekten aldığımız download_url'yi pollConversionStatus'a geçiriyoruz
         const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download_url, 120000);
-        
+
         console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
         return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
       }
@@ -2439,15 +2439,52 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz (Piped/Invidious/Cobalt → yt-dlp → Youtubei)
-    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
-    const ua = getRandomUA();
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
+    // 2. Stream URL çöz — BAZOCAM MP4 API ENTEGRASYONU
+    const validRes = ["360", "480", "720", "1080"];
+    const resolution = req.query.res || "720";
+    const quality = validRes.includes(resolution) ? resolution : "720";
 
-    const streamUrl = await queue.add(() =>
-      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-    );
+    let streamUrl = null;
+    let ua = getRandomUA();
+
+    try {
+      console.log(`[DOWNLOAD_MP4] Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
+      const mp4Url = `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
+
+      const redirectResponse = await axiosClient.get(mp4Url, {
+        maxRedirects: 0,
+        validateStatus: (s) => s >= 200 && s < 400,
+        timeout: 15000
+      });
+
+      if (redirectResponse.status === 302 || redirectResponse.status === 301) {
+        streamUrl = redirectResponse.headers['location'];
+      } else if (redirectResponse.data && typeof redirectResponse.data === 'string') {
+        const match = redirectResponse.data.match(/(https:\/\/[^\s"'<]+googlevideo\.com[^\s"'<>]+)/i);
+        if (match && match[1]) {
+          streamUrl = match[1];
+        } else if (redirectResponse.data.includes("http")) {
+          const rawMatch = redirectResponse.data.match(/(https?:\/\/[^\s"'<>]+)/i);
+          if (rawMatch) streamUrl = rawMatch[1];
+        }
+      }
+
+      if (!streamUrl || !streamUrl.startsWith('http')) {
+        throw new Error("Bazocam geçerli bir video URL'si döndürmedi.");
+      }
+      console.log(`[DOWNLOAD_MP4]  Google CDN URL çözüldü: ${videoId}`);
+
+    } catch (apiErr) {
+      console.warn(`[DOWNLOAD_MP4]  Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
+
+      // YEDEK: Kendi yt-dlp pipeline'ımız
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
+
+      streamUrl = await queue.add(() =>
+        resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
+      );
+    }
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
