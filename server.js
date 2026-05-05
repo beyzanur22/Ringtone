@@ -2439,52 +2439,22 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz — BAZOCAM MP4 DESTEKLEMEDİĞİ İÇİN COBALT API KULLANILACAK
-    const validRes = ["360", "480", "720", "1080"];
-    const resolution = req.query.res || "720";
-    const quality = validRes.includes(resolution) ? resolution : "720";
-    
-    let streamUrl = null;
-    let ua = getRandomUA();
+    // 2. Stream URL çöz (Piped/Invidious/Cobalt → yt-dlp → Youtubei)
+    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
+    const ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
-    
-    try {
-      console.log(`[DOWNLOAD_MP4] 🎬 Cobalt API (Yedek) MP4 çağrılıyor: ${videoId} (${quality}p)`);
-      const cobaltRes = await axiosClient.post("https://api.cobalt.tools/api/json", {
-        url: `https://www.youtube.com/watch?v=${videoId}`,
-        vQuality: quality,
-        filenamePattern: "classic",
-        isAudioOnly: false
-      }, {
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json"
-        },
-        timeout: 15000
-      });
 
-      if (cobaltRes.data && cobaltRes.data.url) {
-        streamUrl = cobaltRes.data.url;
-        console.log(`[DOWNLOAD_MP4] ✅ Cobalt üzerinden stream URL alındı: ${videoId}`);
-      } else {
-        throw new Error("Cobalt API URL döndürmedi.");
-      }
-    } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4] ⚠️ Cobalt API başarısız (${apiErr.message}). yt-dlp yedeğine geçiliyor...`);
-    }
+    const streamUrl = await queue.add(() =>
+      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
+    );
 
-    // COBALT BAŞARISIZ OLDUYSA YT-DLP (YEDEK) İLE İNDİR
-    if (!streamUrl) {
-      console.log(`[DOWNLOAD_MP4] Yedek yt-dlp ile çözümleniyor: ${videoId}`);
-      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
-    }
-    
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    console.log(`[DOWNLOAD_MP4] Yedek stream aktarılıyor: ${videoId}`);
+    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar!)
+    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
@@ -2494,14 +2464,14 @@ app.get("/download/mp4", async (req, res) => {
         "User-Agent": ua,
         "Referer": "https://www.youtube.com/"
       },
-      validateStatus: (status) => status === 200,
-      // Cobalt URL'lerinde proxy'e gerek yok, doğrudan bağlanabilir
-      ...(streamUrl.includes("cobalt") ? {} : getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId))
+      validateStatus: (status) => status < 400,
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
     });
 
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
 
+    // Content-Length varsa gönder → Android gerçek % gösterir
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
     }
