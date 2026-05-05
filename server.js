@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2290,7 +2290,7 @@ async function streamMp3FromUrl(downloadUrl, videoId, title, res) {
 }
 
 // Bazocam converter.php dönüştürme durumunu poll et
-async function pollConversionStatus(statusUrl, maxWaitMs = 120000) {
+async function pollConversionStatus(statusUrl, downloadUrl, maxWaitMs = 120000) {
   const startTime = Date.now();
   const pollInterval = 2000; // 2 saniye aralıklarla kontrol
 
@@ -2299,32 +2299,35 @@ async function pollConversionStatus(statusUrl, maxWaitMs = 120000) {
       const statusRes = await axiosClient.get(statusUrl, { timeout: 10000 });
       const data = statusRes.data;
 
-      // Tamamlandı — download URL döndür
-      if (data.status === "completed" && data.download) {
-        return data.download;
+      // Tamamlandı durumu (status/state done)
+      if (data.status === "completed" || data.status === "done" || data.state === "done") {
+        console.log(`[BAZOCAM_POLL] Dönüştürme tamamlandı! (state: done)`);
+        // Eğer data içinde download linki varsa onu kullan, yoksa ilk istekten geleni kullan
+        return data.download || downloadUrl;
       }
-      // Cache'e alınmış — download URL döndür
+      
+      // Cache'e alınmış
       if (data.status === "cached" && data.download) {
         return data.download;
       }
-      // Progress %100 ve download URL varsa → tamamlanmış demek
-      if (data.download && (data.progress === 100 || data.progress === "100" || data.progress === "100.0")) {
-        console.log(`[BAZOCAM_POLL]  Progress %100 + download URL var, tamamlandı!`);
-        return data.download;
+      
+      // Progress %100 ise tamamlanmış sayabiliriz
+      if (data.progress === 100 || data.progress === "100" || data.progress === "100.0") {
+        console.log(`[BAZOCAM_POLL] Progress %100 ulaştı!`);
+        return data.download || downloadUrl;
       }
+
       // Başarısız oldu
-      if (data.status === "failed" || data.status === "error") {
+      if (data.status === "failed" || data.status === "error" || data.state === "error") {
         throw new Error(`Bazocam dönüştürme başarısız: ${data.error || "Bilinmeyen hata"}`);
       }
 
       // Hâlâ dönüştürülüyor — bekle ve tekrar dene
       const progress = data.progress || "?";
-      console.log(`[BAZOCAM_POLL]  Dönüştürülüyor... (%${progress}) | ${Math.round((Date.now() - startTime) / 1000)}s | keys: ${Object.keys(data).join(",")}`);
+      console.log(`[BAZOCAM_POLL] Dönüştürülüyor... (%${progress}) | ${Math.round((Date.now() - startTime) / 1000)}s | keys: ${Object.keys(data).join(",")}`);
 
     } catch (err) {
-      // "Dönüştürme başarısız" hatasını yukarı fırlat
       if (err.message.includes("başarısız")) throw err;
-      // Network hatası — bir sonraki poll'da tekrar dene
       console.warn(`[BAZOCAM_POLL] Poll hatası (tekrar deneniyor): ${err.message}`);
     }
 
@@ -2349,32 +2352,35 @@ app.get("/download/mp3", async (req, res) => {
     try {
       // ADIM 1: Bazocam converter.php API'sine istek at (JSON yanıt döner)
       const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=BEYZA&youtubeID=${videoId}&kbps=${quality}`;
-      console.log(`[DOWNLOAD_MP3] 🎵 Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
+      console.log(`[DOWNLOAD_MP3] Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
 
       const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
       const data = apiResponse.data;
 
-      console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | title=${data.title || "?"}`);
+      console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | job=${data.job_id || "?"}`);
 
-      if (data.status === "cached" && data.download) {
-        // ✅ Cache'de var — doğrudan MP3'ü çek ve Android'e aktar
-        console.log(`[DOWNLOAD_MP3] ✅ Bazocam CACHE HIT: ${videoId}`);
-        return await streamMp3FromUrl(data.download, videoId, data.title, res);
+      if (data.status === "cached" && data.download_url) {
+        // Cache'de var — doğrudan MP3'ü çek ve Android'e aktar
+        console.log(`[DOWNLOAD_MP3] Bazocam CACHE HIT: ${videoId}`);
+        return await streamMp3FromUrl(data.download_url, videoId, data.title, res);
       }
 
-      if (data.status === "converting" && data.status_url) {
-        // ⏳ Dönüştürme başladı — tamamlanana kadar bekle
-        console.log(`[DOWNLOAD_MP3] ⏳ Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
-        const downloadUrl = await pollConversionStatus(data.status_url, 120000);
-        console.log(`[DOWNLOAD_MP3] ✅ Dönüştürme tamamlandı: ${videoId}`);
-        return await streamMp3FromUrl(downloadUrl, videoId, data.title, res);
+      if (data.status === "converting" && data.status_url && data.download_url) {
+        // Dönüştürme başladı — tamamlanana kadar bekle
+        console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
+        
+        // İlk istekten aldığımız download_url'yi pollConversionStatus'a geçiriyoruz
+        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download_url, 120000);
+        
+        console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
+        return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
       }
 
       // Beklenmeyen yanıt formatı — yedek sisteme düş
       throw new Error(`Bazocam beklenmeyen yanıt: ${JSON.stringify(data).substring(0, 200)}`);
 
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP3] ⚠️ BAZOCAM BAŞARISIZ (${apiErr.message}). Yedek sisteme geçiliyor...`);
+      console.warn(`[DOWNLOAD_MP3]  BAZOCAM BAŞARISIZ (${apiErr.message}). Yedek sisteme geçiliyor...`);
 
       // YEDEK: Kendi yt-dlp pipeline'ı (Bazocam çökerse diye)
       if (!res.headersSent) {
@@ -2393,7 +2399,7 @@ app.get("/download/mp3", async (req, res) => {
   }
 });
 
-//mp4 - VERİ ANINDA AKAR — progress bar çalışır!
+//mp4 - VERİ ANINDA AKAR — progress bar çalışır
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId } = req.query;
