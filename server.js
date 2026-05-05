@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2307,6 +2307,11 @@ async function pollConversionStatus(statusUrl, maxWaitMs = 120000) {
       if (data.status === "cached" && data.download) {
         return data.download;
       }
+      // Progress %100 ve download URL varsa → tamamlanmış demek
+      if (data.download && (data.progress === 100 || data.progress === "100" || data.progress === "100.0")) {
+        console.log(`[BAZOCAM_POLL]  Progress %100 + download URL var, tamamlandı!`);
+        return data.download;
+      }
       // Başarısız oldu
       if (data.status === "failed" || data.status === "error") {
         throw new Error(`Bazocam dönüştürme başarısız: ${data.error || "Bilinmeyen hata"}`);
@@ -2314,7 +2319,7 @@ async function pollConversionStatus(statusUrl, maxWaitMs = 120000) {
 
       // Hâlâ dönüştürülüyor — bekle ve tekrar dene
       const progress = data.progress || "?";
-      console.log(`[BAZOCAM_POLL] ⏳ Dönüştürülüyor... (%${progress}) | ${Math.round((Date.now() - startTime) / 1000)}s`);
+      console.log(`[BAZOCAM_POLL]  Dönüştürülüyor... (%${progress}) | ${Math.round((Date.now() - startTime) / 1000)}s | keys: ${Object.keys(data).join(",")}`);
 
     } catch (err) {
       // "Dönüştürme başarısız" hatasını yukarı fırlat
