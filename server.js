@@ -2444,8 +2444,7 @@ app.get("/download/mp4", async (req, res) => {
     const resolution = req.query.res || "720";
     const quality = validRes.includes(resolution) ? resolution : "720";
     
-    let streamUrl = null;
-    let isBazocamUrl = false;
+    let isBazocamSuccess = false;
     let ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
@@ -2454,44 +2453,53 @@ app.get("/download/mp4", async (req, res) => {
       console.log(`[DOWNLOAD_MP4] 🎬 Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
       const mp4Url = `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
       
-      const redirectResponse = await axiosClient.get(mp4Url, {
-        maxRedirects: 0,
-        validateStatus: (s) => s >= 200 && s < 400,
-        timeout: 15000
+      // Bazocam yönlendirmeleri (302) otomatik takip eder ve son stream'e ulaşır
+      const bazocamResponse = await axiosClient({
+        method: "GET",
+        url: mp4Url,
+        responseType: "stream",
+        timeout: 300000,
+        maxRedirects: 5,
+        headers: {
+          "User-Agent": ua
+        },
+        validateStatus: (s) => s === 200 || s === 206
       });
 
-      if (redirectResponse.status === 302 || redirectResponse.status === 301) {
-        streamUrl = redirectResponse.headers['location'];
-      } else if (redirectResponse.data && typeof redirectResponse.data === 'string') {
-        // Yalnızca googlevideo veya belirgin bir CDN formatı arıyoruz
-        const match = redirectResponse.data.match(/(https:\/\/[^\s"'<]+googlevideo\.com[^\s"'<>]+)/i);
-        if (match && match[1]) {
-          streamUrl = match[1];
-        }
+      // HTML döndürdüyse stream başarısız sayılır (sayfa açılmıştır)
+      const contentType = bazocamResponse.headers['content-type'] || '';
+      if (contentType.includes('text/html')) {
+        throw new Error("Bazocam stream yerine HTML sayfası döndürdü.");
       }
 
-      if (!streamUrl || !streamUrl.startsWith('http')) {
-        throw new Error("Bazocam geçerli bir video URL'si döndürmedi (HTML/CSS dönmüş olabilir).");
-      }
+      console.log(`[DOWNLOAD_MP4] ✅ Bazocam üzerinden stream başladı: ${videoId}`);
       
-      console.log(`[DOWNLOAD_MP4] ✅ Google CDN URL çözüldü: ${videoId}`);
-      isBazocamUrl = true;
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+
+      if (bazocamResponse.headers['content-length']) {
+        res.setHeader('Content-Length', bazocamResponse.headers['content-length']);
+      }
+
+      bazocamResponse.data.pipe(res);
+      isBazocamSuccess = true;
       
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam MP4 URL çözme başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
-      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
-      isBazocamUrl = false;
+      console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
+      isBazocamSuccess = false;
     }
 
-    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
-      return res.status(500).json({ error: "Video URL çözümlenemedi" });
-    }
+    // BAZOCAM BAŞARISIZ OLDUYSA YT-DLP (YEDEK) İLE İNDİR
+    if (!isBazocamSuccess) {
+      console.log(`[DOWNLOAD_MP4] Yedek yt-dlp ile çözümleniyor: ${videoId}`);
+      let streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
+      
+      if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+        return res.status(500).json({ error: "Video URL çözümlenemedi" });
+      }
 
-    // 3. Stream'i direkt Android'e aktar
-    let response;
-    try {
-      console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId} (Kaynak: ${isBazocamUrl ? 'Bazocam' : 'yt-dlp'})`);
-      response = await axiosClient({
+      console.log(`[DOWNLOAD_MP4] Yedek stream aktarılıyor: ${videoId}`);
+      const response = await axiosClient({
         method: "GET",
         url: streamUrl.toString().trim(),
         responseType: "stream",
@@ -2501,41 +2509,18 @@ app.get("/download/mp4", async (req, res) => {
           "Referer": "https://www.youtube.com/"
         },
         validateStatus: (status) => status === 200,
-        // Bazocam linklerinde proxy kullanma, çünkü IP uyumsuzluğundan 403 yiyebilir
-        ...(isBazocamUrl ? {} : getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId))
+        ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
       });
-    } catch (streamErr) {
-      // Eğer Bazocam linki stream edilirken patlarsa (403 vb), yt-dlp ile tekrar dene
-      if (isBazocamUrl) {
-        console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam Stream başarısız (${streamErr.message}). Yedeğe düşülüyor...`);
-        streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
-        isBazocamUrl = false;
-        
-        response = await axiosClient({
-          method: "GET",
-          url: streamUrl.toString().trim(),
-          responseType: "stream",
-          timeout: 300000,
-          headers: {
-            "User-Agent": ua,
-            "Referer": "https://www.youtube.com/"
-          },
-          validateStatus: (status) => status === 200,
-          ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
-        });
-      } else {
-        throw streamErr;
+
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', response.headers['content-length']);
       }
+
+      response.data.pipe(res);
     }
-
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
-    }
-
-    response.data.pipe(res);
 
     //  ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
