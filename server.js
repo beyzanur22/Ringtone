@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2443,14 +2443,17 @@ app.get("/download/mp4", async (req, res) => {
     const validRes = ["360", "480", "720", "1080"];
     const resolution = req.query.res || "720";
     const quality = validRes.includes(resolution) ? resolution : "720";
-
+    
     let streamUrl = null;
+    let isBazocamUrl = false;
     let ua = getRandomUA();
-
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+    
     try {
-      console.log(`[DOWNLOAD_MP4] Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
+      console.log(`[DOWNLOAD_MP4] 🎬 Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
       const mp4Url = `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
-
+      
       const redirectResponse = await axiosClient.get(mp4Url, {
         maxRedirects: 0,
         validateStatus: (s) => s >= 200 && s < 400,
@@ -2460,55 +2463,74 @@ app.get("/download/mp4", async (req, res) => {
       if (redirectResponse.status === 302 || redirectResponse.status === 301) {
         streamUrl = redirectResponse.headers['location'];
       } else if (redirectResponse.data && typeof redirectResponse.data === 'string') {
+        // Yalnızca googlevideo veya belirgin bir CDN formatı arıyoruz
         const match = redirectResponse.data.match(/(https:\/\/[^\s"'<]+googlevideo\.com[^\s"'<>]+)/i);
         if (match && match[1]) {
           streamUrl = match[1];
-        } else if (redirectResponse.data.includes("http")) {
-          const rawMatch = redirectResponse.data.match(/(https?:\/\/[^\s"'<>]+)/i);
-          if (rawMatch) streamUrl = rawMatch[1];
         }
       }
 
       if (!streamUrl || !streamUrl.startsWith('http')) {
-        throw new Error("Bazocam geçerli bir video URL'si döndürmedi.");
+        throw new Error("Bazocam geçerli bir video URL'si döndürmedi (HTML/CSS dönmüş olabilir).");
       }
-      console.log(`[DOWNLOAD_MP4]  Google CDN URL çözüldü: ${videoId}`);
-
+      
+      console.log(`[DOWNLOAD_MP4] ✅ Google CDN URL çözüldü: ${videoId}`);
+      isBazocamUrl = true;
+      
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4]  Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
-
-      // YEDEK: Kendi yt-dlp pipeline'ımız
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
-
-      streamUrl = await queue.add(() =>
-        resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-      );
+      console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam MP4 URL çözme başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
+      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
+      isBazocamUrl = false;
     }
 
     if (!streamUrl || !streamUrl.toString().startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar!)
-    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 300000,
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      },
-      validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
-    });
+    // 3. Stream'i direkt Android'e aktar
+    let response;
+    try {
+      console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId} (Kaynak: ${isBazocamUrl ? 'Bazocam' : 'yt-dlp'})`);
+      response = await axiosClient({
+        method: "GET",
+        url: streamUrl.toString().trim(),
+        responseType: "stream",
+        timeout: 300000,
+        headers: {
+          "User-Agent": ua,
+          "Referer": "https://www.youtube.com/"
+        },
+        validateStatus: (status) => status === 200,
+        // Bazocam linklerinde proxy kullanma, çünkü IP uyumsuzluğundan 403 yiyebilir
+        ...(isBazocamUrl ? {} : getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId))
+      });
+    } catch (streamErr) {
+      // Eğer Bazocam linki stream edilirken patlarsa (403 vb), yt-dlp ile tekrar dene
+      if (isBazocamUrl) {
+        console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam Stream başarısız (${streamErr.message}). Yedeğe düşülüyor...`);
+        streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
+        isBazocamUrl = false;
+        
+        response = await axiosClient({
+          method: "GET",
+          url: streamUrl.toString().trim(),
+          responseType: "stream",
+          timeout: 300000,
+          headers: {
+            "User-Agent": ua,
+            "Referer": "https://www.youtube.com/"
+          },
+          validateStatus: (status) => status === 200,
+          ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
+        });
+      } else {
+        throw streamErr;
+      }
+    }
 
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
 
-    // Content-Length varsa gönder → Android gerçek % gösterir
     if (response.headers['content-length']) {
       res.setHeader('Content-Length', response.headers['content-length']);
     }
