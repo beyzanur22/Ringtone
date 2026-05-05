@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -2450,8 +2450,8 @@ app.get("/download/mp4", async (req, res) => {
     const countryClient = getPlayerClientForCountry(country);
     
     try {
-      console.log(`[DOWNLOAD_MP4] 🎬 Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
-      const mp4Url = `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
+      console.log(`[DOWNLOAD_MP4]  Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
+      const mp4Url = `https://bazocam.net/mp3.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
       
       // Bazocam yönlendirmeleri (302) otomatik takip eder ve son stream'e ulaşır
       const bazocamResponse = await axiosClient({
@@ -2472,7 +2472,7 @@ app.get("/download/mp4", async (req, res) => {
         throw new Error("Bazocam stream yerine HTML sayfası döndürdü.");
       }
 
-      console.log(`[DOWNLOAD_MP4] ✅ Bazocam üzerinden stream başladı: ${videoId}`);
+      console.log(`[DOWNLOAD_MP4]  Bazocam üzerinden stream başladı: ${videoId}`);
       
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
@@ -2485,7 +2485,7 @@ app.get("/download/mp4", async (req, res) => {
       isBazocamSuccess = true;
       
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4] ⚠️ Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
+      console.warn(`[DOWNLOAD_MP4]  Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
       isBazocamSuccess = false;
     }
 
