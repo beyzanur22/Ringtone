@@ -2439,88 +2439,74 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz — BAZOCAM MP4 API ENTEGRASYONU
+    // 2. Stream URL çöz — BAZOCAM MP4 DESTEKLEMEDİĞİ İÇİN COBALT API KULLANILACAK
     const validRes = ["360", "480", "720", "1080"];
     const resolution = req.query.res || "720";
     const quality = validRes.includes(resolution) ? resolution : "720";
     
-    let isBazocamSuccess = false;
+    let streamUrl = null;
     let ua = getRandomUA();
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
     
     try {
-      console.log(`[DOWNLOAD_MP4]  Bazocam MP4 çağrılıyor: ${videoId} (${quality}p)`);
-      const mp4Url = `https://bazocam.net/mp3.php?PASS=BEYZA&youtubeID=${videoId}&res=${quality}`;
-      
-      // Bazocam yönlendirmeleri (302) otomatik takip eder ve son stream'e ulaşır
-      const bazocamResponse = await axiosClient({
-        method: "GET",
-        url: mp4Url,
-        responseType: "stream",
-        timeout: 300000,
-        maxRedirects: 5,
+      console.log(`[DOWNLOAD_MP4] 🎬 Cobalt API (Yedek) MP4 çağrılıyor: ${videoId} (${quality}p)`);
+      const cobaltRes = await axiosClient.post("https://api.cobalt.tools/api/json", {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        vQuality: quality,
+        filenamePattern: "classic",
+        isAudioOnly: false
+      }, {
         headers: {
-          "User-Agent": ua
+          "Accept": "application/json",
+          "Content-Type": "application/json"
         },
-        validateStatus: (s) => s === 200 || s === 206
+        timeout: 15000
       });
 
-      // HTML döndürdüyse stream başarısız sayılır (sayfa açılmıştır)
-      const contentType = bazocamResponse.headers['content-type'] || '';
-      if (contentType.includes('text/html')) {
-        throw new Error("Bazocam stream yerine HTML sayfası döndürdü.");
+      if (cobaltRes.data && cobaltRes.data.url) {
+        streamUrl = cobaltRes.data.url;
+        console.log(`[DOWNLOAD_MP4] ✅ Cobalt üzerinden stream URL alındı: ${videoId}`);
+      } else {
+        throw new Error("Cobalt API URL döndürmedi.");
       }
-
-      console.log(`[DOWNLOAD_MP4]  Bazocam üzerinden stream başladı: ${videoId}`);
-      
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-
-      if (bazocamResponse.headers['content-length']) {
-        res.setHeader('Content-Length', bazocamResponse.headers['content-length']);
-      }
-
-      bazocamResponse.data.pipe(res);
-      isBazocamSuccess = true;
-      
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4]  Bazocam MP4 başarısız (${apiErr.message}). Yedek sisteme geçiliyor...`);
-      isBazocamSuccess = false;
+      console.warn(`[DOWNLOAD_MP4] ⚠️ Cobalt API başarısız (${apiErr.message}). yt-dlp yedeğine geçiliyor...`);
     }
 
-    // BAZOCAM BAŞARISIZ OLDUYSA YT-DLP (YEDEK) İLE İNDİR
-    if (!isBazocamSuccess) {
+    // COBALT BAŞARISIZ OLDUYSA YT-DLP (YEDEK) İLE İNDİR
+    if (!streamUrl) {
       console.log(`[DOWNLOAD_MP4] Yedek yt-dlp ile çözümleniyor: ${videoId}`);
-      let streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
-      
-      if (!streamUrl || !streamUrl.toString().startsWith("http")) {
-        return res.status(500).json({ error: "Video URL çözümlenemedi" });
-      }
-
-      console.log(`[DOWNLOAD_MP4] Yedek stream aktarılıyor: ${videoId}`);
-      const response = await axiosClient({
-        method: "GET",
-        url: streamUrl.toString().trim(),
-        responseType: "stream",
-        timeout: 300000,
-        headers: {
-          "User-Agent": ua,
-          "Referer": "https://www.youtube.com/"
-        },
-        validateStatus: (status) => status === 200,
-        ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
-      });
-
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-
-      if (response.headers['content-length']) {
-        res.setHeader('Content-Length', response.headers['content-length']);
-      }
-
-      response.data.pipe(res);
+      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
     }
+    
+    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
+      return res.status(500).json({ error: "Video URL çözümlenemedi" });
+    }
+
+    console.log(`[DOWNLOAD_MP4] Yedek stream aktarılıyor: ${videoId}`);
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 300000,
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      },
+      validateStatus: (status) => status === 200,
+      // Cobalt URL'lerinde proxy'e gerek yok, doğrudan bağlanabilir
+      ...(streamUrl.includes("cobalt") ? {} : getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId))
+    });
+
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+
+    response.data.pipe(res);
 
     //  ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
