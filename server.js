@@ -2456,7 +2456,6 @@ app.get("/download/mp3", async (req, res) => {
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
 // BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
-// BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId, res: quality } = req.query;
@@ -2465,11 +2464,9 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    const resolution = ["360","480","720","1080"].includes(quality) ? quality : "720";
+    const resolution = ["360", "480", "720", "1080"].includes(quality) ? quality : "720";
 
-    // DÜZELTİLMİŞ URL
-    const apiUrl =
-      `[bazocam.net](https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution})`;
+    const apiUrl = `[bazocam.net](https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution})`;
 
     console.log("[MP4] Bazocam API çağrılıyor:", apiUrl);
 
@@ -2484,16 +2481,12 @@ app.get("/download/mp4", async (req, res) => {
     }
 
     console.log("[MP4] Redirect:", finalUrl);
-
-    // GOOGLE CDN’E redirect
     res.redirect(finalUrl);
-
   } catch (err) {
     console.error("[MP4_ERR]", err.message);
     res.status(500).json({ error: "MP4 indirilemedi" });
   }
 });
-
 
 // ---------------- DISK MANAGER (10GB Limit) ----------------
 // Önbelleği (cache) yönetir, 10GB'ı aşarsa en eski dosyaları siler.
