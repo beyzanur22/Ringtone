@@ -2458,57 +2458,51 @@ app.get("/download/mp3", async (req, res) => {
 // BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
 app.get("/download/mp4", async (req, res) => {
   try {
+
     const { videoId, res: quality } = req.query;
 
     if (!videoId || videoId.length !== 11) {
       return res.status(400).json({
-        error: "Invalid or missing videoId"
+        error: "Invalid videoId"
       });
     }
 
     const resolution =
-      ["360", "480", "720", "1080"].includes(quality)
+      ["360","480","720","1080"].includes(quality)
         ? quality
         : "720";
 
+    // GERÇEK API
     const apiUrl =
-      `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution}`;
+      `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution}&action=getlink`;
 
-    console.log("[MP4] Bazocam API çağrılıyor:", apiUrl);
+    console.log("[MP4_API]", apiUrl);
 
     const response = await axios.get(apiUrl, {
-      maxRedirects: 0,
-      validateStatus: (status) =>
-        status >= 200 && status < 400,
+      timeout: 30000,
+      validateStatus: (s) => s >= 200 && s < 500
     });
 
-    let finalUrl = response.headers.location;
+    console.log("[MP4_RESPONSE]", response.data);
 
-    // redirect yoksa body içinden çek
-    if (!finalUrl && typeof response.data === "string") {
+    // JSON kontrol
+    if (
+      response.data &&
+      response.data.ok &&
+      response.data.video
+    ) {
 
-      const match = response.data.match(
-        /https?:\/\/[^"' ]+googlevideo[^"' ]+/
-      );
+      const finalUrl = response.data.video;
 
-      if (match) {
-        finalUrl = match[0];
-      }
+      console.log("[MP4_FINAL]", finalUrl);
+
+      return res.redirect(finalUrl);
     }
 
-    if (!finalUrl) {
-
-      console.log("[MP4_BODY]");
-      console.log(response.data);
-
-      return res.status(500).json({
-        error: "MP4 URL bulunamadı"
-      });
-    }
-
-    console.log("[MP4] Final URL:", finalUrl);
-
-    res.redirect(finalUrl);
+    return res.status(500).json({
+      error: "MP4 link alınamadı",
+      data: response.data
+    });
 
   } catch (err) {
 
