@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -53,6 +53,44 @@ const mediaLib = require("./media_library");
 let cookiePool = [];
 let proxyPool = [];
 
+// PROXY PANEL VERİTABANI
+const PROXY_DATA_FILE = path.join(__dirname, "proxy_data.json");
+let proxyData = { active: [], banned: [] };
+
+function loadProxyData() {
+  try {
+    if (!fs.existsSync(PROXY_DATA_FILE)) {
+      fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify({ active: [], banned: [] }));
+    }
+    proxyData = JSON.parse(fs.readFileSync(PROXY_DATA_FILE, "utf-8"));
+  } catch (e) {
+    console.error("[PROXY_DB] Okuma hatası:", e.message);
+  }
+}
+
+function saveProxyData() {
+  try {
+    fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2));
+  } catch (e) {
+    console.error("[PROXY_DB] Yazma hatası:", e.message);
+  }
+}
+
+// Otomatik unban (6 saat süresi dolanları aktife al)
+function autoUnbanProxies() {
+  let changed = false;
+  const now = Date.now();
+  for (let i = proxyData.banned.length - 1; i >= 0; i--) {
+    const proxy = proxyData.banned[i];
+    if (now > new Date(proxy.auto_unban_at).getTime()) {
+      proxyData.active.push({ ip: proxy.ip, added: new Date().toISOString() });
+      proxyData.banned.splice(i, 1);
+      changed = true;
+    }
+  }
+  if (changed) saveProxyData();
+}
+
 function loadRotationAssets() {
   try {
     // Cookie havuzunu yükle
@@ -61,31 +99,59 @@ function loadRotationAssets() {
     const cookieFiles = fs.readdirSync(cookieDir).filter(f => f.endsWith(".txt"));
     cookiePool = cookieFiles.map(f => path.join(cookieDir, f));
 
-    // Proxy havuzunu yükle
+    // Proxy havuzunu PHP panel verisinden yükle
+    loadProxyData();
+    autoUnbanProxies();
+    
+    // Eski proxies.txt varsa onları da aktife ekle (migrasyon)
     const proxyFile = path.join(__dirname, "proxies.txt");
     if (fs.existsSync(proxyFile)) {
-      proxyPool = fs.readFileSync(proxyFile, "utf-8")
-        .split("\n")
-        .map(l => l.trim())
-        .filter(l => l.startsWith("http"));
+      const oldProxies = fs.readFileSync(proxyFile, "utf-8").split("\n").map(l => l.trim()).filter(l => l.startsWith("http"));
+      let migrated = false;
+      for (const p of oldProxies) {
+        if (!proxyData.active.find(x => x.ip === p) && !proxyData.banned.find(x => x.ip === p)) {
+          proxyData.active.push({ ip: p, added: new Date().toISOString() });
+          migrated = true;
+        }
+      }
+      if (migrated) {
+        saveProxyData();
+        fs.unlinkSync(proxyFile); // Migrasyon bitti, eski dosyayı sil
+      }
     }
 
-    console.log(`[ROTATION] Yüklendi: ${cookiePool.length} cookie dosyası, ${proxyPool.length} proxy adresi`);
+    proxyPool = proxyData.active.map(p => p.ip);
+    console.log(`[ROTATION] Yüklendi: ${cookiePool.length} cookie dosyası, ${proxyPool.length} aktif proxy adresi`);
   } catch (e) {
-    console.warn("[ROTATION] Asset yükleme hatası (sistem eski ayarlarla devam eder):", e.message);
+    console.warn("[ROTATION] Asset yükleme hatası:", e.message);
   }
 }
 
 function getRandomCookie() {
-  // Havuzda dosya varsa rastgele seç, yoksa varsayılan cookies.txt
-  if (cookiePool.length > 0) {
-    return cookiePool[Math.floor(Math.random() * cookiePool.length)];
-  }
+  if (cookiePool.length > 0) return cookiePool[Math.floor(Math.random() * cookiePool.length)];
   return fs.existsSync(path.join(__dirname, "cookies.txt")) ? path.join(__dirname, "cookies.txt") : null;
 }
 
+function banProxy(ip) {
+  loadProxyData();
+  const index = proxyData.active.findIndex(p => p.ip === ip || p.ip === `http://${ip}` || `http://${p.ip}` === ip);
+  if (index !== -1) {
+    const proxy = proxyData.active[index];
+    proxyData.active.splice(index, 1);
+    proxyData.banned.push({
+      ip: proxy.ip,
+      banned_at: new Date().toISOString(),
+      auto_unban_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString() // 6 Saat
+    });
+    saveProxyData();
+    // Havuzu hemen güncelle
+    proxyPool = proxyData.active.map(p => p.ip);
+    console.log(`[PROXY_BAN] Proxy banlandi: ${ip} (6 saat)`);
+  }
+}
+
 function getRandomProxy(videoId = null) {
-  // Havuzda proxy varsa rastgele seç, yoksa env var
+  // Havuzda proxy varsa rastgele seç, yoksa null
   let proxyStr = null;
   if (proxyPool.length > 0) {
     if (videoId) {
@@ -95,22 +161,18 @@ function getRandomProxy(videoId = null) {
     } else {
       proxyStr = proxyPool[Math.floor(Math.random() * proxyPool.length)];
     }
-  } else {
-    proxyStr = process.env.PROXY_URL || null;
   }
 
-  // IPRoyal Session IP sabitleme: yt-dlp ile axios'un aynı IP'yi kullanması için
-  if (proxyStr && proxyStr.includes("iproyal") && videoId) {
-    const sessionId = videoId.replace(/[^a-zA-Z0-9]/g, 'x').substring(0, 8).padEnd(8, 'x');
-    // IPRoyal format: username:password_session-ID_lifetime-10m@...
-    return proxyStr.replace(/([a-zA-Z0-9]+):([a-zA-Z0-9]+)@/, `$1:$2_session-${sessionId}_lifetime-10m@`);
+  // Protokol ekle (http:// yoksa)
+  if (proxyStr && !proxyStr.startsWith("http")) {
+      proxyStr = "http://" + proxyStr;
   }
   return proxyStr;
 }
 
-// Başlangıçta yükle + her 10 dakikada bir yeniden tara (yeni dosya eklerseniz otomatik algılanır)
+// Başlangıçta yükle + her 5 dakikada bir unban kontrolü yap
 loadRotationAssets();
-setInterval(loadRotationAssets, 10 * 60 * 1000);
+setInterval(loadRotationAssets, 5 * 60 * 1000);
 
 /* =========================
    YOUTUBEI.JS OAUTH2 SETUP
@@ -848,6 +910,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
   for (const client of clientsToTry) {
     // İki deneme: önce proxy ile, proxy 402 verirse proxy'siz
     for (const useProxy of [true, false]) {
+      let currentProxy = null;
       try {
         const opts = {
           format: format,
@@ -874,6 +937,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           const resolveProxy = getRandomProxy(vId);
           if (resolveProxy) {
             opts.proxy = resolveProxy;
+            currentProxy = resolveProxy; // Banlama ihtimali için kaydet
           }
         } else {
           console.log(`[yt-dlp] Proxy'siz deneniyor (proxy kotası bitmiş olabilir)`);
@@ -896,10 +960,11 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         }
       } catch (err) {
         const errMsg = (err.stderr || err.message || '').toString();
-        // Proxy 402 (kota bitmiş) hatası → proxy'siz tekrar dene
-        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy') || errMsg.includes('407') || errMsg.includes('Proxy Authentication Required'))) {
-          console.warn(`[PROXY_UYARISI] 🚨 PROXY BİTİYOR VEYA BAĞLANTI KOPTU! Lütfen kotanızı kontrol edin.`);
-          console.warn(`[yt-dlp] Proxy hatası (402/407/bağlantı). Proxy'siz deneniyor...`);
+        // Proxy 402 (kota bitmiş) hatası → proxy'yi panelden otomatik banla ve proxy'siz tekrar dene
+        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy') || errMsg.includes('407') || errMsg.includes('Proxy Authentication Required') || errMsg.includes('429') || errMsg.includes('Sign in to confirm'))) {
+          console.warn(`[PROXY_UYARISI] 🚨 PROXY BANLANDI VEYA BİTTİ: ${currentProxy}`);
+          if (currentProxy) banProxy(currentProxy); // Panelde 6 saat banla
+          console.warn(`[yt-dlp] Proxy hatası (402/407/429). Proxy'siz deneniyor...`);
           continue; // useProxy=false döngüsüne geç
         }
         console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
@@ -2537,5 +2602,169 @@ async function manageDiskSpace() {
   }
 }
 
+
 setInterval(manageDiskSpace, 15 * 60 * 1000); // 15 dk
 setTimeout(manageDiskSpace, 5000);
+
+// ==========================================
+// PROXY PANEL - EXPRESS ROUTES (PHP ALTERNATİFİ)
+// ==========================================
+const ADMIN_PASS = "BEYZA";
+
+app.get("/proxy-panel", (req, res) => {
+  loadProxyData(); // Her girişte veriyi yenile
+  
+  const activeList = proxyData.active.map(p => `
+    <tr>
+      <td><code>${p.ip}</code> <span id="res_${p.ip.replace(/[^a-zA-Z0-9]/g, '')}" style="margin-left:10px;"></span></td>
+      <td>
+        <button class="btn btn-sm btn-info text-white" onclick="testProxy('${p.ip}')">Test Et</button>
+        <form method="POST" class="d-inline" action="/proxy-panel">
+          <input type="hidden" name="action" value="ban">
+          <input type="hidden" name="proxy_ip" value="${p.ip}">
+          <input type="hidden" name="pass" value="${ADMIN_PASS}">
+          <button type="submit" class="btn btn-sm btn-warning">Banla</button>
+        </form>
+        <form method="POST" class="d-inline" action="/proxy-panel" onsubmit="return confirm('Silinecek?');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="proxy_ip" value="${p.ip}">
+          <input type="hidden" name="pass" value="${ADMIN_PASS}">
+          <button type="submit" class="btn btn-sm btn-danger">Sil</button>
+        </form>
+      </td>
+    </tr>
+  `).join("");
+
+  const bannedList = proxyData.banned.map(p => {
+    const timeLeft = Math.round((new Date(p.auto_unban_at).getTime() - Date.now()) / 60000);
+    return `
+    <tr>
+      <td><code>${p.ip}</code> <span id="res_${p.ip.replace(/[^a-zA-Z0-9]/g, '')}" style="margin-left:10px;"></span></td>
+      <td>${new Date(p.auto_unban_at).toLocaleTimeString()} (${timeLeft > 0 ? timeLeft : 0} dk)</td>
+      <td>
+        <button class="btn btn-sm btn-info text-white" onclick="testProxy('${p.ip}')">Test Et</button>
+        <form method="POST" class="d-inline" action="/proxy-panel">
+          <input type="hidden" name="action" value="unban">
+          <input type="hidden" name="proxy_ip" value="${p.ip}">
+          <input type="hidden" name="pass" value="${ADMIN_PASS}">
+          <button type="submit" class="btn btn-sm btn-success">Ban Kaldır</button>
+        </form>
+        <form method="POST" class="d-inline" action="/proxy-panel" onsubmit="return confirm('Silinecek?');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="proxy_ip" value="${p.ip}">
+          <input type="hidden" name="pass" value="${ADMIN_PASS}">
+          <button type="submit" class="btn btn-sm btn-danger">Sil</button>
+        </form>
+      </td>
+    </tr>
+  `}).join("");
+
+  const messageHtml = req.query.msg ? `<div class="alert alert-info">${req.query.msg}</div>` : '';
+
+  res.send(`
+  <!DOCTYPE html>
+  <html lang="tr">
+  <head>
+      <meta charset="UTF-8">
+      <title>YouTube Proxy Panel</title>
+      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  </head>
+  <body class="bg-light">
+  <div class="container mt-5">
+      <h2 class="mb-4">🛡️ YouTube Proxy Yönetim Paneli (Node.js)</h2>
+      ${messageHtml}
+      <div class="row">
+          <div class="col-md-4">
+              <div class="card mb-3">
+                  <div class="card-header bg-primary text-white">➕ Proxy Ekle</div>
+                  <div class="card-body">
+                      <form method="POST" action="/proxy-panel">
+                          <input type="hidden" name="action" value="add">
+                          <div class="mb-3"><input type="text" name="proxy_ip" class="form-control" placeholder="192.168.1.1:8080:user:pass" required></div>
+                          <div class="mb-3"><input type="password" name="pass" class="form-control" placeholder="Admin Şifresi" required></div>
+                          <button type="submit" class="btn btn-primary w-100">Ekle</button>
+                      </form>
+                  </div>
+              </div>
+          </div>
+          <div class="col-md-8">
+              <div class="card border-success mb-4">
+                  <div class="card-header bg-success text-white">✅ Aktif (${proxyData.active.length})</div>
+                  <div class="card-body"><table class="table"><thead><tr><th>Proxy</th><th>İşlem</th></tr></thead><tbody>${activeList || '<tr><td>Yok</td></tr>'}</tbody></table></div>
+              </div>
+              <div class="card border-danger">
+                  <div class="card-header bg-danger text-white">⛔ Banlı (${proxyData.banned.length})</div>
+                  <div class="card-body"><table class="table"><thead><tr><th>Proxy</th><th>Unban</th><th>İşlem</th></tr></thead><tbody>${bannedList || '<tr><td>Yok</td></tr>'}</tbody></table></div>
+              </div>
+          </div>
+      </div>
+  </div>
+  <script>
+  async function testProxy(ip) {
+      const span = document.getElementById('res_' + ip.replace(/[^a-zA-Z0-9]/g, ''));
+      if(span) span.innerHTML = "<span class='badge bg-info text-dark'>Test ediliyor...</span>";
+      try {
+          const res = await fetch("/proxy-panel/test?ip=" + encodeURIComponent(ip));
+          const text = await res.text();
+          if(span) span.innerHTML = text;
+      } catch(e) {
+          if(span) span.innerHTML = "<span class='badge bg-danger'>Hata</span>";
+      }
+  }
+  </script>
+  </body></html>
+  `);
+});
+
+app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
+  if (req.body.pass !== ADMIN_PASS) return res.redirect('/proxy-panel?msg=Hatali Sifre');
+  
+  loadProxyData();
+  const action = req.body.action;
+  let proxyIp = (req.body.proxy_ip || '').trim();
+  if (proxyIp && !proxyIp.startsWith("http")) proxyIp = "http://" + proxyIp; // standart format
+  let msg = "Islem yapildi";
+
+  if (action === 'add' && proxyIp) {
+    if (!proxyData.active.find(p => p.ip === proxyIp) && !proxyData.banned.find(p => p.ip === proxyIp)) {
+      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString() });
+      msg = "Eklendi";
+    } else msg = "Zaten var";
+  } else if (action === 'delete') {
+    proxyData.active = proxyData.active.filter(p => p.ip !== proxyIp);
+    proxyData.banned = proxyData.banned.filter(p => p.ip !== proxyIp);
+    msg = "Silindi";
+  } else if (action === 'ban') {
+    banProxy(proxyIp); // Daha önce yazdığımız fonksiyon
+    msg = "Banlandi";
+  } else if (action === 'unban') {
+    const bProxy = proxyData.banned.find(p => p.ip === proxyIp);
+    if (bProxy) {
+      proxyData.banned = proxyData.banned.filter(p => p.ip !== proxyIp);
+      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString() });
+      msg = "Ban Kaldirildi";
+    }
+  }
+  
+  saveProxyData();
+  proxyPool = proxyData.active.map(p => p.ip); // havuzu yenile
+  res.redirect('/proxy-panel?msg=' + encodeURIComponent(msg));
+});
+
+app.get("/proxy-panel/test", async (req, res) => {
+  const proxy = req.query.ip;
+  if (!proxy) return res.send("Yok");
+  try {
+    const response = await axiosClient.get("https://www.youtube.com", {
+      proxy: false, // disable global agent
+      httpsAgent: new (require('https-proxy-agent').HttpsProxyAgent)(proxy),
+      timeout: 10000,
+      validateStatus: () => true
+    });
+    if (response.status === 200) res.send("<span class='badge bg-success'>Başarılı (200)</span>");
+    else if (response.status === 429 || response.status === 403) res.send(`<span class='badge bg-danger'>Banlı (${response.status})</span>`);
+    else res.send(`<span class='badge bg-secondary'>Bilinmeyen (${response.status})</span>`);
+  } catch (err) {
+    res.send(`<span class='badge bg-warning text-dark'>Hata: ${err.message}</span>`);
+  }
+});
