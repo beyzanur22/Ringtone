@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
@@ -646,8 +646,9 @@ const randomJitter = async () => {
   await new Promise(resolve => setTimeout(resolve, ms));
 };
 
-// Fallback player client stratejisi: default → android → web (3 deneme yeterli, hız için)
-const PLAYER_CLIENTS = ["default", "android", "web"];
+// Fallback player client stratejisi: android_vr → default → android → web
+// android_vr: Cookie'siz çalışır, YouTube bot tespiti düşük (VR cihaz simülasyonu)
+const PLAYER_CLIENTS = ["android_vr", "default", "android", "web"];
 
 async function resolveWithYoutubei(videoId, type) {
   if (!yt) throw new Error("Youtubei initialized değil");
@@ -857,11 +858,13 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           ]
         };
 
-        // Cookie Rotasyonu 
-        const useCookies = process.env.USE_COOKIES !== "false";
-        const resolveCookie = getRandomCookie();
-        if (useCookies && resolveCookie) {
-          opts.cookies = resolveCookie;
+        // Cookie Rotasyonu — android_vr cookie'siz çalışır, göndermiyoruz
+        if (client !== "android_vr") {
+          const useCookies = process.env.USE_COOKIES !== "false";
+          const resolveCookie = getRandomCookie();
+          if (useCookies && resolveCookie) {
+            opts.cookies = resolveCookie;
+          }
         }
 
         // Proxy Rotasyonu — 402 aldıysa proxy'siz dene
