@@ -1594,15 +1594,60 @@ app.get("/search", searchLimiter, async (req, res) => {
     const cached = await cacheGet(cacheKey);
     if (cached) return res.json(cached);
 
-    let resultData, nextToken = "";
+    let resultData = null, nextToken = null;
+    let searchSuccess = false;
+
     try {
-      // ÖNCE ÜCRETSİZ KAYNAKLAR — YouTube API kotası korunur!
-      // Sıra: Piped → Invidious → Youtubei → YouTube API (son çare)
+      // Eğer pageToken YouTube API token'ı ise (genelde 20+ karakter) direkt YouTube API'ye git
+      if (pageToken && pageToken.length > 10) {
+          console.log(`[SEARCH] YouTube API Sayfalama: "${query}" (Token: ${pageToken.substring(0,5)}...)`);
+          const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+            params: {
+              part: "snippet",
+              q: query,
+              type: "video",
+              maxResults: 20,
+              pageToken: pageToken,
+              key: YOUTUBE_API_KEY
+            }
+          });
+          resultData = filterBlockedChannels(response.data.items);
+          nextToken = response.data.nextPageToken || null;
+          searchSuccess = true;
+      }
+      
+      // ÜCRETSİZ KAYNAKLAR (Piped, Invidious)
+      const isFirstPage = !pageToken || pageToken === "1" || pageToken === "";
+      const invPage = parseInt(pageToken) || 1;
 
-      let searchSuccess = false;
-
-      // KATMAN 1: Piped Search (ücretsiz, hızlı)
+      // KATMAN 1: Invidious Search (Sayfalama desteği en iyi olan)
       if (!searchSuccess) {
+        const shuffledInv = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
+        for (const instance of shuffledInv) {
+          try {
+            const invRes = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&page=${invPage}`, { timeout: 4000 });
+            if (invRes && invRes.data && invRes.data.length > 0) {
+              const invItems = invRes.data.map(item => ({
+                id: { videoId: item.videoId },
+                snippet: {
+                  title: item.title,
+                  channelTitle: item.author,
+                  channelId: item.authorId || "",
+                  thumbnails: { high: { url: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg` } }
+                }
+              }));
+              resultData = filterBlockedChannels(invItems);
+              nextToken = (invPage + 1).toString(); // Sonraki sayfa
+              searchSuccess = true;
+              console.log(`[SEARCH] +++ Invidious kazandı: "${query}" (Sayfa: ${invPage})`);
+              break;
+            }
+          } catch (e) { }
+        }
+      }
+
+      // KATMAN 2: Piped (Sadece ilk sayfa için hızlı alternatif)
+      if (!searchSuccess && isFirstPage) {
         try {
           const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
           const pipedData = pipedRes.data?.items || (Array.isArray(pipedRes.data) ? pipedRes.data : []);
@@ -1623,85 +1668,29 @@ app.get("/search", searchLimiter, async (req, res) => {
               });
             if (pipedItems.length > 0) {
               resultData = filterBlockedChannels(pipedItems);
-              nextToken = "";
+              nextToken = "2"; // Sonraki sayfa için Invidious'a devrederiz
               searchSuccess = true;
-              console.log(`[SEARCH] +++ Piped kazandı: "${query}" (${pipedItems.length} sonuç)`);
+              console.log(`[SEARCH] +++ Piped kazandı: "${query}" (Sayfa: 1)`);
             }
           }
-        } catch (pipedErr) {
-          console.warn(`[SEARCH] Piped başarısız, Invidious deneniyor: ${pipedErr.message}`);
-        }
+        } catch (pipedErr) { }
       }
 
-      // KATMAN 2: Invidious Search (ücretsiz)
+      // KATMAN 3: YouTube Data API v3 (SON ÇARE — kota harcar)
       if (!searchSuccess) {
-        const shuffledInv = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
-        for (const instance of shuffledInv) {
-          try {
-            const invRes = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`, { timeout: 4000 });
-            if (invRes && invRes.data && invRes.data.length > 0) {
-              const invItems = invRes.data.map(item => ({
-                id: { videoId: item.videoId },
-                snippet: {
-                  title: item.title,
-                  channelTitle: item.author,
-                  channelId: item.authorId || "",
-                  thumbnails: { high: { url: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg` } }
-                }
-              }));
-              resultData = filterBlockedChannels(invItems);
-              nextToken = "";
-              searchSuccess = true;
-              console.log(`[SEARCH] +++ Invidious kazandı: "${query}"`);
-              break;
-            }
-          } catch (e) { }
-        }
-      }
-
-      // KATMAN 3: Youtubei.js Search (YouTube'a gider ama OAuth korumalı)
-      if (!searchSuccess && yt) {
-        try {
-          const searchResults = await yt.search(query, { type: 'video' });
-          const ytItems = searchResults.videos.map(item => ({
-            id: { videoId: item.id },
-            snippet: {
-              title: item.title?.text || item.title || "Unknown",
-              channelTitle: item.author?.name || "Unknown",
-              channelId: item.author?.id || "",
-              thumbnails: {
-                high: { url: item.best_thumbnail?.url || item.thumbnails?.[0]?.url || "" }
-              }
-            }
-          }));
-          if (ytItems.length > 0) {
-            resultData = filterBlockedChannels(ytItems);
-            nextToken = "";
-            searchSuccess = true;
-            console.log(`[SEARCH] +++ Youtubei kazandı: "${query}"`);
-          }
-        } catch (ytErr) {
-          console.warn(`[SEARCH] Youtubei başarısız: ${ytErr.message}`);
-        }
-      }
-
-      // KATMAN 4: YouTube Data API v3 (SON ÇARE — kota harcar)
-      if (!searchSuccess) {
-        console.warn(`[SEARCH] *** Tüm ücretsiz kaynaklar başarısız, YouTube API kullanılıyor (kota harcanır): "${query}"`);
+        console.warn(`[SEARCH] *** Ücretsiz kaynaklar başarısız, YouTube API kullanılıyor: "${query}"`);
         const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
           params: {
             part: "snippet",
             q: query,
             type: "video",
             maxResults: 20,
-            pageToken: pageToken,
             key: YOUTUBE_API_KEY
           }
         });
         resultData = filterBlockedChannels(response.data.items);
-        nextToken = response.data.nextPageToken;
+        nextToken = response.data.nextPageToken || null;
         youtubeApiStatus = "ok";
-        console.log(`[SEARCH] +++ YouTube API son çare olarak kullanıldı: "${query}"`);
       }
 
     } catch (apiError) {
@@ -1709,12 +1698,10 @@ app.get("/search", searchLimiter, async (req, res) => {
       throw apiError;
     }
 
-    const result = { nextPageToken: nextToken, data: resultData };
+    const result = { nextPageToken: nextToken, data: resultData || [] };
     await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
     res.setHeader("Cache-Control", "no-store");
     res.json(result);
-
-    // Ön-ısıtma (Prewarm) proxy kotasını korumak için devre dışı bırakıldı.
 
   } catch (error) {
     logError("SEARCH", null, error.message);
