@@ -1257,7 +1257,7 @@ app.post("/auth/token", async (req, res) => {
 
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || req.path.startsWith("/proxy-panel")) {
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token") {
     return next();
   }
 
@@ -2052,7 +2052,7 @@ app.get("/stream/video", async (req, res) => {
     const r2Key = `video/${videoId}.mp4`;
     const localVideoFile = path.join(CACHE_DIR, `video_${videoId}.mp4`);
 
-    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (Kendi diskimizden video)
+    // KATMAN -1: FFMPEG MEDIA LIBRARY (Kendi diskimizden video)
     const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
     if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
       const videoFile = mediaTrack.files.mp4;
@@ -2455,111 +2455,44 @@ app.get("/download/mp3", async (req, res) => {
 });
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
+// BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
 app.get("/download/mp4", async (req, res) => {
   try {
-    const { videoId } = req.query;
+    const { videoId, res: quality } = req.query;
 
-    if (!videoId || !isValidVideoId(videoId)) {
+    if (!videoId || videoId.length !== 11) {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    const typeStr = "video";
-    const extStr = "mp4";
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    const resolution = ["360","480","720","1080"].includes(quality) ? quality : "720";
 
-    // KATMAN 0: FFmpeg Media Library (kalıcı MP4 dosyası)
-    const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
-    if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
-      const filePath = mediaTrack.files.mp4;
-      const fStats = fs.statSync(filePath);
-      console.log(`[DOWNLOAD_MP4]  Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
-      mediaLib.recordAccess(videoId);
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Length", fStats.size);
-      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-      return res.sendFile(filePath);
-    }
+    // 1) Bazocam mp4.php API'sine istek at
+    const apiUrl =
+      `[bazocam.net](https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution})`;
 
-    // 1. Disk cache — dosya varsa Content-Length ile anında gönder
-    if (fs.existsSync(localFile)) {
-      const fileStats = fs.statSync(localFile);
-      if (fileStats.size < 150 * 1024) {
-        fs.unlinkSync(localFile);
-      } else {
-        console.log(`[DOWNLOAD_MP4] Cache hit! ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
-        res.setHeader("Content-Type", "video/mp4");
-        res.setHeader("Content-Length", fileStats.size);
-        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-        return res.sendFile(localFile);
-      }
-    }
+    console.log("[MP4] Bazocam API çağrılıyor:", apiUrl);
 
-    // 2. Stream URL çöz (Piped/Invidious/Cobalt → yt-dlp → Youtubei)
-    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
-    const ua = getRandomUA();
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
-
-    const streamUrl = await queue.add(() =>
-      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-    );
-
-    if (!streamUrl || !streamUrl.toString().startsWith("http")) {
-      return res.status(500).json({ error: "Video URL çözümlenemedi" });
-    }
-
-    // 3. Stream'i direkt Android'e aktar (veri ANINDA akar!)
-    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 300000,
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      },
-      validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString() }, videoId)
+    const response = await axios.get(apiUrl, {
+      maxRedirects: 0,
+      validateStatus: (status) => status === 302,
     });
 
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-
-    // Content-Length varsa gönder → Android gerçek % gösterir
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
+    const finalUrl = response.headers.location;
+    if (!finalUrl) {
+      return res.status(500).json({ error: "Bazocam redirect URL gelmedi" });
     }
 
-    response.data.pipe(res);
+    console.log("[MP4] Redirect:", finalUrl);
 
-    //  ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
-    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
-      const cookiePath = getRandomCookie();
-      const proxyUrl = getRandomProxy(videoId);
-      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
-        .then(result => {
-          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
-          if (result.mp4) {
-            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
-          }
-          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
-        })
-        .catch(err => {
-          console.warn(`[FFMPEG_VIDEO_BG] --- Video işleme başarısız: ${videoId}: ${err.message}`);
-        });
-    }
+    // 2) Kullanıcıya aynen redirect et
+    res.redirect(finalUrl);
 
   } catch (err) {
-    logError("DOWNLOAD_MP4", req.query.videoId, err.message);
-    console.error("MP4 ERROR:", err.message);
-    if (!res.headersSent) {
-      res.status(500).json({ error: "MP4 download failed" });
-    } else {
-      res.end();
-    }
+    console.error("[MP4_ERR]", err.message);
+    res.status(500).json({ error: "MP4 indirilemedi" });
   }
 });
+
 
 // ---------------- DISK MANAGER (10GB Limit) ----------------
 // Önbelleği (cache) yönetir, 10GB'ı aşarsa en eski dosyaları siler.

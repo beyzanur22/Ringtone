@@ -1,0 +1,207 @@
+# bazocam.net — Sistem API Dokümantasyonu
+
+## API Endpoint'leri
+
+### 1. Ana Sayfa (Müzik Arama)
+```
+https://bazocam.net/search.php?PASS=BEYZA
+```
+Trend müzikler, playlist kartları ve arama özelliği olan ana sayfa.
+
+---
+
+### 2. Arama API
+```
+GET https://bazocam.net/search.php?PASS=BEYZA&action=search&q=SORGU
+```
+**Parametreler:**
+- `q` — Arama sorgusu (örn: `aleyna+tilki`)
+
+**Örnek:**
+```
+https://bazocam.net/search.php?PASS=BEYZA&action=search&q=aleyna+tilki
+```
+
+**Dönen JSON:**
+```json
+[
+  {
+    "id": "VIDEO_ID",
+    "title": "Şarkı Adı",
+    "uploader": "Sanatçı",
+    "duration": "3:45",
+    "thumbnail": "https://i.ytimg.com/vi/VIDEO_ID/mqdefault.jpg"
+  }
+]
+```
+
+**Cache:** 1 saat — aynı sorgu tekrar gelince proxy kullanılmaz.
+
+**Proxy:** İlk aramada yt-dlp-wrapper.sh üzerinden proxy kullanılır.
+
+---
+
+### 3. Playlist API
+```
+GET https://bazocam.net/search.php?PASS=BEYZA&action=trending&playlist=PLAYLIST_ID
+```
+
+**Mevcut Playlist'ler:**
+
+| İsim | Playlist ID |
+|------|------------|
+| 🔥 Türkiye Trend | PLexq5cxhVyKKlVvemIn6NVWDRrLrK7dRa |
+| 🎵 En Çok Dinlenenler | PLDIoUOhQQPlWt8OpaGG43OjNYuJ2q9jEN |
+| 🆕 Yeni Çıkanlar | PLDIoUOhQQPlVr3qepMVRsDe4T8vNQsvno |
+| 🎶 Slow Şarkılar | PLKVx4zuArgpyffjLRb6J7g9xA3eS05jiq |
+| 🌍 Yabancı Pop | PLDIoUOhQQPlWoqES-8H169jHIx7KJHSED |
+
+**Cache:** 24 saat — her gece 03:00'te otomatik yenilenir, proxy kullanılmaz.
+
+**Proxy:** Sadece cache süresi dolunca kullanılır (günde 1 kez).
+
+---
+
+### 4. Autocomplete API
+```
+GET https://bazocam.net/search.php?PASS=BEYZA&action=suggest&q=SORGU
+```
+
+**Örnek:**
+```
+https://bazocam.net/search.php?PASS=BEYZA&action=suggest&q=aleyna
+```
+
+**Dönen JSON:**
+```json
+["aleyna tilki", "aleyna tilki remix", "aleyna kalayçıoğlu", ...]
+```
+
+**Cache:** Yok.
+
+**Proxy:** Kullanılmaz — Google'ın suggestqueries.google.com API'si kullanılır.
+
+---
+
+### 5. MP3 İndir
+```
+GET https://bazocam.net/dl.php?PASS=BEYZA&youtubeID=VIDEO_ID&kbps=128
+```
+
+**Parametreler:**
+- `youtubeID` — YouTube video ID'si (11 karakter)
+- `kbps` — Kalite: `128`, `192`, `320` (varsayılan: `128`)
+
+**Örnek:**
+```
+https://bazocam.net/dl.php?PASS=BEYZA&youtubeID=9HYloBZFHf0&kbps=128
+```
+
+**Nasıl Çalışır:**
+1. Sayfa açılır, video bilgisi çekilir (title, thumbnail)
+2. Cache'de MP3 varsa → anında indirilir
+3. Cache'de yoksa → arka planda convert edilir, progress bar gösterilir
+4. Tamamlanınca otomatik indirme başlar
+
+**Cache:** MP3 cache'de 24 saat tutulur, 24 saatte istek gelmezse silinir.
+
+**Proxy:** Cache'de yoksa yt-dlp-wrapper.sh üzerinden proxy kullanılır.
+
+---
+
+### 6. MP3 İndir (Otomatik Sayfa)
+```
+GET https://bazocam.net/auto.php?PASS=BEYZA&youtubeID=VIDEO_ID&kbps=128
+```
+dl.php ile aynı işlevi görür, ek UI ile.
+
+---
+
+### 7. MP4 İndir
+```
+GET https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=VIDEO_ID&res=720
+```
+
+**Parametreler:**
+- `res` — Çözünürlük: `360`, `480`, `720`, `1080` (varsayılan: `720`)
+
+**Not:** Dosya sunucuya kaydedilmez, direkt Google CDN'e yönlendirilir.
+
+**Cache:** Google CDN linki 5 saat `/tmp/` klasöründe cache'lenir.
+
+**Proxy:** Link alırken yt-dlp-wrapper.sh kullanılır.
+
+---
+
+### 8. M4A İndir
+```
+GET https://bazocam.net/m4a.php?PASS=BEYZA&youtubeID=VIDEO_ID&q=140
+```
+
+**Parametreler:**
+- `q` — Format: `139` (48kbps), `140` (128kbps), `141` (256kbps)
+
+**Not:** Dosya sunucuya kaydedilmez, Google CDN'e yönlendirilir.
+
+---
+
+## Proxy Sistemi
+
+### Nerede Kullanılıyor?
+
+| İşlem | Proxy |
+|-------|-------|
+| MP3 convert (ilk kez) | ✅ Evet |
+| MP3 convert (cache'den) | ❌ Hayır |
+| Arama (ilk kez) | ✅ Evet |
+| Arama (cache'den) | ❌ Hayır |
+| Playlist (ilk kez/günlük) | ✅ Evet |
+| Playlist (cache'den) | ❌ Hayır |
+| MP4/M4A link (ilk kez) | ✅ Evet |
+| MP4/M4A link (cache'den) | ❌ Hayır |
+| Autocomplete | ❌ Hayır |
+
+### Proxy Detayları
+- **20 Webshare Residential Proxy** (şu an 5 aktif, 15 banlı)
+- **android_vr client** — cookies gerektirmez, bot tespitini azaltır
+- **Dinamik ban sistemi** — banlı proxy otomatik devre dışı, 6 saatte otomatik denenir
+- **Her gece 03:00** — tüm proxy'ler test edilir, çalışanlar aktif edilir
+- **Yönetim:** `https://bazocam.net/proxy.php?PASS=BEYZA`
+
+---
+
+## Cache Sistemi
+
+### Cache Dosyaları
+
+| Dosya | Konum | Süre |
+|-------|-------|------|
+| MP3 dosyası | `/cache/VIDEO_ID_QUALITY.mp3` | 24 saat (istek gelmezse silinir) |
+| MP3 meta | `/cache/VIDEO_ID_QUALITY.meta.json` | 24 saat |
+| Video info | `/cache/VIDEO_ID.info.json` | 24 saat |
+| Playlist | `/cache/pl_PLAYLIST_ID.json` | 24 saat |
+| Arama | `/cache/search_MD5.json` | 1 saat |
+| MP4/M4A link | `/tmp/stream_VIDEO_ID.link` | 4 saat |
+
+### Cache Temizleme
+- **Otomatik:** 24 saatte istek almayan MP3'ler silinir
+- **Manuel:** `https://bazocam.net/panel.php` — Cache Temizle butonu
+
+---
+
+## Panel
+
+```
+https://bazocam.net/panel.php
+Şifre: BEYZA
+```
+
+- Cache listesi, istek sayıları, boyutlar
+- Tekli ve toplu cache silme
+
+---
+
+## Güvenlik
+- Tüm endpoint'ler `PASS=BEYZA` gerektirir
+- Şifresiz erişimde `403 Yetkisiz` döner
+- Video ID'leri regex ile sanitize edilir (`[^a-zA-Z0-9_-]` temizlenir)
