@@ -2461,14 +2461,16 @@ app.get("/download/mp4", async (req, res) => {
     const { videoId, res: quality } = req.query;
 
     if (!videoId || videoId.length !== 11) {
-      return res.status(400).json({ error: "Invalid or missing videoId" });
+      return res.status(400).json({
+        error: "Invalid or missing videoId"
+      });
     }
 
-    const resolution = ["360","480","720","1080"].includes(quality)
-      ? quality
-      : "720";
+    const resolution =
+      ["360", "480", "720", "1080"].includes(quality)
+        ? quality
+        : "720";
 
-    // DOĞRU URL
     const apiUrl =
       `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution}`;
 
@@ -2476,23 +2478,40 @@ app.get("/download/mp4", async (req, res) => {
 
     const response = await axios.get(apiUrl, {
       maxRedirects: 0,
-      validateStatus: (status) => status === 302,
+      validateStatus: (status) =>
+        status >= 200 && status < 400,
     });
 
-    const finalUrl = response.headers.location;
+    let finalUrl = response.headers.location;
+
+    // redirect yoksa body içinden çek
+    if (!finalUrl && typeof response.data === "string") {
+
+      const match = response.data.match(
+        /https?:\/\/[^"' ]+googlevideo[^"' ]+/
+      );
+
+      if (match) {
+        finalUrl = match[0];
+      }
+    }
 
     if (!finalUrl) {
+
+      console.log("[MP4_BODY]");
+      console.log(response.data);
+
       return res.status(500).json({
-        error: "Bazocam redirect URL gelmedi"
+        error: "MP4 URL bulunamadı"
       });
     }
 
-    console.log("[MP4] Redirect:", finalUrl);
+    console.log("[MP4] Final URL:", finalUrl);
 
-    // Google CDN redirect
     res.redirect(finalUrl);
 
   } catch (err) {
+
     console.error("[MP4_ERR]", err.message);
 
     res.status(500).json({
