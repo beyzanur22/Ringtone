@@ -2456,6 +2456,7 @@ app.get("/download/mp3", async (req, res) => {
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
 // BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
+// BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
 app.get("/download/mp4", async (req, res) => {
   try {
     const { videoId, res: quality } = req.query;
@@ -2466,7 +2467,7 @@ app.get("/download/mp4", async (req, res) => {
 
     const resolution = ["360","480","720","1080"].includes(quality) ? quality : "720";
 
-    // 1) Bazocam mp4.php API'sine istek at
+    // DÜZELTİLMİŞ URL
     const apiUrl =
       `[bazocam.net](https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution})`;
 
@@ -2484,7 +2485,7 @@ app.get("/download/mp4", async (req, res) => {
 
     console.log("[MP4] Redirect:", finalUrl);
 
-    // 2) Kullanıcıya aynen redirect et
+    // GOOGLE CDN’E redirect
     res.redirect(finalUrl);
 
   } catch (err) {
