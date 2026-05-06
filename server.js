@@ -1647,79 +1647,133 @@ app.get("/top50", async (req, res) => {
 });
 
 // SEARCH
-// BAZOCAM SEARCH API
-
 app.get("/search", searchLimiter, async (req, res) => {
   try {
-    const query = req.query.q?.trim();
-    if (!query) {
-      return res.status(400).json({ error: "Query required" });
-    }
+    const query = req.query.q?.toLowerCase().trim();
+    if (!query) return res.status(400).json({ error: "Query required" });
 
-    const page = req.query.page || 1;
-    const cacheKey = `bazocam_search:${query.toLowerCase()}:${page}`;
+    const pageToken = req.query.pageToken || "";
+    const cacheKey = `search:${query}_${pageToken}`;
 
-    // CACHE KONTROLÜ
+    // Redis cache kontrol
     const cached = await cacheGet(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
+    if (cached) return res.json(cached);
 
-    //  Bazocam API Çağrısı
-    const apiUrl = `[bazocam.net](https://bazocam.net/search.php?PASS=BEYZA&q=${encodeURIComponent(query)}&page=${page})`;
+    let resultData = null, nextToken = null;
+    let searchSuccess = false;
 
-    console.log(`[BAZOCAM_SEARCH] API → ${apiUrl}`);
-
-    const response = await axios.get(apiUrl, {
-      timeout: 12000,
-      headers: {
-        "User-Agent": getRandomUA(),
-        "Accept": "application/json, text/html, */*",
-        "Referer": "[bazocam.net](https://bazocam.net/)"
+    try {
+      // Eğer pageToken YouTube API token'ı ise (genelde 20+ karakter) direkt YouTube API'ye git
+      if (pageToken && pageToken.length > 10) {
+          console.log(`[SEARCH] YouTube API Sayfalama: "${query}" (Token: ${pageToken.substring(0,5)}...)`);
+          const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+            params: {
+              part: "snippet",
+              q: query,
+              type: "video",
+              maxResults: 20,
+              pageToken: pageToken,
+              key: YOUTUBE_API_KEY
+            }
+          });
+          resultData = filterBlockedChannels(response.data.items);
+          nextToken = response.data.nextPageToken || null;
+          searchSuccess = true;
       }
-    });
+      
+      // ÜCRETSİZ KAYNAKLAR (Piped, Invidious)
+      const isFirstPage = !pageToken || pageToken === "1" || pageToken === "";
+      const invPage = parseInt(pageToken) || 1;
 
-    const data = response.data;
+      // KATMAN 1: Invidious Search (Sayfalama desteği en iyi olan)
+      if (!searchSuccess) {
+        const shuffledInv = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
+        for (const instance of shuffledInv) {
+          try {
+            const invRes = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&page=${invPage}`, { timeout: 4000 });
+            if (invRes && invRes.data && invRes.data.length > 0) {
+              const invItems = invRes.data.map(item => ({
+                id: { videoId: item.videoId },
+                snippet: {
+                  title: item.title,
+                  channelTitle: item.author,
+                  channelId: item.authorId || "",
+                  thumbnails: { high: { url: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg` } }
+                }
+              }));
+              resultData = filterBlockedChannels(invItems);
+              nextToken = (invPage + 1).toString(); // Sonraki sayfa
+              searchSuccess = true;
+              console.log(`[SEARCH] +++ Invidious kazandı: "${query}" (Sayfa: ${invPage})`);
+              break;
+            }
+          } catch (e) { }
+        }
+      }
 
-    if (!data || !Array.isArray(data.results)) {
-      return res.status(500).json({ error: "Invalid Bazocam API response" });
-    }
-
-    //  Bizim uygulamanın istediği format
-    const results = data.results.map(item => ({
-      id: { videoId: item.videoId },
-      snippet: {
-        title: item.title,
-        channelTitle: item.artist || item.channel || "",
-        channelId: "",
-        thumbnails: {
-          high: {
-            url: item.thumbnail ||
-              `[i.ytimg.com](https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg)`
+      // KATMAN 2: Piped (Sadece ilk sayfa için hızlı alternatif)
+      if (!searchSuccess && isFirstPage) {
+        try {
+          const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
+          const pipedData = pipedRes.data?.items || (Array.isArray(pipedRes.data) ? pipedRes.data : []);
+          if (pipedData.length > 0) {
+            const pipedItems = pipedData
+              .filter(item => item.url && item.url.includes("?v="))
+              .map(item => {
+                const videoId = (item.url || "").split("?v=")[1];
+                return {
+                  id: { videoId },
+                  snippet: {
+                    title: item.title,
+                    channelTitle: item.uploaderName,
+                    channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
+                    thumbnails: { high: { url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } }
+                  }
+                };
+              });
+            if (pipedItems.length > 0) {
+              resultData = filterBlockedChannels(pipedItems);
+              nextToken = "2"; // Sonraki sayfa için Invidious'a devrederiz
+              searchSuccess = true;
+              console.log(`[SEARCH] +++ Piped kazandı: "${query}" (Sayfa: 1)`);
+            }
           }
-        },
-        duration: item.duration || null
+        } catch (pipedErr) { }
       }
-    }));
 
-    const nextPageToken = data.hasMore ? (parseInt(page) + 1).toString() : null;
+      // KATMAN 3: YouTube Data API v3 (SON ÇARE — kota harcar)
+      if (!searchSuccess) {
+        console.warn(`[SEARCH] *** Ücretsiz kaynaklar başarısız, YouTube API kullanılıyor: "${query}"`);
+        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+          params: {
+            part: "snippet",
+            q: query,
+            type: "video",
+            maxResults: 20,
+            key: YOUTUBE_API_KEY
+          }
+        });
+        resultData = filterBlockedChannels(response.data.items);
+        nextToken = response.data.nextPageToken || null;
+        youtubeApiStatus = "ok";
+      }
 
-    const resultPayload = {
-      nextPageToken,
-      data: results
-    };
+    } catch (apiError) {
+      logError("SEARCH_ALL_FAIL", null, `Tüm arama kaynakları başarısız: ${apiError.message}`);
+      throw apiError;
+    }
 
-    await cacheSet(cacheKey, resultPayload, SEARCH_CACHE_DURATION);
-
+    const result = { nextPageToken: nextToken, data: resultData || [] };
+    await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
     res.setHeader("Cache-Control", "no-store");
-    res.json(resultPayload);
+    res.json(result);
 
-  } catch (err) {
-    console.error("[BAZOCAM_SEARCH_ERR]", err.message);
+  } catch (error) {
+    logError("SEARCH", null, error.message);
+    console.error("SEARCH ERROR:", error.message);
     res.status(500).json({ error: "Search failed" });
   }
 });
-
 
 // DRM FAZ 2: Stream Token Endpoint — İstemci önce token alır
 app.post("/stream/token", async (req, res) => {
