@@ -2305,20 +2305,28 @@ app.get("/stream/video", async (req, res) => {
 
     response.data.pipe(res);
 
-    // ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet (bir sonraki izlemede diskten gelir)
-    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+    // ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
+    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
+      const metadata = { 
+        title: req.query.title || "Unknown", 
+        artist: req.query.uploader || "Unknown" 
+      };
+      
+      mediaLib.upsertTrack(videoId, { ...metadata, category: "watching", status: "processing" });
       const cookiePath = getRandomCookie();
       const proxyUrl = getRandomProxy(videoId);
-      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+      
+      ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
         .then(result => {
-          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
-          if (result.mp4) {
-            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
-          }
-          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
+          mediaLib.markReady(videoId, result);
+          ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
+            if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
+          }).catch(() => { });
+          console.log(`[FFMPEG_BG_VIDEO] +++ Video kütüphaneye kaydedildi: ${videoId}`);
         })
         .catch(err => {
-          console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
+          mediaLib.markFailed(videoId, err.message);
+          console.warn(`[FFMPEG_BG_VIDEO] *** Hata: ${videoId}: ${err.message}`);
         });
     }
 
