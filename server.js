@@ -2018,10 +2018,16 @@ app.get("/stream", async (req, res) => {
 
         // Arka planda kalıcı indirmeyi başlat
         if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
-          mediaLib.upsertTrack(videoId, { status: "processing" });
+          const metadata = { 
+            title: req.query.title || "Unknown", 
+            artist: req.query.uploader || "Unknown" 
+          };
+          const category = typeStr === "video" ? "watching" : "listening";
+
+          mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
           const cookiePath = getRandomCookie();
           const proxyUrl = getRandomProxy(videoId);
-          ffmpegWorker.processAudio(videoId, {}, { format: "m4a", cookiePath, proxyUrl })
+          ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl })
             .then(result => {
               mediaLib.markReady(videoId, result);
               ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
@@ -2053,10 +2059,16 @@ app.get("/stream", async (req, res) => {
 
       //  ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
       if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
-        mediaLib.upsertTrack(videoId, { status: "processing" });
+        const metadata = { 
+          title: req.query.title || "Unknown", 
+          artist: req.query.uploader || "Unknown" 
+        };
+        const category = typeStr === "video" ? "watching" : "listening";
+        
+        mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
         const cookiePath = getRandomCookie();
         const proxyUrl = getRandomProxy(videoId);
-        ffmpegWorker.processAudio(videoId, {}, { format: "m4a", cookiePath, proxyUrl })
+        ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl })
           .then(result => {
             mediaLib.markReady(videoId, result);
             ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
@@ -2855,6 +2867,14 @@ app.get("/cache-panel", (req, res) => {
     const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
     const date = t.processedAt ? new Date(t.processedAt).toLocaleString("tr-TR") : "—";
     const quality = t.files.mp4 ? "MP4" : t.files.mp3 ? "192 kbps" : "128 kbps";
+    
+    // Tür etiketi
+    let categoryHtml = "";
+    if (t.category === "listening") categoryHtml = '<span class="badge blue">🎧 Dinleme</span>';
+    else if (t.category === "watching") categoryHtml = '<span class="badge red">📺 İzleme</span>';
+    else categoryHtml = '<span class="badge gray">📦 Cache</span>';
+
+    // İstek barı (maksimum 10 üzerinden oranla)
     const reqPct = Math.min(100, (t.accessCount || 0) * 10);
 
     return `<tr data-requests="${t.accessCount || 0}" data-size="${sizeMB}" data-date="${t.processedAt || ''}">
@@ -2865,6 +2885,7 @@ app.get("/cache-panel", (req, res) => {
           <span class="track-id">${t.videoId}</span>
         </div>
       </td>
+      <td>${categoryHtml}</td>
       <td><span class="badge-quality">${quality}</span></td>
       <td>
         <div class="request-bar"><div class="request-fill" style="width:${reqPct}%"></div></div>

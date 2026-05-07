@@ -85,6 +85,7 @@ function upsertTrack(videoId, data) {
     },
     status: data.status || existing.status || "processing",
     source: data.source || existing.source || "youtube",
+    category: data.category || existing.category || "streaming", // New field: listening, watching, downloading
     processedAt: data.processedAt || existing.processedAt || null,
     lastAccessed: existing.lastAccessed || null,
     accessCount: existing.accessCount || 0,

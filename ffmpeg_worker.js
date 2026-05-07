@@ -64,6 +64,18 @@ async function processAudio(videoId, metadata = {}, options = {}) {
     const startTime = Date.now();
     console.log(`[FFMPEG_WORKER] 🎵 İşlem başlıyor: ${videoId}`);
 
+    // metadata yoksa yt-dlp ile çek
+    if (!metadata.title || metadata.title === "Unknown") {
+      try {
+        const info = await execYtDlp(videoId, ["--get-title", "--get-duration"], options.proxyUrl, options.cookiePath);
+        if (info) {
+          const lines = info.trim().split("\n");
+          metadata.title = lines[0] || "Unknown";
+          console.log(`[FFMPEG_WORKER] Metadata çekildi: ${metadata.title}`);
+        }
+      } catch (e) { }
+    }
+
     const rawFile = path.join(TEMP_DIR, `raw_${videoId}.webm`);
     const m4aFile = path.join(MEDIA_DIR, "audio", `${videoId}.m4a`);
     const mp3File = path.join(MEDIA_DIR, "mp3", `${videoId}.mp3`);
@@ -118,6 +130,13 @@ async function processAudio(videoId, metadata = {}, options = {}) {
  */
 async function processVideo(videoId, metadata = {}, options = {}) {
   return ffmpegQueue.add(async () => {
+    // metadata yoksa çek
+    if (!metadata.title || metadata.title === "Unknown") {
+      try {
+        const info = await execYtDlp(videoId, ["--get-title"], options.proxyUrl, options.cookiePath);
+        if (info) metadata.title = info.trim();
+      } catch (e) { }
+    }
     const rawFile = path.join(TEMP_DIR, `rawvid_${videoId}.mp4`);
     const mp4File = path.join(MEDIA_DIR, "video", `${videoId}.mp4`);
 
