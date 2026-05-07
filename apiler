@@ -205,3 +205,22 @@ https://bazocam.net/panel.php
 - Tüm endpoint'ler `PASS=BEYZA` gerektirir
 - Şifresiz erişimde `403 Yetkisiz` döner
 - Video ID'leri regex ile sanitize edilir (`[^a-zA-Z0-9_-]` temizlenir)
+
+----------------------------
+MP3 İndir:
+https://bazocam.net/dl.php?PASS=BEYZA&youtubeID=VIDEO_ID&kbps=128
+
+MP4 İndir:
+https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=VIDEO_ID&res=720
+
+M4A İndir:
+https://bazocam.net/m4a.php?PASS=BEYZA&youtubeID=VIDEO_ID&q=140
+
+Arama:
+https://bazocam.net/search.php?PASS=BEYZA&action=search&q=SORGU
+
+Playlist:
+https://bazocam.net/search.php?PASS=BEYZA&action=trending&playlist=PLAYLIST_ID
+
+Autocomplete:
+https://bazocam.net/search.php?PASS=BEYZA&action=suggest&q=SORGU

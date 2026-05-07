@@ -1951,30 +1951,22 @@ app.get("/stream", async (req, res) => {
     } else {
       ua = getRandomUA();
 
-      // ★ KATMAN 2A: BAZOCAM CDN (Proxy gerektirmez — Bazocam kendi proxy'sini kullanır)
-      const bazocamUrl = await getBazocamCdnUrl(videoId, "audio");
-      if (bazocamUrl) {
-        streamUrl = bazocamUrl;
-        console.log(`[BAZOCAM_AUDIO] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
-      } else {
-        // ★ KATMAN 2B: Eski yöntem (kendi yt-dlp + proxy sistemimiz)
-        console.log(`[BAZOCAM_AUDIO] ⚠️ Bazocam başarısız, yt-dlp fallback: ${videoId}`);
-        const resolutionPromise = queue.add(async () => {
-          try {
-            const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
-            return url;
-          } finally {
-            const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-            ongoingResolutions.delete(ongoingKey);
-          }
-        });
+      // ÇAKIŞMA ÖNLEYİCİ: Bu videoyu çözme işlemini bir Promise olarak başlat
+      const resolutionPromise = queue.add(async () => {
+        try {
+          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
+          return url;
+        } finally {
+          const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+          ongoingResolutions.delete(ongoingKey);
+        }
+      });
 
-        const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-        ongoingResolutions.set(ongoingKey, resolutionPromise);
-        streamUrl = await resolutionPromise;
-      }
+      const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+      ongoingResolutions.set(ongoingKey, resolutionPromise);
+      streamUrl = await resolutionPromise;
 
-      // Stream URL'leri 5 saat cache'le (YouTube URL'leri ~6 saat geçerli)
+      // Stream URL'leri 5 saat cache'le
       await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
       console.log("AUDIO CACHE SAVE:", videoId);
     }
@@ -2193,7 +2185,7 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // KATMAN 2: Bazocam CDN → YouTube fallback
+    // KATMAN 2: YouTube'dan çöz
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -2202,22 +2194,14 @@ app.get("/stream/video", async (req, res) => {
       streamUrl = cachedData.url;
       console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
     } else {
-      // ★ KATMAN 2A: BAZOCAM CDN (Proxy gerektirmez)
-      const bazocamUrl = await getBazocamCdnUrl(videoId, "video");
-      if (bazocamUrl) {
-        streamUrl = bazocamUrl;
-        console.log(`[BAZOCAM_VIDEO] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
-      } else {
-        // ★ KATMAN 2B: Eski yöntem (kendi yt-dlp + proxy)
-        console.log(`[BAZOCAM_VIDEO] ⚠️ Bazocam başarısız, yt-dlp fallback: ${videoId}`);
-        const ua = getRandomUA();
-        const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-        const countryClient = getPlayerClientForCountry(country);
+      console.log(`[VIDEO_RESOLVE] YouTube'dan video URL çözümleniyor: ${videoId}`);
+      const ua = getRandomUA();
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
 
-        streamUrl = await queue.add(async () => {
-          return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-        });
-      }
+      streamUrl = await queue.add(async () => {
+        return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
+      });
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
 
@@ -2557,24 +2541,15 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz — Bazocam CDN → yt-dlp fallback
+    // 2. Stream URL çöz (yt-dlp + proxy)
     console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
     const ua = getRandomUA();
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
 
-    // ★ Önce Bazocam'dan Google CDN linki al (proxy gerektirmez)
-    let streamUrl = await getBazocamCdnUrl(videoId, "video");
-
-    if (!streamUrl) {
-      // Bazocam başarısız — yt-dlp fallback
-      console.log(`[DOWNLOAD_MP4] Bazocam başarısız, yt-dlp fallback: ${videoId}`);
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
-      streamUrl = await queue.add(() =>
-        resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-      );
-    } else {
-      console.log(`[DOWNLOAD_MP4] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
-    }
+    const streamUrl = await queue.add(() =>
+      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
+    );
 
     if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
