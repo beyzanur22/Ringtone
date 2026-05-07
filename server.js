@@ -939,6 +939,8 @@ function ytdlpDirectDownload(videoId, type) {
 
     // Proxy Rotasyonu 
     const dlProxy = getRandomProxy(videoId);
+    console.log("[PROXY_TEST]", dlProxy);
+    
     if (dlProxy) {
       args.push("--proxy", dlProxy);
     }
