@@ -2582,59 +2582,75 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz (yt-dlp + proxy)
-    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
-    const ua = getRandomUA();
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
+    // KATMAN 1: CLOUDFLARE R2
+    const r2Key = `video/${videoId}.mp4`;
+    try {
+      const r2Data = await getR2Stream(r2Key);
+      if (r2Data && r2Data.stream) {
+        console.log(`[DOWNLOAD_MP4] R2'den sunuluyor: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+        if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
+        return r2Data.stream.pipe(res);
+      }
+    } catch (e) { }
 
-    const streamUrl = await queue.add(() =>
-      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-    );
+    // KATMAN 2: URL CACHE
+    const cacheKey = `stream:video:${videoId}`;
+    const cached = await cacheGet(cacheKey);
+    let streamUrl, ua;
+
+    if (cached && cached.url) {
+      streamUrl = cached.url;
+      ua = cached.ua || getRandomUA();
+      console.log(`[DOWNLOAD_MP4] URL Cache Hit: ${videoId}`);
+    } else {
+      console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
+      ua = getRandomUA();
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
+
+      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
+      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+    }
 
     if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    // 3. Stream'i direkt Android'e aktar (veri anında akar)
+    // 3. Stream'i direkt Android'e aktar
     console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
       responseType: "stream",
       timeout: 120000,
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://www.youtube.com/"
-      },
+      headers: { "User-Agent": ua, "Referer": "https://www.youtube.com/" },
       validateStatus: (status) => status < 400,
       ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString().trim() }, videoId)
     });
 
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-
-    // Content-Length varsa gönder -> Android ne çektiğini bilsin
-    if (response.headers["content-length"]) {
-      res.setHeader("Content-Length", response.headers["content-length"]);
-    }
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
 
     response.data.pipe(res);
 
     // ARKA PLANDA - FFmpeg ile videoyu kalıcı kaydet
-    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
+      const metadata = { title: req.query.title || "Unknown", artist: req.query.uploader || "Unknown" };
+      mediaLib.upsertTrack(videoId, { ...metadata, category: "watching", status: "processing" });
       const cookiePath = getRandomCookie();
       const proxyUrl = getRandomProxy(videoId);
-      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+      ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
         .then(result => {
-          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
-          if (result.mp4) {
-            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
-          }
-          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
+          mediaLib.markReady(videoId, result);
+          ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
+            if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
+          }).catch(() => { });
         })
         .catch(err => {
-          console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
+          mediaLib.markFailed(videoId, err.message);
         });
     }
 
