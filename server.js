@@ -102,7 +102,7 @@ function loadRotationAssets() {
     // Proxy havuzunu PHP panel verisinden yükle
     loadProxyData();
     autoUnbanProxies();
-    
+
     // Eski proxies.txt varsa onları da aktife ekle (migrasyon)
     const proxyFile = path.join(__dirname, "proxies.txt");
     if (fs.existsSync(proxyFile)) {
@@ -165,7 +165,7 @@ function getRandomProxy(videoId = null) {
 
   // Protokol ekle (http:// yoksa)
   if (proxyStr && !proxyStr.startsWith("http")) {
-      proxyStr = "http://" + proxyStr;
+    proxyStr = "http://" + proxyStr;
   }
   return proxyStr;
 }
@@ -1652,121 +1652,28 @@ app.get("/search", searchLimiter, async (req, res) => {
     const query = req.query.q?.toLowerCase().trim();
     if (!query) return res.status(400).json({ error: "Query required" });
 
-    const pageToken = req.query.pageToken || "";
-    const cacheKey = `search:${query}_${pageToken}`;
+    const cacheKey = `search_bazocam:${query}`;
 
     // Redis cache kontrol
     const cached = await cacheGet(cacheKey);
     if (cached) return res.json(cached);
 
-    let resultData = null, nextToken = null;
-    let searchSuccess = false;
-
     try {
-      // Eğer pageToken YouTube API token'ı ise (genelde 20+ karakter) direkt YouTube API'ye git
-      if (pageToken && pageToken.length > 10) {
-          console.log(`[SEARCH] YouTube API Sayfalama: "${query}" (Token: ${pageToken.substring(0,5)}...)`);
-          const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
-            params: {
-              part: "snippet",
-              q: query,
-              type: "video",
-              maxResults: 20,
-              pageToken: pageToken,
-              key: YOUTUBE_API_KEY
-            }
-          });
-          resultData = filterBlockedChannels(response.data.items);
-          nextToken = response.data.nextPageToken || null;
-          searchSuccess = true;
-      }
+      console.log(`[SEARCH] Bazocam API kullanılıyor: "${query}"`);
+      // Bazocam API'ye istek
+      const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=BEYZA&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
       
-      // ÜCRETSİZ KAYNAKLAR (Piped, Invidious)
-      const isFirstPage = !pageToken || pageToken === "1" || pageToken === "";
-      const invPage = parseInt(pageToken) || 1;
-
-      // KATMAN 1: Invidious Search (Sayfalama desteği en iyi olan)
-      if (!searchSuccess) {
-        const shuffledInv = [...INVIDIOUS_INSTANCES].sort(() => Math.random() - 0.5);
-        for (const instance of shuffledInv) {
-          try {
-            const invRes = await axiosClient.get(`${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video&page=${invPage}`, { timeout: 4000 });
-            if (invRes && invRes.data && invRes.data.length > 0) {
-              const invItems = invRes.data.map(item => ({
-                id: { videoId: item.videoId },
-                snippet: {
-                  title: item.title,
-                  channelTitle: item.author,
-                  channelId: item.authorId || "",
-                  thumbnails: { high: { url: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg` } }
-                }
-              }));
-              resultData = filterBlockedChannels(invItems);
-              nextToken = (invPage + 1).toString(); // Sonraki sayfa
-              searchSuccess = true;
-              console.log(`[SEARCH] +++ Invidious kazandı: "${query}" (Sayfa: ${invPage})`);
-              break;
-            }
-          } catch (e) { }
-        }
-      }
-
-      // KATMAN 2: Piped (Sadece ilk sayfa için hızlı alternatif)
-      if (!searchSuccess && isFirstPage) {
-        try {
-          const pipedRes = await fetchFromPipedFast(`/search?q=${encodeURIComponent(query)}&filter=videos`);
-          const pipedData = pipedRes.data?.items || (Array.isArray(pipedRes.data) ? pipedRes.data : []);
-          if (pipedData.length > 0) {
-            const pipedItems = pipedData
-              .filter(item => item.url && item.url.includes("?v="))
-              .map(item => {
-                const videoId = (item.url || "").split("?v=")[1];
-                return {
-                  id: { videoId },
-                  snippet: {
-                    title: item.title,
-                    channelTitle: item.uploaderName,
-                    channelId: (item.uploaderUrl || "").split("/channel/")[1] || "",
-                    thumbnails: { high: { url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` } }
-                  }
-                };
-              });
-            if (pipedItems.length > 0) {
-              resultData = filterBlockedChannels(pipedItems);
-              nextToken = "2"; // Sonraki sayfa için Invidious'a devrederiz
-              searchSuccess = true;
-              console.log(`[SEARCH] +++ Piped kazandı: "${query}" (Sayfa: 1)`);
-            }
-          }
-        } catch (pipedErr) { }
-      }
-
-      // KATMAN 3: YouTube Data API v3 (SON ÇARE — kota harcar)
-      if (!searchSuccess) {
-        console.warn(`[SEARCH] *** Ücretsiz kaynaklar başarısız, YouTube API kullanılıyor: "${query}"`);
-        const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
-          params: {
-            part: "snippet",
-            q: query,
-            type: "video",
-            maxResults: 20,
-            key: YOUTUBE_API_KEY
-          }
-        });
-        resultData = filterBlockedChannels(response.data.items);
-        nextToken = response.data.nextPageToken || null;
-        youtubeApiStatus = "ok";
-      }
+      const bazocamData = response.data || [];
+      const result = { data: bazocamData, nextPageToken: null };
+      
+      await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(result);
 
     } catch (apiError) {
-      logError("SEARCH_ALL_FAIL", null, `Tüm arama kaynakları başarısız: ${apiError.message}`);
+      logError("SEARCH_BAZOCAM_FAIL", null, `Bazocam arama başarısız: ${apiError.message}`);
       throw apiError;
     }
-
-    const result = { nextPageToken: nextToken, data: resultData || [] };
-    await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
-    res.setHeader("Cache-Control", "no-store");
-    res.json(result);
 
   } catch (error) {
     logError("SEARCH", null, error.message);
@@ -2455,62 +2362,109 @@ app.get("/download/mp3", async (req, res) => {
 });
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
-// BASİT MP4 DOWNLOAD (Bazocam API bağlantılı)
 app.get("/download/mp4", async (req, res) => {
   try {
+    const { videoId } = req.query;
 
-    const { videoId, res: quality } = req.query;
-
-    if (!videoId || videoId.length !== 11) {
-      return res.status(400).json({
-        error: "Invalid videoId"
-      });
+    if (!videoId || !isValidVideoId(videoId)) {
+      return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    const resolution =
-      ["360","480","720","1080"].includes(quality)
-        ? quality
-        : "720";
+    const typeStr = "video";
+    const extStr = "mp4";
+    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // GERÇEK API
-    const apiUrl =
-      `https://bazocam.net/mp4.php?PASS=BEYZA&youtubeID=${videoId}&res=${resolution}&action=getlink`;
-
-    console.log("[MP4_API]", apiUrl);
-
-    const response = await axios.get(apiUrl, {
-      timeout: 30000,
-      validateStatus: (s) => s >= 200 && s < 500
-    });
-
-    console.log("[MP4_RESPONSE]", response.data);
-
-    // JSON kontrol
-    if (
-      response.data &&
-      response.data.ok &&
-      response.data.video
-    ) {
-
-      const finalUrl = response.data.video;
-
-      console.log("[MP4_FINAL]", finalUrl);
-
-      return res.redirect(finalUrl);
+    // KATMAN -1: FFmpeg Media Library (kalıcı MP4 dosyası)
+    const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
+    if (mediaTrack && mediaTrack.files?.mp4 && fs.existsSync(mediaTrack.files.mp4)) {
+      const fileToPipe = mediaTrack.files.mp4;
+      const fStats = fs.statSync(fileToPipe);
+      console.log(`[DOWNLOAD_MP4] Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
+      mediaLib.recordAccess(videoId);
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Length", fStats.size);
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+      return res.sendFile(fileToPipe);
     }
 
-    return res.status(500).json({
-      error: "MP4 link alınamadı",
-      data: response.data
+    // 1. Disk cache - dosya varsa Content-Length ile anında gönder
+    if (fs.existsSync(localFile)) {
+      const fileStats = fs.statSync(localFile);
+      if (fileStats.size < 150 * 1024) {
+        fs.unlinkSync(localFile);
+      } else {
+        console.log(`[DOWNLOAD_MP4] Cache Hit! ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Length", fileStats.size);
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+        return res.sendFile(localFile);
+      }
+    }
+
+    // 2. Stream URL çöz (Piped/Invidious/Cobalt -> yt-dlp -> Youtubei)
+    console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
+    const ua = getRandomUA();
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    const countryClient = getPlayerClientForCountry(country);
+
+    const streamUrl = await queue.add(() =>
+      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
+    );
+
+    if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.startsWith("http")) {
+      return res.status(500).json({ error: "Video URL çözümlenemedi" });
+    }
+
+    // 3. Stream'i direkt Android'e aktar (veri anında akar)
+    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
+    const response = await axiosClient({
+      method: "GET",
+      url: streamUrl.toString().trim(),
+      responseType: "stream",
+      timeout: 120000,
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://www.youtube.com/"
+      },
+      validateStatus: (status) => status < 400,
+      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString().trim() }, videoId)
     });
+
+    res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+
+    // Content-Length varsa gönder -> Android ne çektiğini bilsin
+    if (response.headers["content-length"]) {
+      res.setHeader("Content-Length", response.headers["content-length"]);
+    }
+
+    response.data.pipe(res);
+
+    // ARKA PLANDA - FFmpeg ile videoyu kalıcı kaydet
+    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
+      const cookiePath = getRandomCookie();
+      const proxyUrl = getRandomProxy(videoId);
+      ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
+        .then(result => {
+          mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
+          if (result.mp4) {
+            try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
+          }
+          console.log(`[FFMPEG_VIDEO_BG] +++ Video kalıcı kaydedildi: ${videoId}`);
+        })
+        .catch(err => {
+          console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
+        });
+    }
 
   } catch (err) {
-
-    console.error("[MP4_ERR]", err.message);
-
-    res.status(500).json({
-      error: "MP4 indirilemedi"
-    });
+    logError("DOWNLOAD_MP4", req.query.videoId, err.message);
+    console.error("MP4 ERROR:", err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "MP4 download failed" });
+    } else {
+      res.end();
+    }
   }
 });
 
@@ -2566,7 +2520,7 @@ const ADMIN_PASS = "BEYZA";
 
 app.get("/proxy-panel", (req, res) => {
   loadProxyData(); // Her girişte veriyi yenile
-  
+
   const activeList = proxyData.active.map(p => `
     <tr>
       <td><code>${p.ip}</code> <span id="res_${p.ip.replace(/[^a-zA-Z0-9]/g, '')}" style="margin-left:10px;"></span></td>
@@ -2671,7 +2625,7 @@ app.get("/proxy-panel", (req, res) => {
 
 app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
   if (req.body.pass !== ADMIN_PASS) return res.redirect('/proxy-panel?msg=Hatali Sifre');
-  
+
   loadProxyData();
   const action = req.body.action;
   let proxyIp = (req.body.proxy_ip || '').trim();
@@ -2698,7 +2652,7 @@ app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
       msg = "Ban Kaldirildi";
     }
   }
-  
+
   saveProxyData();
   proxyPool = proxyData.active.map(p => p.ip); // havuzu yenile
   res.redirect('/proxy-panel?msg=' + encodeURIComponent(msg));
