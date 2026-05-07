@@ -250,9 +250,14 @@ function getRandomProxy(videoId = null) {
   }
 
   // Protokol ekle (http:// yoksa)
-  if (proxyStr && !proxyStr.startsWith("http")) {
-    proxyStr = "http://" + proxyStr;
-  }
+  if (
+  proxyStr &&
+  !proxyStr.startsWith("http://") &&
+  !proxyStr.startsWith("https://") &&
+  !proxyStr.startsWith("socks5://")
+) {
+  proxyStr = "http://" + proxyStr;
+}
   return proxyStr;
 }
 
