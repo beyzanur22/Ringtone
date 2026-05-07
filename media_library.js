@@ -276,6 +276,45 @@ function cleanup(maxAgeDays = 90, maxDiskMB = 500) {
   return { deletedCount, freedMB: freedMB.toFixed(1) };
 }
 
+/**
+ * Tek bir şarkıyı ve dosyalarını sil
+ */
+function removeTrack(videoId) {
+  const track = db.tracks[videoId];
+  if (!track) return false;
+
+  // Dosyaları sil
+  for (const type of ["m4a", "mp3", "mp4"]) {
+    const filePath = track.files?.[type];
+    if (filePath && fs.existsSync(filePath)) {
+      try { fs.unlinkSync(filePath); } catch (e) { }
+    }
+  }
+  // Thumbnail sil
+  if (track.thumbnail && fs.existsSync(track.thumbnail)) {
+    try { fs.unlinkSync(track.thumbnail); } catch (e) { }
+  }
+
+  delete db.tracks[videoId];
+  dirty = true;
+  saveDB();
+  return true;
+}
+
+/**
+ * Tüm kütüphaneyi boşalt
+ */
+function clearAllTracks() {
+  const tracks = Object.values(db.tracks);
+  for (const t of tracks) {
+    removeTrack(t.videoId);
+  }
+  db.stats = { totalProcessed: 0, totalFailed: 0 };
+  dirty = true;
+  saveDB();
+  return true;
+}
+
 // ═══════════════════════════════════════
 //  EXPORTS
 // ═══════════════════════════════════════
@@ -290,5 +329,7 @@ module.exports = {
   getAllTracks,
   getStats,
   cleanup,
+  removeTrack,
+  clearAllTracks,
   saveDB
 };

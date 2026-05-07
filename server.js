@@ -1353,7 +1353,7 @@ app.post("/auth/token", async (req, res) => {
 
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || req.path.startsWith("/proxy-panel")) {
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel")) {
     return next();
   }
 
@@ -2833,6 +2833,72 @@ app.get("/proxy-panel/test", async (req, res) => {
 });
 
 // Health Check tetikleyici
+// ---------------- CACHE PANEL ----------------
+const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
+
+app.get("/cache-panel", (req, res) => {
+  let html = fs.readFileSync(CACHE_PANEL_TEMPLATE, "utf-8");
+  const stats = mediaLib.getStats();
+  const tracks = mediaLib.getAllTracks({ sortBy: "processedAt" });
+
+  let tempCount = 0;
+  try { if (fs.existsSync(CACHE_DIR)) tempCount = fs.readdirSync(CACHE_DIR).length; } catch (e) { }
+
+  html = html.replace("%%TOTAL_CACHE%%", stats.readyTracks);
+  html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
+  html = html.replace("%%CACHE_SIZE%%", stats.totalDiskMB);
+  html = html.replace("%%TEMP_FILES%%", tempCount);
+  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+
+  const listHtml = tracks.map((t, idx) => {
+    const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);
+    const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
+    const date = t.processedAt ? new Date(t.processedAt).toLocaleString("tr-TR") : "—";
+    const quality = t.files.mp4 ? "MP4" : t.files.mp3 ? "192 kbps" : "128 kbps";
+    const reqPct = Math.min(100, (t.accessCount || 0) * 10);
+
+    return `<tr data-requests="${t.accessCount || 0}" data-size="${sizeMB}" data-date="${t.processedAt || ''}">
+      <td>${idx + 1}</td>
+      <td>
+        <div class="track-info">
+          <span class="track-title">${t.title}</span>
+          <span class="track-id">${t.videoId}</span>
+        </div>
+      </td>
+      <td><span class="badge-quality">${quality}</span></td>
+      <td>
+        <div class="request-bar"><div class="request-fill" style="width:${reqPct}%"></div></div>
+        <span class="req-count">${t.accessCount || 0}</span>
+      </td>
+      <td>${sizeMB} MB</td>
+      <td>${date}</td>
+      <td>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${t.videoId}')">Sil</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  html = html.replace("%%CACHE_LIST%%", listHtml);
+  html = html.replace("%%CACHE_EMPTY%%", tracks.length === 0 ? '<div style="padding:40px;text-align:center;color:#8e8e8e">Henüz cachelenmiş şarkı yok.</div>' : "");
+
+  res.send(html);
+});
+
+app.post("/cache-panel/action", express.json(), (req, res) => {
+  const { action, videoId, pass } = req.body;
+  if (pass !== ADMIN_PASS) return res.status(403).json({ error: "Şifre hatalı" });
+
+  if (action === "delete" && videoId) {
+    mediaLib.removeTrack(videoId);
+    return res.json({ ok: true });
+  } else if (action === "clear_all") {
+    mediaLib.clearAllTracks();
+    return res.json({ ok: true });
+  }
+
+  res.status(400).json({ error: "Geçersiz işlem" });
+});
+
 app.get("/proxy-panel/health-check", async (req, res) => {
   await runHealthCheck();
   res.json({ ok: true, tested: proxyData.active.length });

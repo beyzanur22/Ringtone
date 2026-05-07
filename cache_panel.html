@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cache Yönetimi | Ringtone Master</title>
+<style>
+:root {
+  --bg: #f8f7f2;
+  --card-bg: #ffffff;
+  --text: #4a4a4a;
+  --text-muted: #8e8e8e;
+  --accent: #d4a373;
+  --danger: #e63946;
+  --success: #10b981;
+  --border: #e2e2e2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:40px 20px}
+.container{max-width:1200px;margin:0 auto}
+
+/* Header & Buttons */
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}
+.btn{padding:10px 20px;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;font-size:14px}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#c1303c;transform:translateY(-1px)}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:6px}
+.btn-outline-danger{border:1px solid var(--danger);color:var(--danger);background:transparent}
+.btn-outline-danger:hover{background:var(--danger);color:#fff}
+
+/* Stats Grid */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:30px}
+.stat-card{background:var(--card-bg);padding:25px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+.stat-card .value{font-size:32px;font-weight:800;color:var(--text);margin-bottom:5px}
+.stat-card .label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
+
+/* Filters */
+.filters-bar{background:var(--card-bg);padding:15px 25px;border-radius:12px;border:1px solid var(--border);margin-bottom:20px;display:flex;gap:15px;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,0.02)}
+.search-wrapper{flex:1;position:relative;display:flex;align-items:center}
+.search-input{width:100%;padding:10px 15px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#f9f9f9}
+.search-icon{position:absolute;left:15px;color:var(--text-muted)}
+select{padding:10px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;cursor:pointer;color:var(--text)}
+.btn-filter{background:#000;color:#fff;padding:10px 25px}
+
+/* Table */
+.section{background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:15px 20px;font-size:12px;text-transform:uppercase;color:var(--text-muted);font-weight:700;background:#fafafa;border-bottom:1px solid var(--border)}
+td{padding:18px 20px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fcfcfc}
+
+.track-info{display:flex;flex-direction:column;gap:4px}
+.track-title{font-weight:600;color:var(--text);display:block}
+.track-id{font-size:12px;color:var(--text-muted);font-family:monospace}
+.badge-quality{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #fde68a}
+.request-bar{width:100px;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;display:inline-block;margin-right:8px}
+.request-fill{height:100%;background:var(--accent);border-radius:3px}
+.req-count{font-weight:700;font-size:13px}
+
+/* Responsive */
+@media(max-width:992px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .filters-bar{flex-direction:column;align-items:stretch}
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <button class="btn btn-danger" onclick="clearAllCache()">🗑️ Tüm Cache'i Temizle</button>
+  </div>
+
+  <!-- Stats Grid -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="value">%%TOTAL_CACHE%%</div>
+      <div class="label">Toplam Cache</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">%%TOTAL_REQUESTS%%</div>
+      <div class="label">Toplam İstek</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">%%CACHE_SIZE%% MB</div>
+      <div class="label">Cache Boyutu</div>
+    </div>
+    <div class="stat-card">
+      <div class="value">%%TEMP_FILES%%</div>
+      <div class="label">Geçici Dosya</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters-bar">
+    <div class="search-wrapper">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="search-input" id="searchInput" placeholder="Şarkı adı veya video ID ara..." onkeyup="filterTable()">
+    </div>
+    <select id="qualityFilter" onchange="filterTable()">
+      <option value="">Tüm Kaliteler</option>
+      <option value="128">128 kbps</option>
+      <option value="192">192 kbps</option>
+      <option value="MP4">MP4</option>
+    </select>
+    <select id="sortFilter" onchange="sortTable()">
+      <option value="newest">En Yeni</option>
+      <option value="requests">En Çok İstenen</option>
+      <option value="size">En Büyük</option>
+    </select>
+    <button class="btn btn-filter">Filtrele</button>
+  </div>
+
+  <!-- Table -->
+  <div class="section">
+    <table id="cacheTable">
+      <thead>
+        <tr>
+          <th width="50">#</th>
+          <th>Şarkı</th>
+          <th>Kalite</th>
+          <th>İstek</th>
+          <th>Boyut</th>
+          <th>Cache Tarihi</th>
+          <th width="80">İşlem</th>
+        </tr>
+      </thead>
+      <tbody>
+        %%CACHE_LIST%%
+      </tbody>
+    </table>
+    %%CACHE_EMPTY%%
+  </div>
+</div>
+
+<script>
+function filterTable() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const quality = document.getElementById('qualityFilter').value;
+  const rows = document.querySelectorAll('#cacheTable tbody tr');
+  
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    const rowQuality = row.querySelector('.badge-quality').textContent;
+    const matchesSearch = text.includes(search);
+    const matchesQuality = quality === "" || rowQuality.includes(quality);
+    
+    row.style.display = (matchesSearch && matchesQuality) ? "" : "none";
+  });
+}
+
+function sortTable() {
+  const sortBy = document.getElementById('sortFilter').value;
+  const tbody = document.querySelector('#cacheTable tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  
+  rows.sort((a, b) => {
+    if (sortBy === 'requests') {
+      return parseInt(b.dataset.requests) - parseInt(a.dataset.requests);
+    } else if (sortBy === 'size') {
+      return parseFloat(b.dataset.size) - parseFloat(a.dataset.size);
+    } else {
+      return new Date(b.dataset.date) - new Date(a.dataset.date);
+    }
+  });
+  
+  rows.forEach(row => tbody.appendChild(row));
+}
+
+async function deleteItem(videoId) {
+  if (!confirm('Bu şarkı cache\'den silinecek. Emin misin?')) return;
+  
+  try {
+    const res = await fetch('/cache-panel/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', videoId, pass: '%%ADMIN_PASS%%' })
+    });
+    if (res.ok) location.reload();
+    else alert('Silme işlemi başarısız!');
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+
+async function clearAllCache() {
+  if (!confirm('TÜM CACHE SİLİNECEK! Bu işlem geri alınamaz. Emin misin?')) return;
+  const pass = prompt('Onaylamak için Admin Şifresini girin:');
+  if (!pass) return;
+
+  try {
+    const res = await fetch('/cache-panel/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear_all', pass: pass })
+    });
+    if (res.ok) location.reload();
+    else alert('İşlem başarısız! Şifre hatalı olabilir.');
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+</script>
+
+</body>
+</html>
