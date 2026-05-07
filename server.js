@@ -1024,6 +1024,10 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           if (resolveProxy) {
             opts.proxy = resolveProxy;
             currentProxy = resolveProxy; // Banlama ihtimali için kaydet
+          } else {
+            // Havuzda proxy yok — proxy'siz denemeye atla (null proxy ile çalışma!)
+            console.log(`[yt-dlp] Proxy havuzu boş, proxy'siz deneniyor...`);
+            continue;
           }
         } else {
           console.log(`[yt-dlp] Proxy'siz deneniyor (proxy kotası bitmiş olabilir)`);
