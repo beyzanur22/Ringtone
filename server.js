@@ -2868,10 +2868,12 @@ app.get("/cache-panel", (req, res) => {
     const date = t.processedAt ? new Date(t.processedAt).toLocaleString("tr-TR") : "—";
     const quality = t.files.mp4 ? "MP4" : t.files.mp3 ? "192 kbps" : "128 kbps";
     
-    // Tür etiketi
+    // Tür etiketi (Eski kayıtlar için otomatik tespit ekledik)
     let categoryHtml = "";
-    if (t.category === "listening") categoryHtml = '<span class="badge blue">🎧 Dinleme</span>';
-    else if (t.category === "watching") categoryHtml = '<span class="badge red">📺 İzleme</span>';
+    const effectiveCategory = t.category || (t.files.mp4 ? "watching" : "listening");
+
+    if (effectiveCategory === "listening") categoryHtml = '<span class="badge blue">🎧 Dinleme</span>';
+    else if (effectiveCategory === "watching") categoryHtml = '<span class="badge red">📺 İzleme</span>';
     else categoryHtml = '<span class="badge gray">📦 Cache</span>';
 
     // İstek barı (maksimum 10 üzerinden oranla)
