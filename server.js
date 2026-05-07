@@ -2882,7 +2882,7 @@ const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
 app.get("/cache-panel", (req, res) => {
   let html = fs.readFileSync(CACHE_PANEL_TEMPLATE, "utf-8");
   const stats = mediaLib.getStats();
-  const tracks = mediaLib.getAllTracks({ sortBy: "processedAt" });
+  const tracks = mediaLib.getAllTracks({ sortBy: "lastAccessed" });
 
   let tempCount = 0;
   try { if (fs.existsSync(CACHE_DIR)) tempCount = fs.readdirSync(CACHE_DIR).length; } catch (e) { }
