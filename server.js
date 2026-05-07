@@ -53,16 +53,29 @@ const mediaLib = require("./media_library");
 let cookiePool = [];
 let proxyPool = [];
 
-// PROXY PANEL VERİTABANI
+// PROXY PANEL VERİTABANI (Enhanced v2)
 const PROXY_DATA_FILE = path.join(__dirname, "proxy_data.json");
-let proxyData = { active: [], banned: [] };
+let proxyData = { active: [], banned: [], banHistory: [], lastHealthCheck: null };
 
 function loadProxyData() {
   try {
     if (!fs.existsSync(PROXY_DATA_FILE)) {
-      fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify({ active: [], banned: [] }));
+      fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify({ active: [], banned: [], banHistory: [], lastHealthCheck: null }));
     }
     proxyData = JSON.parse(fs.readFileSync(PROXY_DATA_FILE, "utf-8"));
+    // Migration: eski format → yeni format
+    if (!proxyData.banHistory) proxyData.banHistory = [];
+    if (!proxyData.lastHealthCheck) proxyData.lastHealthCheck = null;
+    // Her proxy'ye istatistik alanları ekle (migration)
+    for (const p of proxyData.active) {
+      if (!p.successCount) p.successCount = 0;
+      if (!p.failCount) p.failCount = 0;
+      if (!p.lastUsed) p.lastUsed = null;
+      if (!p.lastTested) p.lastTested = null;
+      if (!p.latencyMs) p.latencyMs = null;
+      if (!p.banCount) p.banCount = 0;
+      if (!p.testResult) p.testResult = null;
+    }
   } catch (e) {
     console.error("[PROXY_DB] Okuma hatası:", e.message);
   }
@@ -70,10 +83,33 @@ function loadProxyData() {
 
 function saveProxyData() {
   try {
+    // Ban geçmişini max 100 kayıtta tut
+    if (proxyData.banHistory && proxyData.banHistory.length > 100) {
+      proxyData.banHistory = proxyData.banHistory.slice(-100);
+    }
     fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2));
   } catch (e) {
     console.error("[PROXY_DB] Yazma hatası:", e.message);
   }
+}
+
+// Proxy kullanım istatistiklerini güncelle
+function trackProxyUsage(proxyIp, success) {
+  loadProxyData();
+  const proxy = proxyData.active.find(p => p.ip === proxyIp);
+  if (proxy) {
+    if (success) proxy.successCount = (proxy.successCount || 0) + 1;
+    else proxy.failCount = (proxy.failCount || 0) + 1;
+    proxy.lastUsed = new Date().toISOString();
+    saveProxyData();
+  }
+}
+
+// Proxy sağlık skoru hesapla (%)
+function getProxyHealthScore(proxy) {
+  const total = (proxy.successCount || 0) + (proxy.failCount || 0);
+  if (total === 0) return 100; // henüz kullanılmamış
+  return Math.round(((proxy.successCount || 0) / total) * 100);
 }
 
 // Otomatik unban (6 saat süresi dolanları aktife al)
@@ -83,13 +119,54 @@ function autoUnbanProxies() {
   for (let i = proxyData.banned.length - 1; i >= 0; i--) {
     const proxy = proxyData.banned[i];
     if (now > new Date(proxy.auto_unban_at).getTime()) {
-      proxyData.active.push({ ip: proxy.ip, added: new Date().toISOString() });
+      proxyData.active.push({ ip: proxy.ip, added: new Date().toISOString(), successCount: 0, failCount: 0, lastUsed: null, lastTested: null, latencyMs: null, banCount: proxy.banCount || 0, testResult: null });
+      proxyData.banHistory.push({ ip: proxy.ip, action: "auto_unban", time: new Date().toISOString() });
       proxyData.banned.splice(i, 1);
       changed = true;
     }
   }
   if (changed) saveProxyData();
 }
+
+// Otomatik Health Check: Tüm proxy'leri test et
+async function runHealthCheck() {
+  console.log("[HEALTH_CHECK] Otomatik proxy sağlık kontrolü başlıyor...");
+  loadProxyData();
+  for (const proxy of proxyData.active) {
+    try {
+      const start = Date.now();
+      const response = await axios.get("https://www.youtube.com", {
+        proxy: false,
+        httpsAgent: new HttpsProxyAgent(proxy.ip),
+        timeout: 15000,
+        validateStatus: () => true
+      });
+      proxy.latencyMs = Date.now() - start;
+      proxy.lastTested = new Date().toISOString();
+      if (response.status === 200) {
+        proxy.testResult = "ok";
+      } else if (response.status === 403 || response.status === 429) {
+        proxy.testResult = "banned";
+      } else {
+        proxy.testResult = `http_${response.status}`;
+      }
+      console.log(`[HEALTH_CHECK] ${proxy.ip} → ${proxy.testResult} (${proxy.latencyMs}ms)`);
+    } catch (err) {
+      proxy.latencyMs = null;
+      proxy.lastTested = new Date().toISOString();
+      proxy.testResult = "error";
+      console.log(`[HEALTH_CHECK] ${proxy.ip} → HATA: ${err.message}`);
+    }
+  }
+  proxyData.lastHealthCheck = new Date().toISOString();
+  saveProxyData();
+  console.log(`[HEALTH_CHECK] Tamamlandı. ${proxyData.active.length} proxy test edildi.`);
+}
+
+// Her 30 dakikada health check çalıştır
+setInterval(runHealthCheck, 30 * 60 * 1000);
+// Sunucu açıldıktan 1 dakika sonra ilk health check
+setTimeout(runHealthCheck, 60 * 1000);
 
 function loadRotationAssets() {
   try {
@@ -141,8 +218,13 @@ function banProxy(ip) {
     proxyData.banned.push({
       ip: proxy.ip,
       banned_at: new Date().toISOString(),
-      auto_unban_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString() // 6 Saat
+      auto_unban_at: new Date(Date.now() + 6 * 3600 * 1000).toISOString(), // 6 Saat
+      banCount: (proxy.banCount || 0) + 1,
+      reason: "auto_403_429"
     });
+    // Ban geçmişine kaydet
+    if (!proxyData.banHistory) proxyData.banHistory = [];
+    proxyData.banHistory.push({ ip: proxy.ip, action: "ban", reason: "403/429", time: new Date().toISOString() });
     saveProxyData();
     // Havuzu hemen güncelle
     proxyPool = proxyData.active.map(p => p.ip);
@@ -1701,6 +1783,66 @@ app.post("/stream/token", async (req, res) => {
 // STREAM (Direct Pipe)
 // STREAM 
 
+// ========== BAZOCAM CDN URL ÇÖZÜCÜ ==========
+// Bazocam'ın kendi proxy sistemi üzerinden Google CDN linklerini alır.
+// Böylece senin sunucunda proxy kullanmana gerek kalmaz.
+const BAZOCAM_PASS = "BEYZA";
+const BAZOCAM_BASE = "https://bazocam.net";
+
+async function getBazocamCdnUrl(videoId, type = "audio") {
+  try {
+    let url;
+    if (type === "audio") {
+      // M4A: 128kbps audio stream
+      url = `${BAZOCAM_BASE}/m4a.php?PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&q=140`;
+    } else {
+      // MP4: 720p video stream
+      url = `${BAZOCAM_BASE}/mp4.php?PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&res=720`;
+    }
+
+    console.log(`[BAZOCAM_CDN] ${type} URL isteniyor: ${videoId}`);
+
+    // Bazocam redirect ile Google CDN linkine yönlendiriyor
+    // maxRedirects: 0 ile redirect URL'ini yakalıyoruz
+    const response = await axios.get(url, {
+      maxRedirects: 0,
+      timeout: 20000,
+      validateStatus: (status) => status >= 200 && status < 400,
+      headers: { "User-Agent": "RingtoneMaster/1.0" }
+    });
+
+    // 200 ile direkt link dönerse
+    if (response.status === 200 && response.request?.res?.responseUrl) {
+      const finalUrl = response.request.res.responseUrl;
+      if (finalUrl.includes("googlevideo.com") || finalUrl.includes("google.com")) {
+        console.log(`[BAZOCAM_CDN] ✅ Google CDN linki alındı: ${videoId}`);
+        return finalUrl;
+      }
+    }
+
+    // Response body'de URL varsa
+    const body = typeof response.data === "string" ? response.data.trim() : "";
+    if (body.startsWith("http") && (body.includes("googlevideo.com") || body.includes("google.com"))) {
+      console.log(`[BAZOCAM_CDN] ✅ Body'den CDN linki alındı: ${videoId}`);
+      return body;
+    }
+
+    console.log(`[BAZOCAM_CDN] ⚠️ CDN linki bulunamadı, fallback'e geçiliyor: ${videoId}`);
+    return null;
+  } catch (err) {
+    // 302 redirect'i yakala
+    if (err.response && (err.response.status === 301 || err.response.status === 302)) {
+      const redirectUrl = err.response.headers.location;
+      if (redirectUrl && redirectUrl.startsWith("http")) {
+        console.log(`[BAZOCAM_CDN] ✅ Redirect CDN linki: ${videoId}`);
+        return redirectUrl;
+      }
+    }
+    console.warn(`[BAZOCAM_CDN] ❌ Hata (${type}): ${err.message}`);
+    return null;
+  }
+}
+
 app.get("/stream", async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
@@ -1723,7 +1865,7 @@ app.get("/stream", async (req, res) => {
 
   try {
 
-    // DRM FAZ 2: Stream token doğrulaması
+    // DRM : Stream token doğrulaması
     const streamToken = req.query.token || req.headers["x-stream-token"];
     if (streamToken) {
       const tokenCheck = await validateStreamToken(streamToken, videoId);
@@ -1733,7 +1875,7 @@ app.get("/stream", async (req, res) => {
       }
     }
 
-    // DRM FAZ 5: Erişim izleme & abuse tespiti
+    // DRM : Erişim izleme & abuse tespiti
     const accessAllowed = trackStreamAccess(req.ip, videoId, "audio");
     if (!accessAllowed) {
       return res.status(429).json({ error: "Too many requests. Please try again later." });
@@ -1747,7 +1889,7 @@ app.get("/stream", async (req, res) => {
     const r2Key = `${typeStr}/${videoId}.${extStr}`;
     const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
-    // ★★★ KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz)
+    //  KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz)
     const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
     if (mediaTrack && mediaTrack.files) {
       const mediaFile = mediaTrack.files[extStr === "m4a" ? "m4a" : "mp4"];
@@ -1809,22 +1951,28 @@ app.get("/stream", async (req, res) => {
     } else {
       ua = getRandomUA();
 
-      // ÇAKIŞMA ÖNLEYİCİ: Bu videoyu çözme işlemini bir Promise olarak başlat ve Map'e koy
-      const resolutionPromise = queue.add(async () => {
-        try {
-          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
-          return url;
-        } finally {
-          // İşlem bittiğinde (başarılı veya başarısız) Map'ten sil
-          const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-          ongoingResolutions.delete(ongoingKey);
-        }
-      });
+      // ★ KATMAN 2A: BAZOCAM CDN (Proxy gerektirmez — Bazocam kendi proxy'sini kullanır)
+      const bazocamUrl = await getBazocamCdnUrl(videoId, "audio");
+      if (bazocamUrl) {
+        streamUrl = bazocamUrl;
+        console.log(`[BAZOCAM_AUDIO] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
+      } else {
+        // ★ KATMAN 2B: Eski yöntem (kendi yt-dlp + proxy sistemimiz)
+        console.log(`[BAZOCAM_AUDIO] ⚠️ Bazocam başarısız, yt-dlp fallback: ${videoId}`);
+        const resolutionPromise = queue.add(async () => {
+          try {
+            const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
+            return url;
+          } finally {
+            const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+            ongoingResolutions.delete(ongoingKey);
+          }
+        });
 
-      const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-      ongoingResolutions.set(ongoingKey, resolutionPromise);
-
-      streamUrl = await resolutionPromise;
+        const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+        ongoingResolutions.set(ongoingKey, resolutionPromise);
+        streamUrl = await resolutionPromise;
+      }
 
       // Stream URL'leri 5 saat cache'le (YouTube URL'leri ~6 saat geçerli)
       await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
@@ -2045,7 +2193,7 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // KATMAN 2: YouTube'dan çöz
+    // KATMAN 2: Bazocam CDN → YouTube fallback
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -2054,14 +2202,22 @@ app.get("/stream/video", async (req, res) => {
       streamUrl = cachedData.url;
       console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
     } else {
-      console.log(`[VIDEO_RESOLVE] YouTube'dan video URL çözümleniyor: ${videoId}`);
-      const ua = getRandomUA();
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
+      // ★ KATMAN 2A: BAZOCAM CDN (Proxy gerektirmez)
+      const bazocamUrl = await getBazocamCdnUrl(videoId, "video");
+      if (bazocamUrl) {
+        streamUrl = bazocamUrl;
+        console.log(`[BAZOCAM_VIDEO] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
+      } else {
+        // ★ KATMAN 2B: Eski yöntem (kendi yt-dlp + proxy)
+        console.log(`[BAZOCAM_VIDEO] ⚠️ Bazocam başarısız, yt-dlp fallback: ${videoId}`);
+        const ua = getRandomUA();
+        const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+        const countryClient = getPlayerClientForCountry(country);
 
-      streamUrl = await queue.add(async () => {
-        return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
+        streamUrl = await queue.add(async () => {
+          return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
+        });
+      }
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
 
@@ -2401,15 +2557,24 @@ app.get("/download/mp4", async (req, res) => {
       }
     }
 
-    // 2. Stream URL çöz (Piped/Invidious/Cobalt -> yt-dlp -> Youtubei)
+    // 2. Stream URL çöz — Bazocam CDN → yt-dlp fallback
     console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
     const ua = getRandomUA();
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
 
-    const streamUrl = await queue.add(() =>
-      resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
-    );
+    // ★ Önce Bazocam'dan Google CDN linki al (proxy gerektirmez)
+    let streamUrl = await getBazocamCdnUrl(videoId, "video");
+
+    if (!streamUrl) {
+      // Bazocam başarısız — yt-dlp fallback
+      console.log(`[DOWNLOAD_MP4] Bazocam başarısız, yt-dlp fallback: ${videoId}`);
+      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+      const countryClient = getPlayerClientForCountry(country);
+      streamUrl = await queue.add(() =>
+        resolveStreamUrlWithFallback(videoId, "video", ua, countryClient)
+      );
+    } else {
+      console.log(`[DOWNLOAD_MP4] ✅ Bazocam CDN kullanılıyor: ${videoId}`);
+    }
 
     if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.startsWith("http")) {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
@@ -2514,113 +2679,89 @@ setInterval(manageDiskSpace, 15 * 60 * 1000); // 15 dk
 setTimeout(manageDiskSpace, 5000);
 
 // ==========================================
-// PROXY PANEL - EXPRESS ROUTES (PHP ALTERNATİFİ)
+// PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
 const ADMIN_PASS = "BEYZA";
+const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
 
 app.get("/proxy-panel", (req, res) => {
-  loadProxyData(); // Her girişte veriyi yenile
+  loadProxyData();
+  autoUnbanProxies();
 
-  const activeList = proxyData.active.map(p => `
-    <tr>
-      <td><code>${p.ip}</code> <span id="res_${p.ip.replace(/[^a-zA-Z0-9]/g, '')}" style="margin-left:10px;"></span></td>
+  let html = fs.readFileSync(PANEL_TEMPLATE, "utf-8");
+
+  // Message
+  const msgHtml = req.query.msg ? `<div class="alert">${decodeURIComponent(req.query.msg)}</div>` : "";
+  html = html.replace("%%MESSAGE%%", msgHtml);
+
+  // Stats
+  const activeCount = proxyData.active.length;
+  const bannedCount = proxyData.banned.length;
+  const totalCount = activeCount + bannedCount;
+  const healthyCount = proxyData.active.filter(p => p.testResult === "ok" || !p.testResult).length;
+  const healthPct = totalCount > 0 ? Math.round((healthyCount / totalCount) * 100) + "%" : "—";
+
+  html = html.replace(/%%ACTIVE_COUNT%%/g, activeCount);
+  html = html.replace(/%%BANNED_COUNT%%/g, bannedCount);
+  html = html.replace(/%%TOTAL_COUNT%%/g, totalCount);
+  html = html.replace(/%%HEALTH_PCT%%/g, healthPct);
+  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  html = html.replace("%%LAST_HEALTH%%", proxyData.lastHealthCheck ? new Date(proxyData.lastHealthCheck).toLocaleString("tr-TR") : "Henüz yapılmadı");
+
+  // Active list
+  const activeHtml = proxyData.active.map(p => {
+    const score = getProxyHealthScore(p);
+    const scoreColor = score >= 80 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+    const dotClass = p.testResult === "ok" ? "green" : p.testResult === "banned" ? "red" : p.testResult === "error" ? "yellow" : "gray";
+    const latencyClass = (p.latencyMs || 0) < 200 ? "fast" : (p.latencyMs || 0) < 500 ? "medium" : "slow";
+    const totalUse = (p.successCount || 0) + (p.failCount || 0);
+    const displayIp = p.ip.replace(/^https?:\/\//, "");
+
+    return `<tr>
+      <td><code>${displayIp}</code> <span data-test-ip="${p.ip}" class="test-res" onclick="testProxy('${p.ip}',this)"></span></td>
+      <td><span class="dot ${dotClass}"></span>${p.testResult === "ok" ? "Aktif" : p.testResult === "banned" ? "Banlı!" : p.testResult === "error" ? "Hata" : "Belirsiz"}</td>
+      <td><div class="health-bar"><div class="health-bar-fill" style="width:${score}%;background:${scoreColor}"></div></div>${score}%</td>
+      <td><span class="latency ${latencyClass}">${p.latencyMs ? p.latencyMs + "ms" : "—"}</span></td>
+      <td>${totalUse} istek</td>
       <td>
-        <button class="btn btn-sm btn-info text-white" onclick="testProxy('${p.ip}')">Test Et</button>
-        <form method="POST" class="d-inline" action="/proxy-panel">
-          <input type="hidden" name="action" value="ban">
-          <input type="hidden" name="proxy_ip" value="${p.ip}">
-          <input type="hidden" name="pass" value="${ADMIN_PASS}">
-          <button type="submit" class="btn btn-sm btn-warning">Banla</button>
-        </form>
-        <form method="POST" class="d-inline" action="/proxy-panel" onsubmit="return confirm('Silinecek?');">
-          <input type="hidden" name="action" value="delete">
-          <input type="hidden" name="proxy_ip" value="${p.ip}">
-          <input type="hidden" name="pass" value="${ADMIN_PASS}">
-          <button type="submit" class="btn btn-sm btn-danger">Sil</button>
-        </form>
+        <button class="btn btn-test" data-test-ip="${p.ip}" onclick="testProxy('${p.ip}',this)">Test</button>
+        <button class="btn btn-ban" onclick="doAction('ban','${p.ip}')">Ban</button>
+        <button class="btn btn-del" onclick="doAction('delete','${p.ip}')">Sil</button>
       </td>
-    </tr>
-  `).join("");
+    </tr>`;
+  }).join("");
+  html = html.replace("%%ACTIVE_LIST%%", activeHtml);
+  html = html.replace("%%ACTIVE_EMPTY%%", activeCount === 0 ? '<div style="padding:20px;text-align:center;color:#52525b">Aktif proxy yok. Yukarıdan ekleyin.</div>' : "");
 
-  const bannedList = proxyData.banned.map(p => {
-    const timeLeft = Math.round((new Date(p.auto_unban_at).getTime() - Date.now()) / 60000);
-    return `
-    <tr>
-      <td><code>${p.ip}</code> <span id="res_${p.ip.replace(/[^a-zA-Z0-9]/g, '')}" style="margin-left:10px;"></span></td>
-      <td>${new Date(p.auto_unban_at).toLocaleTimeString()} (${timeLeft > 0 ? timeLeft : 0} dk)</td>
+  // Banned list
+  const bannedHtml = proxyData.banned.map(p => {
+    const timeLeft = Math.max(0, Math.round((new Date(p.auto_unban_at).getTime() - Date.now()) / 60000));
+    const displayIp = p.ip.replace(/^https?:\/\//, "");
+    return `<tr>
+      <td><code>${displayIp}</code></td>
+      <td>${timeLeft > 0 ? timeLeft + " dk" : "Süresi doldu"}</td>
+      <td>${p.banCount || 1}x</td>
       <td>
-        <button class="btn btn-sm btn-info text-white" onclick="testProxy('${p.ip}')">Test Et</button>
-        <form method="POST" class="d-inline" action="/proxy-panel">
-          <input type="hidden" name="action" value="unban">
-          <input type="hidden" name="proxy_ip" value="${p.ip}">
-          <input type="hidden" name="pass" value="${ADMIN_PASS}">
-          <button type="submit" class="btn btn-sm btn-success">Ban Kaldır</button>
-        </form>
-        <form method="POST" class="d-inline" action="/proxy-panel" onsubmit="return confirm('Silinecek?');">
-          <input type="hidden" name="action" value="delete">
-          <input type="hidden" name="proxy_ip" value="${p.ip}">
-          <input type="hidden" name="pass" value="${ADMIN_PASS}">
-          <button type="submit" class="btn btn-sm btn-danger">Sil</button>
-        </form>
+        <button class="btn btn-unban" onclick="doAction('unban','${p.ip}')">Ban Kaldır</button>
+        <button class="btn btn-del" onclick="doAction('delete','${p.ip}')">Sil</button>
       </td>
-    </tr>
-  `}).join("");
+    </tr>`;
+  }).join("");
+  html = html.replace("%%BANNED_LIST%%", bannedHtml);
+  html = html.replace("%%BANNED_EMPTY%%", bannedCount === 0 ? '<div style="padding:20px;text-align:center;color:#52525b">Banlı proxy yok ✓</div>' : "");
 
-  const messageHtml = req.query.msg ? `<div class="alert alert-info">${req.query.msg}</div>` : '';
+  // Ban history
+  const history = (proxyData.banHistory || []).slice(-30).reverse();
+  html = html.replace("%%HISTORY_COUNT%%", history.length);
+  const historyHtml = history.map(h => {
+    const actionClass = h.action === "ban" ? "action-ban" : "action-unban";
+    const actionText = h.action === "ban" ? "⛔ BANLANDI" : h.action === "auto_unban" ? "✅ Otomatik açıldı" : "✅ Manuel açıldı";
+    const displayIp = h.ip.replace(/^https?:\/\//, "");
+    return `<div class="history-item"><span class="time">${new Date(h.time).toLocaleString("tr-TR")}</span><code>${displayIp}</code><span class="${actionClass}">${actionText}</span>${h.reason ? `<span style="color:#71717a">(${h.reason})</span>` : ""}</div>`;
+  }).join("");
+  html = html.replace("%%HISTORY_LIST%%", historyHtml || '<div style="padding:20px;text-align:center;color:#52525b">Henüz geçmiş yok</div>');
 
-  res.send(`
-  <!DOCTYPE html>
-  <html lang="tr">
-  <head>
-      <meta charset="UTF-8">
-      <title>YouTube Proxy Panel</title>
-      <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  </head>
-  <body class="bg-light">
-  <div class="container mt-5">
-      <h2 class="mb-4">🛡️ YouTube Proxy Yönetim Paneli (Node.js)</h2>
-      ${messageHtml}
-      <div class="row">
-          <div class="col-md-4">
-              <div class="card mb-3">
-                  <div class="card-header bg-primary text-white">➕ Proxy Ekle</div>
-                  <div class="card-body">
-                      <form method="POST" action="/proxy-panel">
-                          <input type="hidden" name="action" value="add">
-                          <div class="mb-3"><input type="text" name="proxy_ip" class="form-control" placeholder="192.168.1.1:8080:user:pass" required></div>
-                          <div class="mb-3"><input type="password" name="pass" class="form-control" placeholder="Admin Şifresi" required></div>
-                          <button type="submit" class="btn btn-primary w-100">Ekle</button>
-                      </form>
-                  </div>
-              </div>
-          </div>
-          <div class="col-md-8">
-              <div class="card border-success mb-4">
-                  <div class="card-header bg-success text-white">✅ Aktif (${proxyData.active.length})</div>
-                  <div class="card-body"><table class="table"><thead><tr><th>Proxy</th><th>İşlem</th></tr></thead><tbody>${activeList || '<tr><td>Yok</td></tr>'}</tbody></table></div>
-              </div>
-              <div class="card border-danger">
-                  <div class="card-header bg-danger text-white">⛔ Banlı (${proxyData.banned.length})</div>
-                  <div class="card-body"><table class="table"><thead><tr><th>Proxy</th><th>Unban</th><th>İşlem</th></tr></thead><tbody>${bannedList || '<tr><td>Yok</td></tr>'}</tbody></table></div>
-              </div>
-          </div>
-      </div>
-  </div>
-  <script>
-  async function testProxy(ip) {
-      const span = document.getElementById('res_' + ip.replace(/[^a-zA-Z0-9]/g, ''));
-      if(span) span.innerHTML = "<span class='badge bg-info text-dark'>Test ediliyor...</span>";
-      try {
-          const res = await fetch("/proxy-panel/test?ip=" + encodeURIComponent(ip));
-          const text = await res.text();
-          if(span) span.innerHTML = text;
-      } catch(e) {
-          if(span) span.innerHTML = "<span class='badge bg-danger'>Hata</span>";
-      }
-  }
-  </script>
-  </body></html>
-  `);
+  res.send(html);
 });
 
 app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
@@ -2629,12 +2770,24 @@ app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
   loadProxyData();
   const action = req.body.action;
   let proxyIp = (req.body.proxy_ip || '').trim();
-  if (proxyIp && !proxyIp.startsWith("http")) proxyIp = "http://" + proxyIp; // standart format
+  if (proxyIp && !proxyIp.startsWith("http")) proxyIp = "http://" + proxyIp;
   let msg = "Islem yapildi";
 
-  if (action === 'add' && proxyIp) {
+  if (action === 'add_bulk') {
+    // Toplu ekleme: textarea'dan birden fazla proxy
+    const lines = (req.body.proxy_list || '').split('\n').map(l => l.trim()).filter(l => l.length > 5);
+    let added = 0;
+    for (let line of lines) {
+      if (!line.startsWith("http")) line = "http://" + line;
+      if (!proxyData.active.find(p => p.ip === line) && !proxyData.banned.find(p => p.ip === line)) {
+        proxyData.active.push({ ip: line, added: new Date().toISOString(), successCount: 0, failCount: 0, lastUsed: null, lastTested: null, latencyMs: null, banCount: 0, testResult: null });
+        added++;
+      }
+    }
+    msg = `${added} proxy eklendi`;
+  } else if (action === 'add' && proxyIp) {
     if (!proxyData.active.find(p => p.ip === proxyIp) && !proxyData.banned.find(p => p.ip === proxyIp)) {
-      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString() });
+      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString(), successCount: 0, failCount: 0, lastUsed: null, lastTested: null, latencyMs: null, banCount: 0, testResult: null });
       msg = "Eklendi";
     } else msg = "Zaten var";
   } else if (action === 'delete') {
@@ -2642,36 +2795,56 @@ app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
     proxyData.banned = proxyData.banned.filter(p => p.ip !== proxyIp);
     msg = "Silindi";
   } else if (action === 'ban') {
-    banProxy(proxyIp); // Daha önce yazdığımız fonksiyon
+    banProxy(proxyIp);
     msg = "Banlandi";
   } else if (action === 'unban') {
     const bProxy = proxyData.banned.find(p => p.ip === proxyIp);
     if (bProxy) {
       proxyData.banned = proxyData.banned.filter(p => p.ip !== proxyIp);
-      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString() });
+      proxyData.active.push({ ip: proxyIp, added: new Date().toISOString(), successCount: 0, failCount: 0, lastUsed: null, lastTested: null, latencyMs: null, banCount: bProxy.banCount || 0, testResult: null });
+      if (!proxyData.banHistory) proxyData.banHistory = [];
+      proxyData.banHistory.push({ ip: proxyIp, action: "manual_unban", time: new Date().toISOString() });
       msg = "Ban Kaldirildi";
     }
   }
 
   saveProxyData();
-  proxyPool = proxyData.active.map(p => p.ip); // havuzu yenile
+  proxyPool = proxyData.active.map(p => p.ip);
   res.redirect('/proxy-panel?msg=' + encodeURIComponent(msg));
 });
 
+// Test endpoint — JSON yanıt (latency dahil)
 app.get("/proxy-panel/test", async (req, res) => {
   const proxy = req.query.ip;
-  if (!proxy) return res.send("Yok");
+  if (!proxy) return res.json({ status: "error", error: "IP gerekli" });
   try {
+    const start = Date.now();
     const response = await axiosClient.get("https://www.youtube.com", {
-      proxy: false, // disable global agent
-      httpsAgent: new (require('https-proxy-agent').HttpsProxyAgent)(proxy),
-      timeout: 10000,
+      proxy: false,
+      httpsAgent: new HttpsProxyAgent(proxy),
+      timeout: 15000,
       validateStatus: () => true
     });
-    if (response.status === 200) res.send("<span class='badge bg-success'>Başarılı (200)</span>");
-    else if (response.status === 429 || response.status === 403) res.send(`<span class='badge bg-danger'>Banlı (${response.status})</span>`);
-    else res.send(`<span class='badge bg-secondary'>Bilinmeyen (${response.status})</span>`);
+    const latency = Date.now() - start;
+
+    // proxy_data'da latency güncelle
+    loadProxyData();
+    const p = proxyData.active.find(x => x.ip === proxy);
+    if (p) { p.latencyMs = latency; p.lastTested = new Date().toISOString(); p.testResult = response.status === 200 ? "ok" : "banned"; saveProxyData(); }
+
+    if (response.status === 200) res.json({ status: "ok", latency, code: 200 });
+    else if (response.status === 429 || response.status === 403) res.json({ status: "banned", latency, code: response.status });
+    else res.json({ status: "unknown", latency, code: response.status });
   } catch (err) {
-    res.send(`<span class='badge bg-warning text-dark'>Hata: ${err.message}</span>`);
+    loadProxyData();
+    const p = proxyData.active.find(x => x.ip === proxy);
+    if (p) { p.lastTested = new Date().toISOString(); p.testResult = "error"; saveProxyData(); }
+    res.json({ status: "error", error: err.message });
   }
+});
+
+// Health Check tetikleyici
+app.get("/proxy-panel/health-check", async (req, res) => {
+  await runHealthCheck();
+  res.json({ ok: true, tested: proxyData.active.length });
 });

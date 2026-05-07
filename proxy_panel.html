@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxy Yönetimi</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0f1117;color:#e4e4e7;min-height:100vh}
+.container{max-width:1100px;margin:0 auto;padding:20px}
+h1{font-size:24px;font-weight:700;margin-bottom:24px;display:flex;align-items:center;gap:10px}
+h1 span{color:#10b981}
+
+/* Stats Cards */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+.stat-card{background:#1a1d27;border-radius:12px;padding:20px;border:1px solid #2a2d3a}
+.stat-card .label{font-size:13px;color:#71717a;margin-bottom:6px}
+.stat-card .value{font-size:28px;font-weight:700}
+.stat-card.active .value{color:#10b981}
+.stat-card.banned .value{color:#ef4444}
+.stat-card.total .value{color:#3b82f6}
+.stat-card.health .value{color:#f59e0b}
+
+/* Alert */
+.alert{background:#1e3a2f;border:1px solid #10b981;color:#6ee7b7;padding:12px 18px;border-radius:8px;margin-bottom:20px;font-size:14px}
+.alert.warn{background:#3a2a1e;border-color:#f59e0b;color:#fcd34d}
+
+/* Section */
+.section{background:#1a1d27;border-radius:12px;border:1px solid #2a2d3a;margin-bottom:20px;overflow:hidden}
+.section-header{padding:16px 20px;border-bottom:1px solid #2a2d3a;display:flex;justify-content:space-between;align-items:center}
+.section-header h2{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge.green{background:#064e3b;color:#6ee7b7}
+.badge.red{background:#450a0a;color:#fca5a5}
+.badge.blue{background:#1e3a5f;color:#93c5fd}
+
+/* Table */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;padding:12px 20px;font-size:12px;text-transform:uppercase;color:#71717a;font-weight:600;letter-spacing:.5px}
+td{padding:12px 20px;border-top:1px solid #2a2d3a;font-size:14px;vertical-align:middle}
+tr:hover td{background:#1e2130}
+code{background:#2a2d3a;padding:3px 8px;border-radius:4px;font-size:13px;color:#e4e4e7}
+
+/* Status dots */
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot.green{background:#10b981}
+.dot.red{background:#ef4444}
+.dot.yellow{background:#f59e0b}
+.dot.gray{background:#52525b}
+
+/* Buttons */
+.btn{padding:6px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-test{background:#1e3a5f;color:#93c5fd}
+.btn-test:hover{background:#2563eb}
+.btn-ban{background:#3a2a1e;color:#fcd34d}
+.btn-ban:hover{background:#f59e0b;color:#000}
+.btn-unban{background:#1e3a2f;color:#6ee7b7}
+.btn-unban:hover{background:#10b981;color:#000}
+.btn-del{background:#2a1215;color:#fca5a5}
+.btn-del:hover{background:#ef4444;color:#fff}
+.btn-primary{background:#3b82f6;color:#fff;padding:10px 20px;font-size:14px;width:100%}
+.btn-primary:hover{background:#2563eb}
+.btn-all{background:#7c3aed;color:#fff;padding:8px 16px}
+.btn-all:hover{background:#6d28d9}
+.btn-health{background:#0d9488;color:#fff;padding:8px 16px}
+.btn-health:hover{background:#0f766e}
+
+/* Form */
+.add-section{background:#1a1d27;border-radius:12px;border:1px solid #2a2d3a;padding:20px;margin-bottom:20px}
+.add-section h2{font-size:16px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:flex;gap:12px}
+textarea{background:#0f1117;border:1px solid #2a2d3a;color:#e4e4e7;border-radius:8px;padding:10px 14px;font-size:13px;font-family:monospace;resize:vertical;flex:1;min-height:80px}
+textarea:focus{outline:none;border-color:#3b82f6}
+input[type=password]{background:#0f1117;border:1px solid #2a2d3a;color:#e4e4e7;border-radius:8px;padding:10px 14px;font-size:13px;width:180px}
+input[type=password]:focus{outline:none;border-color:#3b82f6}
+.form-actions{display:flex;gap:8px;align-items:flex-end}
+
+/* Test result */
+.test-res{font-size:12px;margin-left:8px;padding:2px 8px;border-radius:4px;font-weight:600}
+.test-res.ok{background:#064e3b;color:#6ee7b7}
+.test-res.fail{background:#450a0a;color:#fca5a5}
+.test-res.loading{background:#1e3a5f;color:#93c5fd}
+
+/* Health bar */
+.health-bar{width:60px;height:6px;background:#2a2d3a;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:4px}
+.health-bar-fill{height:100%;border-radius:3px;transition:width .3s}
+
+/* Ban history */
+.history-item{padding:8px 20px;border-top:1px solid #2a2d3a;font-size:13px;display:flex;gap:10px;align-items:center}
+.history-item .time{color:#71717a;min-width:140px}
+.history-item .action-ban{color:#fca5a5}
+.history-item .action-unban{color:#6ee7b7}
+
+/* Latency */
+.latency{font-size:12px;color:#71717a}
+.latency.fast{color:#10b981}
+.latency.medium{color:#f59e0b}
+.latency.slow{color:#ef4444}
+
+@media(max-width:768px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .form-row{flex-direction:column}
+  input[type=password]{width:100%}
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🛡️ <span>Proxy Yönetimi</span></h1>
+
+  %%MESSAGE%%
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card active"><div class="label">Aktif Proxy</div><div class="value">%%ACTIVE_COUNT%%</div></div>
+    <div class="stat-card banned"><div class="label">Banlı Proxy</div><div class="value">%%BANNED_COUNT%%</div></div>
+    <div class="stat-card total"><div class="label">Toplam</div><div class="value">%%TOTAL_COUNT%%</div></div>
+    <div class="stat-card health"><div class="label">Sağlık Oranı</div><div class="value">%%HEALTH_PCT%%</div></div>
+  </div>
+
+  <!-- Add Proxy -->
+  <div class="add-section">
+    <h2>➕ Proxy Ekle <span style="font-size:12px;color:#71717a;font-weight:400">(Her satıra bir proxy)</span></h2>
+    <form method="POST" action="/proxy-panel">
+      <input type="hidden" name="action" value="add_bulk">
+      <div class="form-row">
+        <textarea name="proxy_list" placeholder="ip:port&#10;ip:port:user:pass&#10;http://user:pass@ip:port"></textarea>
+        <div class="form-actions" style="flex-direction:column">
+          <input type="password" name="pass" placeholder="Admin Şifresi" required>
+          <button type="submit" class="btn btn-primary">Ekle</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Active Proxies -->
+  <div class="section">
+    <div class="section-header">
+      <h2>✅ Aktif Proxy'ler <span class="badge green">%%ACTIVE_COUNT%%</span></h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-all" onclick="testAll()">🔍 Tümünü Test Et</button>
+        <button class="btn btn-health" onclick="healthCheck()">💊 Health Check</button>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Proxy</th><th>Durum</th><th>Sağlık</th><th>Latency</th><th>Kullanım</th><th>İşlem</th></tr></thead>
+      <tbody>%%ACTIVE_LIST%%</tbody>
+    </table>
+    %%ACTIVE_EMPTY%%
+  </div>
+
+  <!-- Banned Proxies -->
+  <div class="section">
+    <div class="section-header">
+      <h2>⛔ Banlı Proxy'ler <span class="badge red">%%BANNED_COUNT%%</span></h2>
+    </div>
+    <table>
+      <thead><tr><th>Proxy</th><th>Kalan Süre</th><th>Ban Sayısı</th><th>İşlem</th></tr></thead>
+      <tbody>%%BANNED_LIST%%</tbody>
+    </table>
+    %%BANNED_EMPTY%%
+  </div>
+
+  <!-- Ban History -->
+  <div class="section">
+    <div class="section-header">
+      <h2>📋 Ban Geçmişi <span class="badge blue">Son %%HISTORY_COUNT%%</span></h2>
+    </div>
+    <div style="max-height:250px;overflow-y:auto">%%HISTORY_LIST%%</div>
+  </div>
+
+  <div style="text-align:center;color:#52525b;font-size:12px;padding:20px">
+    Son Health Check: %%LAST_HEALTH%% &bull; Sonraki: Her 30 dakikada otomatik
+  </div>
+</div>
+
+<script>
+async function testProxy(ip, el) {
+  el.textContent = '...';
+  el.className = 'test-res loading';
+  try {
+    const r = await fetch('/proxy-panel/test?ip=' + encodeURIComponent(ip));
+    const j = await r.json();
+    if (j.status === 'ok') { el.textContent = j.latency + 'ms ✓'; el.className = 'test-res ok'; }
+    else if (j.status === 'banned') { el.textContent = j.code + ' ✗'; el.className = 'test-res fail'; }
+    else { el.textContent = j.error || 'Hata'; el.className = 'test-res fail'; }
+  } catch(e) { el.textContent = 'Hata'; el.className = 'test-res fail'; }
+}
+
+async function testAll() {
+  const btns = document.querySelectorAll('[data-test-ip]');
+  for (const b of btns) {
+    await testProxy(b.dataset.testIp, b);
+    await new Promise(r => setTimeout(r, 500));
+  }
+}
+
+async function healthCheck() {
+  const btn = event.target;
+  btn.textContent = '⏳ Çalışıyor...';
+  btn.disabled = true;
+  try {
+    await fetch('/proxy-panel/health-check');
+    location.reload();
+  } catch(e) { btn.textContent = 'Hata!'; }
+}
+
+function doAction(action, ip) {
+  if (action === 'delete' && !confirm('Bu proxy silinecek. Emin misin?')) return;
+  const f = document.createElement('form');
+  f.method = 'POST'; f.action = '/proxy-panel';
+  ['action','proxy_ip','pass'].forEach((n,i) => {
+    const inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = n;
+    inp.value = [action, ip, '%%ADMIN_PASS%%'][i];
+    f.appendChild(inp);
+  });
+  document.body.appendChild(f);
+  f.submit();
+}
+</script>
+</body>
+</html>
