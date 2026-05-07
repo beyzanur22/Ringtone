@@ -1353,7 +1353,7 @@ app.post("/auth/token", async (req, res) => {
 
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token") {
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || req.path.startsWith("/proxy-panel")) {
     return next();
   }
 
