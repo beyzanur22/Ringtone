@@ -183,17 +183,21 @@ function loadRotationAssets() {
     // Eski proxies.txt varsa onları da aktife ekle (migrasyon)
     const proxyFile = path.join(__dirname, "proxies.txt");
     if (fs.existsSync(proxyFile)) {
-      const oldProxies = fs.readFileSync(proxyFile, "utf-8").split("\n").map(l => l.trim()).filter(l => l.startsWith("http"));
+      const content = fs.readFileSync(proxyFile, "utf-8");
+      const oldProxies = content.split("\n").map(l => l.trim()).filter(l => l.length > 5);
       let migrated = false;
-      for (const p of oldProxies) {
+      for (let p of oldProxies) {
+        if (!p.startsWith("http")) p = "http://" + p;
         if (!proxyData.active.find(x => x.ip === p) && !proxyData.banned.find(x => x.ip === p)) {
-          proxyData.active.push({ ip: p, added: new Date().toISOString() });
+          proxyData.active.push({ ip: p, added: new Date().toISOString(), successCount: 0, failCount: 0, lastUsed: null, lastTested: null, latencyMs: null, banCount: 0, testResult: null });
           migrated = true;
         }
       }
       if (migrated) {
         saveProxyData();
-        fs.unlinkSync(proxyFile); // Migrasyon bitti, eski dosyayı sil
+        console.log(`[ROTATION] proxies.txt dosyasından ${oldProxies.length} proxy aktarıldı.`);
+        // Dosyayı silmiyoruz ki kullanıcı her eklediğinde tekrar alabilsin (isteğe bağlı)
+        // fs.unlinkSync(proxyFile); 
       }
     }
 
@@ -928,9 +932,6 @@ function ytdlpDirectDownload(videoId, type) {
       "--remote-components", "ejs:github"
     ];
 
-    // Video ise çıktıyı direkt mp4 olarak alıyoruz (merge gerekmez)
-    // args.push("--merge-output-format", "mp4");
-
     // Cookie Rotasyonu 
     const dlCookie = getRandomCookie();
     if (process.env.USE_COOKIES !== "false" && dlCookie) {
@@ -938,10 +939,8 @@ function ytdlpDirectDownload(videoId, type) {
     }
 
     // Proxy Rotasyonu 
-   const dlProxy =
-    "http://fWiiPEDAYp7V1FJ0:3HPIG2fMkyce8EDp@gate.iproyal.com:12321";
+    const dlProxy = getRandomProxy(videoId);
 
-    console.log("[PROXY_TEST]", dlProxy);
     console.log("[PROXY_TEST]", dlProxy);
 
     if (dlProxy) {
