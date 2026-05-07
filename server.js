@@ -2058,23 +2058,30 @@ app.get("/stream", async (req, res) => {
       downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
 
       //  ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
-      if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+      const isVideo = typeStr === "video";
+      const checkExt = isVideo ? "mp4" : "m4a";
+
+      if (!mediaLib.getReadyTrack(videoId, checkExt) && !mediaLib.isProcessing(videoId)) {
         const metadata = { 
           title: req.query.title || "Unknown", 
           artist: req.query.uploader || "Unknown" 
         };
-        const category = typeStr === "video" ? "watching" : "listening";
+        const category = isVideo ? "watching" : "listening";
         
         mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
         const cookiePath = getRandomCookie();
         const proxyUrl = getRandomProxy(videoId);
-        ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl })
-          .then(result => {
+        
+        const processPromise = isVideo 
+          ? ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
+          : ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl });
+
+        processPromise.then(result => {
             mediaLib.markReady(videoId, result);
             ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
               if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
             }).catch(() => { });
-            console.log(`[FFMPEG_BG] +++ Arka planda kalıcı dosya oluşturuldu: ${videoId}`);
+            console.log(`[FFMPEG_BG] +++ Arka planda kalıcı dosya oluşturuldu (${checkExt}): ${videoId}`);
           })
           .catch(err => {
             mediaLib.markFailed(videoId, err.message);
