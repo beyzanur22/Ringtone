@@ -938,9 +938,12 @@ function ytdlpDirectDownload(videoId, type) {
     }
 
     // Proxy Rotasyonu 
-    const dlProxy = getRandomProxy(videoId);
+   const dlProxy =
+    "http://fWiiPEDAYp7V1FJ0:3HPIG2fMkyce8EDp@gate.iproyal.com:12321";
+
     console.log("[PROXY_TEST]", dlProxy);
-    
+    console.log("[PROXY_TEST]", dlProxy);
+
     if (dlProxy) {
       args.push("--proxy", dlProxy);
     }
