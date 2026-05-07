@@ -801,7 +801,7 @@ const randomJitter = async () => {
 
 // Fallback player client stratejisi: android_vr → default → android → web
 // android_vr: Cookie'siz çalışır, YouTube bot tespiti düşük (VR cihaz simülasyonu)
-const PLAYER_CLIENTS = ["android_vr", "default", "android", "web"];
+const PLAYER_CLIENTS = ["android", "android_vr"];
 
 async function resolveWithYoutubei(videoId, type) {
   if (!yt) throw new Error("Youtubei initialized değil");
@@ -1044,6 +1044,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         }
 
         console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}${useProxy ? '' : ' (NO PROXY)'}`);
+        console.log("PROXY TEST:", opts.proxy);
         const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
         const url = result.toString().trim();
 

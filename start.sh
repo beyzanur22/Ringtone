@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Disk Alanı Temizliği (KRİTİK: Railway ephemeral disk dolabiliyor)
+# Disk Alanı Temizliği (KRİTİK:  ephemeral disk dolabiliyor)
 echo "[STARTUP] Disk alanı temizleniyor..."
 rm -rf /app/cache/*
 mkdir -p /app/cache
