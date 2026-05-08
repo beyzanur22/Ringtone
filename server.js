@@ -1353,7 +1353,9 @@ app.post("/auth/token", async (req, res) => {
 
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel")) {
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || 
+      req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") || 
+      req.path === "/converter" || req.path === "/download/mp4") {
     return next();
   }
 
@@ -2875,7 +2877,11 @@ app.get("/proxy-panel/test", async (req, res) => {
   }
 });
 
-// Health Check tetikleyici
+// ---------------- CONVERTER PAGE ----------------
+app.get("/converter", (req, res) => {
+  res.sendFile(path.join(__dirname, "converter.html"));
+});
+
 // ---------------- CACHE PANEL ----------------
 const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
 

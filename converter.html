@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixover - YouTube MP4 Video Dönüştürücü</title>
+    <meta name="description" content="Hızlı ve kaliteli YouTube videolarını MP4 formatında indirin.">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --primary-gradient: linear-gradient(135deg, #ff0055 0%, #7000ff 100%);
+            --text-color: #ffffff;
+            --accent-color: #ffd700;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(112, 0, 255, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(255, 0, 85, 0.15) 0%, transparent 40%);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Arka plan süsleri */
+        .glow-sphere {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: var(--primary-gradient);
+            filter: blur(80px);
+            border-radius: 50%;
+            opacity: 0.3;
+            z-index: -1;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: pulse 10s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.5; }
+        }
+
+        .logo {
+            font-size: 3.5rem;
+            font-weight: 700;
+            letter-spacing: -2px;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #fff, #a5a5a5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 50px;
+        }
+
+        .subtitle span {
+            color: #ff0055;
+            font-weight: 500;
+        }
+
+        /* Cam Kart Efekti */
+        .converter-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        .converter-card:hover {
+            transform: translateY(-5px);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            line-height: 1.2;
+        }
+
+        h1 span {
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 18px 25px;
+            color: #fff;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: #7000ff;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 4px rgba(112, 0, 255, 0.15);
+        }
+
+        .btn-sorgula {
+            background: var(--primary-gradient);
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            padding: 0 35px;
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 0, 85, 0.3);
+        }
+
+        .btn-sorgula:hover {
+            transform: scale(1.03);
+            box-shadow: 0 6px 20px rgba(255, 0, 85, 0.5);
+        }
+
+        .btn-sorgula:active {
+            transform: scale(0.98);
+        }
+
+        /* Kalite Seçenekleri */
+        .quality-options {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .quality-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .quality-btn.active {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        .quality-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+        }
+
+        .info-text {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* Loading Animasyonu */
+        .loading {
+            display: none;
+            margin: 20px auto 0;
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: #ff0055;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        footer {
+            margin-top: 50px;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.8rem;
+        }
+
+        /* Mobil Uyumluluk */
+        @media (max-width: 600px) {
+            .input-group {
+                flex-direction: column;
+            }
+            .btn-sorgula {
+                padding: 18px;
+            }
+            .converter-card {
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="glow-sphere"></div>
+
+    <div class="container">
+        <div class="logo">Pixover</div>
+        <div class="subtitle">YT <span>→</span> MP4 DÖNÜŞTÜRÜCÜ</div>
+
+        <div class="converter-card">
+            <h1>YouTube'dan <span>MP4</span> İndir</h1>
+            
+            <div class="quality-options">
+                <button class="quality-btn active" onclick="setQuality('720p')">720p (HD)</button>
+                <button class="quality-btn" onclick="setQuality('480p')">480p</button>
+                <button class="quality-btn" onclick="setQuality('360p')">360p</button>
+            </div>
+
+            <div class="input-group">
+                <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=..." aria-label="YouTube Linki">
+                <button class="btn-sorgula" onclick="startDownload()">İndir</button>
+            </div>
+
+            <div class="loading" id="loader"></div>
+            <div class="info-text" id="statusText">Hızlı, kaliteli, sınırsız. Linki yapıştır ve indir.</div>
+        </div>
+
+        <footer>
+            YALNIZCA TELİF HAKKI İÇERMEYEN İÇERİKLER İÇİN • YT-DLP • FFMPEG • NODE.JS
+        </footer>
+    </div>
+
+    <script>
+        let currentQuality = '720p';
+
+        function setQuality(q) {
+            currentQuality = q;
+            document.querySelectorAll('.quality-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if(btn.innerText.includes(q)) btn.classList.add('active');
+            });
+        }
+
+        function extractVideoId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length == 11) ? match[2] : null;
+        }
+
+        function startDownload() {
+            const urlInput = document.getElementById('ytUrl').value.trim();
+            const videoId = extractVideoId(urlInput);
+            
+            const loader = document.getElementById('loader');
+            const statusText = document.getElementById('statusText');
+
+            if (!videoId) {
+                alert('Lütfen geçerli bir YouTube linki yapıştırın!');
+                return;
+            }
+
+            loader.style.display = 'block';
+            statusText.innerText = 'İşlem başlatılıyor, lütfen bekleyin...';
+
+            // Mevcut backend endpoint'imize yönlendiriyoruz
+            // Browser otomatik olarak indirmeyi başlatacaktır.
+            const downloadUrl = `/download/mp4?videoId=${videoId}&quality=${currentQuality}`;
+            
+            // Kullanıcıyı bekletmemek için direkt indirme linkine yönlendiriyoruz
+            window.location.href = downloadUrl;
+
+            // 3 saniye sonra loading'i kapat
+            setTimeout(() => {
+                loader.style.display = 'none';
+                statusText.innerText = 'İndirme başladı! Eğer başlamadıysa tekrar deneyin.';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
