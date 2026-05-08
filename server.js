@@ -2719,7 +2719,26 @@ setTimeout(manageDiskSpace, 5000);
 const ADMIN_PASS = "BEYZA";
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
 
-app.get("/proxy-panel", (req, res) => {
+const basicAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+
+  const authData = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+  const user = authData[0];
+  const pass = authData[1];
+
+  if (user === 'admin' && pass === ADMIN_PASS) {
+    return next();
+  } else {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+};
+
+app.get("/proxy-panel", basicAuth, (req, res) => {
   loadProxyData();
   autoUnbanProxies();
 
@@ -2799,7 +2818,7 @@ app.get("/proxy-panel", (req, res) => {
   res.send(html);
 });
 
-app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
+app.post("/proxy-panel", express.urlencoded({ extended: true }), basicAuth, (req, res) => {
   if (req.body.pass !== ADMIN_PASS) return res.redirect('/proxy-panel?msg=Hatali Sifre');
 
   loadProxyData();
@@ -2849,7 +2868,7 @@ app.post("/proxy-panel", express.urlencoded({ extended: true }), (req, res) => {
 });
 
 // Test endpoint — JSON yanıt (latency dahil)
-app.get("/proxy-panel/test", async (req, res) => {
+app.get("/proxy-panel/test", basicAuth, async (req, res) => {
   const proxy = req.query.ip;
   if (!proxy) return res.json({ status: "error", error: "IP gerekli" });
   try {
@@ -2886,7 +2905,7 @@ app.get("/converter", (req, res) => {
 // ---------------- CACHE PANEL ----------------
 const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
 
-app.get("/cache-panel", (req, res) => {
+app.get("/cache-panel", basicAuth, (req, res) => {
   let html = fs.readFileSync(CACHE_PANEL_TEMPLATE, "utf-8");
   const stats = mediaLib.getStats();
   const tracks = mediaLib.getAllTracks({ sortBy: "lastAccessed" });
@@ -2945,7 +2964,7 @@ app.get("/cache-panel", (req, res) => {
   res.send(html);
 });
 
-app.post("/cache-panel/action", express.json(), (req, res) => {
+app.post("/cache-panel/action", express.json(), basicAuth, (req, res) => {
   const { action, videoId, pass } = req.body;
   if (pass !== ADMIN_PASS) return res.status(403).json({ error: "Şifre hatalı" });
 
@@ -2960,7 +2979,7 @@ app.post("/cache-panel/action", express.json(), (req, res) => {
   res.status(400).json({ error: "Geçersiz işlem" });
 });
 
-app.get("/proxy-panel/health-check", async (req, res) => {
+app.get("/proxy-panel/health-check", basicAuth, async (req, res) => {
   await runHealthCheck();
   res.json({ ok: true, tested: proxyData.active.length });
 });
