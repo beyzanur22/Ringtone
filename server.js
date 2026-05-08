@@ -163,10 +163,10 @@ async function runHealthCheck() {
   console.log(`[HEALTH_CHECK] Tamamlandı. ${proxyData.active.length} proxy test edildi.`);
 }
 
-// Her 30 dakikada health check çalıştır
-setInterval(runHealthCheck, 30 * 60 * 1000);
-// Sunucu açıldıktan 1 dakika sonra ilk health check
-setTimeout(runHealthCheck, 60 * 1000);
+// Her 30 dakikada health check çalıştır (KOTA DOSTU: Kapatıldı)
+// setInterval(runHealthCheck, 30 * 60 * 1000);
+// Sunucu açıldıktan 1 dakika sonra ilk health check (KOTA DOSTU: Kapatıldı)
+// setTimeout(runHealthCheck, 60 * 1000);
 
 function loadRotationAssets() {
   try {
