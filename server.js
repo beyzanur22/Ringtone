@@ -128,40 +128,7 @@ function autoUnbanProxies() {
   if (changed) saveProxyData();
 }
 
-// Otomatik Health Check: Tüm proxy'leri test et
-async function runHealthCheck() {
-  console.log("[HEALTH_CHECK] Otomatik proxy sağlık kontrolü başlıyor...");
-  loadProxyData();
-  for (const proxy of proxyData.active) {
-    try {
-      const start = Date.now();
-      const response = await axios.get("https://www.youtube.com", {
-        proxy: false,
-        httpsAgent: new HttpsProxyAgent(proxy.ip),
-        timeout: 15000,
-        validateStatus: () => true
-      });
-      proxy.latencyMs = Date.now() - start;
-      proxy.lastTested = new Date().toISOString();
-      if (response.status === 200) {
-        proxy.testResult = "ok";
-      } else if (response.status === 403 || response.status === 429) {
-        proxy.testResult = "banned";
-      } else {
-        proxy.testResult = `http_${response.status}`;
-      }
-      console.log(`[HEALTH_CHECK] ${proxy.ip} → ${proxy.testResult} (${proxy.latencyMs}ms)`);
-    } catch (err) {
-      proxy.latencyMs = null;
-      proxy.lastTested = new Date().toISOString();
-      proxy.testResult = "error";
-      console.log(`[HEALTH_CHECK] ${proxy.ip} → HATA: ${err.message}`);
-    }
-  }
-  proxyData.lastHealthCheck = new Date().toISOString();
-  saveProxyData();
-  console.log(`[HEALTH_CHECK] Tamamlandı. ${proxyData.active.length} proxy test edildi.`);
-}
+///
 
 // Her 30 dakikada health check çalıştır (KOTA DOSTU: Kapatıldı)
 // setInterval(runHealthCheck, 30 * 60 * 1000);
