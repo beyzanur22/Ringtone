@@ -934,7 +934,8 @@ function ytdlpDirectDownload(videoId, type) {
       "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30",
-      "--remote-components", "ejs:github"
+      "--remote-components", "ejs:github",
+      "--extractor-args", "youtube:player_client=android_vr"
     ];
 
     // Cookie Rotasyonu 
@@ -993,9 +994,9 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
   let lastError = null;
 
-  let clientsToTry = PLAYER_CLIENTS;
+  let clientsToTry = ["android_vr", "android", "web", "default"];
   if (countryClient && countryClient !== "default") {
-    clientsToTry = [countryClient, ...PLAYER_CLIENTS.filter(c => c !== countryClient)];
+    clientsToTry = [countryClient, ...clientsToTry.filter(c => c !== countryClient)];
   }
 
   for (const client of clientsToTry) {
