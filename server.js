@@ -3001,7 +3001,7 @@ app.post("/admin/cache-playlist", express.json(), basicAuth, async (req, res) =>
       dumpSingleJson: true
     });
     
-    const data = JSON.parse(result.toString());
+    const data = typeof result === 'object' ? result : JSON.parse(result.toString());
     const entries = data.entries || [];
     console.log(`[PLAYLIST_CACHE] ${entries.length} video bulundu.`);
     
