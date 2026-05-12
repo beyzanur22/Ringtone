@@ -1721,8 +1721,8 @@ app.post("/send-notification", async (req, res) => {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
 
-  const appId = bodyAppId || "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = bodyRestKey || "os_v2_app_tisvratpyrb6nlztet27nfscz4lw7y5g5fleotmyabngldtgrzsvnh3kbyk3oug3wvmphrqq3bv4jrok2qbvd3yas2qigkvjtm22xgi";
+  const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
+  const restKey = bodyRestKey || process.env.ONESIGNAL_REST_KEY || "";
 
   try {
     const { exec } = require("child_process");
