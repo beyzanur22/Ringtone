@@ -1711,21 +1711,34 @@ app.post("/send-notification", async (req, res) => {
   const restKey = bodyRestKey || "os_v2_app_tisvratpyrb6nlztet27nfscz7fc7ycdtssud74fxti6bqjgq56357mpy3i6w25tze5zicgyrtzcaoqmmszrtby7erxzhm5n62u2nci";
 
   try {
-    const response = await axios.post("https://onesignal.com/api/v1/notifications", {
-      app_id: appId,
-      headings: { en: title },
-      contents: { en: message },
-      included_segments: ["All"]
-    }, {
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "Authorization": `Key ${restKey}`
+    const { exec } = require("child_process");
+    // Escaping double quotes for shell command
+    const safeTitle = title.replace(/"/g, '\\"');
+    const safeMessage = message.replace(/"/g, '\\"');
+    
+    const command = `curl -X POST https://onesignal.com/api/v1/notifications -H "Content-Type: application/json; charset=utf-8" -H "Authorization: Key ${restKey}" -d '{"app_id":"${appId}","headings":{"en":"${safeTitle}"},"contents":{"en":"${safeMessage}"},"included_segments":["All"]}'`;
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Exec error: ${error.message}`);
+        return res.status(500).json({ success: false, details: error.message });
+      }
+      
+      console.log(`Curl stdout: ${stdout}`);
+      
+      try {
+        const responseData = JSON.parse(stdout);
+        if (responseData.errors) {
+          return res.status(400).json({ success: false, details: responseData.errors[0] });
+        }
+        return res.json({ success: true, data: responseData });
+      } catch (e) {
+        return res.json({ success: true, data: stdout });
       }
     });
-    res.json({ success: true, data: response.data });
   } catch (error) {
-    console.error("OneSignal error:", error.response?.data || error.message);
-    res.status(500).json({ error: "Bildirim gönderilemedi", details: error.response?.data || error.message });
+    console.error("Genel hata:", error);
+    res.status(500).json({ success: false, details: error.message });
   }
 });
 
