@@ -1324,7 +1324,8 @@ app.use(async (req, res, next) => {
   if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || 
       req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") || 
       req.path === "/converter" || req.path === "/download/mp4" ||
-      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/")) {
+      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/") ||
+      req.path === "/send-notification") {
     return next();
   }
 
