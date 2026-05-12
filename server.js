@@ -1555,18 +1555,32 @@ function getBlockedChannels() {
   } catch (e) { return []; }
 }
 
-function filterBlockedChannels(items) {
+function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
   if (!blockedGroups.length) return items;
   return items.filter(item => {
     const channelTitle = item.snippet?.channelTitle?.toLowerCase() || "";
+    const videoTitle = item.snippet?.title?.toLowerCase() || "";
     
-    // Herhangi bir yasaklı grubun içindeki herhangi bir kanalla eşleşiyor mu kontrol et
     const isBlocked = blockedGroups.some(group => {
+      // Ülke kontrolü
+      const ruleCountries = group.countries || "all";
+      if (ruleCountries !== "all") {
+        const countriesArray = Array.isArray(ruleCountries) ? ruleCountries : ruleCountries.split(",");
+        if (!countriesArray.includes(country)) return false;
+      }
+
       if (!group.channels || !Array.isArray(group.channels)) return false;
-      return group.channels.some(blockedName => 
-        channelTitle.includes(blockedName.toLowerCase())
-      );
+      const type = group.type || "channel";
+      
+      return group.channels.some(blockedValue => {
+        const val = blockedValue.toLowerCase();
+        if (type === "keyword") {
+          return videoTitle.includes(val);
+        } else {
+          return channelTitle.includes(val);
+        }
+      });
     });
     
     return !isBlocked;
@@ -1675,14 +1689,14 @@ app.post("/blocked-channels", (req, res) => {
     if (fs.existsSync(BLOCKED_FILE)) {
       blocked = JSON.parse(fs.readFileSync(BLOCKED_FILE, "utf-8") || "[]");
     }
-    const { id, channels, countries } = req.body;
+    const { id, channels, countries, type } = req.body;
     
     const existingIndex = blocked.findIndex(b => b.id === id);
     if (existingIndex >= 0) {
-      blocked[existingIndex] = { id, channels, countries };
+      blocked[existingIndex] = { id, channels, countries, type: type || "channel" };
     } else {
       const newId = id || Date.now().toString() + "-" + Math.random().toString(36).substring(2, 9);
-      blocked.push({ id: newId, channels: channels || [], countries: countries || "all" });
+      blocked.push({ id: newId, channels: channels || [], countries: countries || "all", type: type || "channel" });
     }
     
     fs.writeFileSync(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
@@ -1745,6 +1759,7 @@ app.post("/send-notification", async (req, res) => {
 // TOP 50
 
 app.get("/top50", async (req, res) => {
+  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
   try {
     // Redis cache kontrol
     const cached = await cacheGet("top50");
@@ -1764,7 +1779,7 @@ app.get("/top50", async (req, res) => {
           key: YOUTUBE_API_KEY
         }
       });
-      items = filterBlockedChannels(response.data.items);
+      items = filterBlockedChannels(response.data.items, country);
       youtubeApiStatus = "ok";
     } catch (apiError) {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
@@ -1780,7 +1795,7 @@ app.get("/top50", async (req, res) => {
             channelId: (item.uploaderUrl || "").split("/channel/")[1] || ""
           }
         }));
-        items = filterBlockedChannels(pipedItems);
+        items = filterBlockedChannels(pipedItems, country);
       } else {
         throw apiError;
       }
@@ -1802,6 +1817,7 @@ app.get("/top50", async (req, res) => {
 
 // SEARCH
 app.get("/search", searchLimiter, async (req, res) => {
+  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
   try {
     const query = req.query.q?.toLowerCase().trim();
     if (!query) return res.status(400).json({ error: "Query required" });
@@ -1818,7 +1834,7 @@ app.get("/search", searchLimiter, async (req, res) => {
       const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=BEYZA&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
       
       const bazocamData = response.data || [];
-      const filteredData = filterBlockedChannels(bazocamData);
+      const filteredData = filterBlockedChannels(bazocamData, country);
       const result = { data: filteredData, nextPageToken: null };
       
       await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
