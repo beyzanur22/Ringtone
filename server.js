@@ -1719,7 +1719,7 @@ app.post("/send-notification", async (req, res) => {
     }, {
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Authorization": `Basic ${restKey}`
+        "Authorization": `Key ${restKey}`
       }
     });
     res.json({ success: true, data: response.data });
