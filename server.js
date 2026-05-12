@@ -1702,13 +1702,13 @@ app.delete("/blocked-channels/:id", (req, res) => {
 
 // ONESIGNAL BİLDİRİM GÖNDERME
 app.post("/send-notification", async (req, res) => {
-  const { title, message } = req.body;
+  const { appId: bodyAppId, restKey: bodyRestKey, title, message } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
 
-  const appId = "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = "os_v2_app_tisvratpyrb6nlztet27nfscz4tnskrzlxqephf45pdj735rtkuotwgeoo2bumxxwpuk6vsgdwlvdzmcf3z7qfvh4r7wwb3cpft3k2y";
+  const appId = bodyAppId || "9a255882-6fc4-43e6-af33-24f5f69642cf";
+  const restKey = bodyRestKey || "os_v2_app_tisvratpyrb6nlztet27nfscz4tnskrzlxqephf45pdj735rtkuotwgeoo2bumxxwpuk6vsgdwlvdzmcf3z7qfvh4r7wwb3cpft3k2y";
 
   try {
     const response = await axios.post("https://onesignal.com/api/v1/notifications", {
