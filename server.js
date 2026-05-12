@@ -1654,6 +1654,33 @@ app.post("/config", (req, res) => {
   res.json({ message: "Config updated successfully" });
 });
 
+app.get("/blocked-channels", (req, res) => {
+  try {
+    const data = fs.readFileSync(DATA_FILE, "utf-8");
+    res.type("json").send(data || "[]");
+  } catch (e) { res.json([]); }
+});
+
+app.post("/blocked-channels", (req, res) => {
+  try {
+    const blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+    if (req.body.channelName && !blocked.includes(req.body.channelName)) {
+      blocked.push(req.body.channelName);
+      fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: "Write failed" }); }
+});
+
+app.delete("/blocked-channels/:name", (req, res) => {
+  try {
+    let blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+    blocked = blocked.filter(ch => ch !== req.params.name);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: "Delete failed" }); }
+});
+
 // TOP 50
 
 app.get("/top50", async (req, res) => {
