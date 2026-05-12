@@ -2976,6 +2976,74 @@ app.get("/converter", (req, res) => {
   res.sendFile(path.join(__dirname, "converter.html"));
 });
 
+// ---------------- PLAYLIST CACHE ----------------
+app.get("/playlist-cache", basicAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "playlist_cache.html"));
+});
+
+app.post("/admin/cache-playlist", express.json(), basicAuth, async (req, res) => {
+  const { playlistId, type } = req.body;
+  if (!playlistId) return res.status(400).json({ error: "Playlist ID required" });
+
+  res.json({ success: true, message: "Started in background" });
+
+  // Background job
+  try {
+    console.log(`[PLAYLIST_CACHE] Başlatıldı: ${playlistId} (${type})`);
+    
+    // yt-dlp ile playlistteki videoları çek
+    const result = await ytdlp(`https://www.youtube.com/playlist?list=${playlistId}`, {
+      flatPlaylist: true,
+      dumpSingleJson: true
+    });
+    
+    const data = JSON.parse(result.toString());
+    const entries = data.entries || [];
+    console.log(`[PLAYLIST_CACHE] ${entries.length} video bulundu.`);
+    
+    for (const entry of entries) {
+      const videoId = entry.id;
+      const title = entry.title || "Unknown";
+      
+      if (!videoId) continue;
+      
+      const isVideo = type === "video";
+      const ext = isVideo ? "mp4" : "m4a";
+      
+      if (!mediaLib.getReadyTrack(videoId, ext) && !mediaLib.isProcessing(videoId)) {
+        console.log(`[PLAYLIST_CACHE] Kuyruğa ekleniyor: ${videoId} (${title})`);
+        
+        const metadata = { title, artist: "Playlist Cache" };
+        const category = isVideo ? "watching" : "listening";
+        
+        mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
+        
+        const cookiePath = getRandomCookie();
+        const proxyUrl = getRandomProxy(videoId);
+        
+        const processPromise = isVideo 
+          ? ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
+          : ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl });
+          
+        try {
+          const result = await processPromise;
+          mediaLib.markReady(videoId, result);
+          console.log(`[PLAYLIST_CACHE] Başarılı: ${videoId}`);
+        } catch (pErr) {
+          mediaLib.markFailed(videoId, pErr.message);
+          console.warn(`[PLAYLIST_CACHE] Başarısız: ${videoId}: ${pErr.message}`);
+        }
+        
+        // YouTube'u boğmamak için araya 5 saniye gecikme koyuyoruz
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+    console.log(`[PLAYLIST_CACHE] Tamamlandı: ${playlistId}`);
+  } catch (e) {
+    console.error(`[PLAYLIST_CACHE_ERR] Hata: ${e.message}`);
+  }
+});
+
 // ---------------- CACHE PANEL ----------------
 const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
 

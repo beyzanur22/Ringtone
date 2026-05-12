@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playlist Cache | Ringtone Master</title>
+<style>
+:root {
+  --bg: #f8f7f2;
+  --card-bg: #ffffff;
+  --text: #4a4a4a;
+  --text-muted: #8e8e8e;
+  --accent: #d4a373;
+  --danger: #e63946;
+  --success: #10b981;
+  --border: #e2e2e2;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:40px 20px}
+.container{max-width:800px;margin:0 auto}
+
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}
+.btn{padding:12px 24px;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:8px;font-size:14px}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{background:#c1303c;transform:translateY(-1px)}
+.btn-outline-danger{border:1px solid var(--danger);color:var(--danger);background:transparent}
+.btn-outline-danger:hover{background:var(--danger);color:#fff}
+.btn-filter{background:#000;color:#fff;padding:12px 24px}
+.btn-filter:hover{background:#222;transform:translateY(-1px)}
+
+.section{background:var(--card-bg);border-radius:16px;border:1px solid var(--border);padding:30px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+
+.form-group{margin-bottom:20px}
+label{display:block;margin-bottom:8px;font-weight:700;font-size:14px;color:var(--text)}
+input[type="text"], select{width:100%;padding:12px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#f9f9f9;transition:border .2s}
+input[type="text"]:focus, select:focus{border-color:var(--accent);outline:none;background:#fff}
+
+.help-text{font-size:12px;color:var(--text-muted);margin-top:5px}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>🎵 Playlist Cache Doldur</h1>
+    <a href="/cache-panel" class="btn btn-filter">← Cache Paneline Dön</a>
+  </div>
+
+  <div class="section">
+    <div class="form-group">
+      <label for="playlistId">YouTube Playlist ID veya URL</label>
+      <input type="text" id="playlistId" placeholder="Örn: PL... veya full playlist linki">
+      <div class="help-text">Playlistteki tüm şarkılar sırayla arka planda indirilecektir.</div>
+    </div>
+
+    <div class="form-group">
+      <label for="cacheType">Cache Türü</label>
+      <select id="cacheType">
+        <option value="audio">Sadece Ses (M4A - Dinleme için)</option>
+        <option value="video">Video (MP4 - İzleme için)</option>
+      </select>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:30px">
+      <button class="btn" style="background:var(--accent);color:#fff" onclick="startCache()">▶ Başlat</button>
+      <button class="btn btn-outline-danger" onclick="resetForm()">Sıfırla</button>
+    </div>
+  </div>
+</div>
+
+<script>
+async function startCache() {
+  const playlistIdInput = document.getElementById('playlistId').value.trim();
+  const cacheType = document.getElementById('cacheType').value;
+
+  if (!playlistIdInput) {
+    alert('Lütfen bir Playlist ID veya URL girin!');
+    return;
+  }
+
+  // URL'den ID ayıklama
+  let playlistId = playlistIdInput;
+  if (playlistIdInput.includes('list=')) {
+    const urlParams = new URLSearchParams(playlistIdInput.split('?')[1]);
+    playlistId = urlParams.get('list');
+  }
+
+  if (!confirm('Playlist'deki tüm şarkılar arka planda sırayla indirilecek. İşlem başlatılsın mı?')) return;
+
+  try {
+    const res = await fetch('/admin/cache-playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playlistId, type: cacheType })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert('İşlem arka planda başlatıldı! Cache paneline yönlendiriliyorsunuz. Şarkılar yavaş yavaş listeye eklenecektir.');
+      window.location.href = '/cache-panel';
+    } else {
+      alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
+    }
+  } catch(e) {
+    alert('İstek hatası: ' + e.message);
+  }
+}
+
+function resetForm() {
+  document.getElementById('playlistId').value = '';
+  document.getElementById('cacheType').value = 'audio';
+}
+</script>
+
+</body>
+</html>
