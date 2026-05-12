@@ -1323,6 +1323,7 @@ app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler
   if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || 
       req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") || 
+      req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" ||
       req.path === "/converter" || req.path === "/download/mp4" ||
       req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/") ||
       req.path === "/send-notification") {
