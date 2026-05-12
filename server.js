@@ -1554,15 +1554,20 @@ function getBlockedChannels() {
 }
 
 function filterBlockedChannels(items) {
-  const blocked = getBlockedChannels();
-  if (!blocked.length) return items;
+  const blockedGroups = getBlockedChannels();
+  if (!blockedGroups.length) return items;
   return items.filter(item => {
-    const channelId = item.snippet?.channelId;
-    const channelTitle = item.snippet?.channelTitle?.toLowerCase();
-    return !blocked.some(b =>
-      b.id === channelId ||
-      (b.name && channelTitle && channelTitle.includes(b.name.toLowerCase()))
-    );
+    const channelTitle = item.snippet?.channelTitle?.toLowerCase() || "";
+    
+    // Herhangi bir yasaklı grubun içindeki herhangi bir kanalla eşleşiyor mu kontrol et
+    const isBlocked = blockedGroups.some(group => {
+      if (!group.channels || !Array.isArray(group.channels)) return false;
+      return group.channels.some(blockedName => 
+        channelTitle.includes(blockedName.toLowerCase())
+      );
+    });
+    
+    return !isBlocked;
   });
 }
 
@@ -1663,19 +1668,27 @@ app.get("/blocked-channels", (req, res) => {
 
 app.post("/blocked-channels", (req, res) => {
   try {
-    const blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
-    if (req.body.channelName && !blocked.includes(req.body.channelName)) {
-      blocked.push(req.body.channelName);
-      fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
+    let blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+    const { id, channels, countries } = req.body;
+    
+    const existingIndex = blocked.findIndex(b => b.id === id);
+    if (existingIndex >= 0) {
+      blocked[existingIndex] = { id, channels, countries };
+    } else {
+      const crypto = require('crypto');
+      const newId = id || crypto.randomUUID();
+      blocked.push({ id: newId, channels: channels || [], countries: countries || "all" });
     }
+    
+    fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
 
-app.delete("/blocked-channels/:name", (req, res) => {
+app.delete("/blocked-channels/:id", (req, res) => {
   try {
     let blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
-    blocked = blocked.filter(ch => ch !== req.params.name);
+    blocked = blocked.filter(ch => ch.id !== req.params.id);
     fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
