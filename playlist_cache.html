@@ -65,6 +65,14 @@ input[type="text"]:focus, select:focus{border-color:var(--accent);outline:none;b
       <button class="btn" style="background:var(--accent);color:#fff" onclick="startCache()">▶ Başlat</button>
       <button class="btn btn-outline-danger" onclick="resetForm()">Sıfırla</button>
     </div>
+
+    <div id="progressSection" style="margin-top: 30px; display: none;">
+      <label id="progressLabel" style="font-weight:bold;">Hazırlanıyor...</label>
+      <div style="width: 100%; background: var(--border); height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden;">
+        <div id="progressBar" style="width: 0%; background: var(--accent); height: 100%; transition: width 0.3s;"></div>
+      </div>
+      <div id="progressDetails" class="help-text" style="margin-top: 5px;"></div>
+    </div>
   </div>
 </div>
 
@@ -97,8 +105,8 @@ async function startCache() {
     const data = await res.json();
 
     if (data.success) {
-      alert('İşlem arka planda başlatıldı! Cache paneline yönlendiriliyorsunuz. Şarkılar yavaş yavaş listeye eklenecektir.');
-      window.location.href = '/cache-panel';
+      document.getElementById('progressSection').style.display = 'block';
+      pollProgress(playlistId);
     } else {
       alert('Hata: ' + (data.error || 'Bilinmeyen bir hata oluştu'));
     }
@@ -107,9 +115,47 @@ async function startCache() {
   }
 }
 
+function pollProgress(playlistId) {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch(`/admin/playlist-progress?playlistId=${playlistId}`);
+      const data = await res.json();
+      
+      const label = document.getElementById('progressLabel');
+      const bar = document.getElementById('progressBar');
+      const details = document.getElementById('progressDetails');
+      
+      if (data.status === 'fetching') {
+        label.innerText = 'Playlist bilgileri alınıyor...';
+        bar.style.width = '10%';
+      } else if (data.status === 'downloading') {
+        label.innerText = 'Şarkılar indiriliyor...';
+        const percent = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+        bar.style.width = `${percent}%`;
+        details.innerText = `İşlenen: ${data.processed} / ${data.total} | Şu an: ${data.currentTitle}`;
+      } else if (data.status === 'completed') {
+        label.innerText = 'Tamamlandı!';
+        bar.style.width = '100%';
+        details.innerText = `Toplam ${data.total} şarkı işlendi.`;
+        clearInterval(interval);
+        setTimeout(() => {
+          window.location.href = '/cache-panel';
+        }, 2000);
+      } else if (data.status === 'error') {
+        label.innerText = 'Hata oluştu!';
+        details.innerText = data.error;
+        clearInterval(interval);
+      }
+    } catch(e) {
+      console.error(e);
+    }
+  }, 2000);
+}
+
 function resetForm() {
   document.getElementById('playlistId').value = '';
   document.getElementById('cacheType').value = 'audio';
+  document.getElementById('progressSection').style.display = 'none';
 }
 </script>
 

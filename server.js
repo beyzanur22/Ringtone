@@ -2988,6 +2988,9 @@ app.post("/admin/cache-playlist", express.json(), basicAuth, async (req, res) =>
 
   res.json({ success: true, message: "Started in background" });
 
+  global.playlistJobs = global.playlistJobs || {};
+  global.playlistJobs[playlistId] = { total: 0, processed: 0, status: 'fetching', currentTitle: '' };
+
   // Background job
   try {
     console.log(`[PLAYLIST_CACHE] Başlatıldı: ${playlistId} (${type})`);
@@ -3002,11 +3005,16 @@ app.post("/admin/cache-playlist", express.json(), basicAuth, async (req, res) =>
     const entries = data.entries || [];
     console.log(`[PLAYLIST_CACHE] ${entries.length} video bulundu.`);
     
+    global.playlistJobs[playlistId].total = entries.length;
+    global.playlistJobs[playlistId].status = 'downloading';
+    
     for (const entry of entries) {
       const videoId = entry.id;
       const title = entry.title || "Unknown";
       
       if (!videoId) continue;
+      
+      global.playlistJobs[playlistId].currentTitle = title;
       
       const isVideo = type === "video";
       const ext = isVideo ? "mp4" : "m4a";
@@ -3038,11 +3046,25 @@ app.post("/admin/cache-playlist", express.json(), basicAuth, async (req, res) =>
         // YouTube'u boğmamak için araya 5 saniye gecikme koyuyoruz
         await new Promise(r => setTimeout(r, 5000));
       }
+      global.playlistJobs[playlistId].processed++;
     }
+    global.playlistJobs[playlistId].status = 'completed';
     console.log(`[PLAYLIST_CACHE] Tamamlandı: ${playlistId}`);
   } catch (e) {
     console.error(`[PLAYLIST_CACHE_ERR] Hata: ${e.message}`);
+    if (global.playlistJobs[playlistId]) {
+      global.playlistJobs[playlistId].status = 'error';
+      global.playlistJobs[playlistId].error = e.message;
+    }
   }
+});
+
+app.get("/admin/playlist-progress", basicAuth, (req, res) => {
+  const { playlistId } = req.query;
+  if (!playlistId) return res.status(400).json({ error: "Playlist ID required" });
+  
+  global.playlistJobs = global.playlistJobs || {};
+  res.json(global.playlistJobs[playlistId] || { status: 'not_found' });
 });
 
 // ---------------- CACHE PANEL ----------------
