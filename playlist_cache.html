@@ -85,7 +85,7 @@ async function startCache() {
     playlistId = urlParams.get('list');
   }
 
-  if (!confirm('Playlist'deki tüm şarkılar arka planda sırayla indirilecek. İşlem başlatılsın mı?')) return;
+  if (!confirm("Playlist'deki tüm şarkılar arka planda sırayla indirilecek. İşlem başlatılsın mı?")) return;
 
   try {
     const res = await fetch('/admin/cache-playlist', {
