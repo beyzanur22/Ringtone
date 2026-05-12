@@ -1544,12 +1544,12 @@ const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
 const STREAM_CACHE_DURATION = 6 * 60 * 60; // 6 saat (saniye cinsinden)
 const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
-/* =========================
-   BLOCKED CHANNELS
-========================= */
+const BLOCKED_FILE = path.join(__dirname, "blocked_channels.json");
+
 function getBlockedChannels() {
   try {
-    const data = fs.readFileSync(DATA_FILE, "utf-8");
+    if (!fs.existsSync(BLOCKED_FILE)) return [];
+    const data = fs.readFileSync(BLOCKED_FILE, "utf-8");
     return JSON.parse(data);
   } catch (e) { return []; }
 }
@@ -1662,14 +1662,18 @@ app.post("/config", (req, res) => {
 
 app.get("/blocked-channels", (req, res) => {
   try {
-    const data = fs.readFileSync(DATA_FILE, "utf-8");
+    if (!fs.existsSync(BLOCKED_FILE)) return res.json([]);
+    const data = fs.readFileSync(BLOCKED_FILE, "utf-8");
     res.type("json").send(data || "[]");
   } catch (e) { res.json([]); }
 });
 
 app.post("/blocked-channels", (req, res) => {
   try {
-    let blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+    let blocked = [];
+    if (fs.existsSync(BLOCKED_FILE)) {
+      blocked = JSON.parse(fs.readFileSync(BLOCKED_FILE, "utf-8") || "[]");
+    }
     const { id, channels, countries } = req.body;
     
     const existingIndex = blocked.findIndex(b => b.id === id);
@@ -1680,16 +1684,17 @@ app.post("/blocked-channels", (req, res) => {
       blocked.push({ id: newId, channels: channels || [], countries: countries || "all" });
     }
     
-    fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
+    fs.writeFileSync(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
 
 app.delete("/blocked-channels/:id", (req, res) => {
   try {
-    let blocked = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8") || "[]");
+    if (!fs.existsSync(BLOCKED_FILE)) return res.json({ success: true });
+    let blocked = JSON.parse(fs.readFileSync(BLOCKED_FILE, "utf-8") || "[]");
     blocked = blocked.filter(ch => ch.id !== req.params.id);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(blocked, null, 2));
+    fs.writeFileSync(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
