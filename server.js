@@ -1707,7 +1707,7 @@ app.post("/send-notification", async (req, res) => {
   }
 
   const appId = "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = "os_v2_app_tisvratpyrb6nlztet27nfscz5ntajzssz7uprucr2zh56fpwqpcgnndxqxazgx2nclprytru3qyedkkzorazjersu5lsijq7ijql2y";
+  const restKey = "os_v2_app_tisvratpyrb6nlztet27nfscz4tnskrzlxqephf45pdj735rtkuotwgeoo2bumxxwpuk6vsgdwlvdzmcf3z7qfvh4r7wwb3cpft3k2y";
 
   try {
     const response = await axios.post("https://onesignal.com/api/v1/notifications", {
