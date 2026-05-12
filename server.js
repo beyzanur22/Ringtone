@@ -1559,8 +1559,10 @@ function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
   if (!blockedGroups.length) return items;
   return items.filter(item => {
-    const channelTitle = item.snippet?.channelTitle?.toLowerCase() || "";
-    const videoTitle = item.snippet?.title?.toLowerCase() || "";
+    // Hem YouTube formatı (snippet) hem de düz format (Bazocam vb.) desteği
+    const snippet = item.snippet || item;
+    const channelTitle = (snippet.channelTitle || snippet.uploaderName || "").toLowerCase();
+    const videoTitle = (snippet.title || "").toLowerCase();
     
     const isBlocked = blockedGroups.some(group => {
       // Ülke kontrolü
