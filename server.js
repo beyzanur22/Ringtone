@@ -1722,7 +1722,7 @@ app.post("/send-notification", async (req, res) => {
   }
 
   const appId = bodyAppId || "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = bodyRestKey || "os_v2_app_tisvratpyrb6nlztet27nfscz4r5e6e2aj3ej6fa2utb4t477l72yiste6zff2qssfpszvtijhvugtawhkseqgjejb4ujp2mszgltyq";
+  const restKey = bodyRestKey || "os_v2_app_tisvratpyrb6nlztet27nfscz4lw7y5g5fleotmyabngldtgrzsvnh3kbyk3oug3wvmphrqq3bv4jrok2qbvd3yas2qigkvjtm22xgi";
 
   try {
     const { exec } = require("child_process");
