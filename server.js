@@ -1675,8 +1675,7 @@ app.post("/blocked-channels", (req, res) => {
     if (existingIndex >= 0) {
       blocked[existingIndex] = { id, channels, countries };
     } else {
-      const crypto = require('crypto');
-      const newId = id || crypto.randomUUID();
+      const newId = id || Date.now().toString() + "-" + Math.random().toString(36).substring(2, 9);
       blocked.push({ id: newId, channels: channels || [], countries: countries || "all" });
     }
     
@@ -1770,7 +1769,8 @@ app.get("/search", searchLimiter, async (req, res) => {
       const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=BEYZA&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
       
       const bazocamData = response.data || [];
-      const result = { data: bazocamData, nextPageToken: null };
+      const filteredData = filterBlockedChannels(bazocamData);
+      const result = { data: filteredData, nextPageToken: null };
       
       await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
       res.setHeader("Cache-Control", "no-store");
