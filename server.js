@@ -1699,6 +1699,32 @@ app.delete("/blocked-channels/:id", (req, res) => {
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
 
+// ONESIGNAL BİLDİRİM GÖNDERME
+app.post("/send-notification", async (req, res) => {
+  const { appId, restKey, title, message } = req.body;
+  if (!appId || !restKey || !title || !message) {
+    return res.status(400).json({ error: "Tüm alanlar gereklidir (App ID, Rest Key, Başlık, Mesaj)" });
+  }
+
+  try {
+    const response = await axios.post("https://onesignal.com/api/v1/notifications", {
+      app_id: appId,
+      headings: { en: title },
+      contents: { en: message },
+      included_segments: ["All"]
+    }, {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": `Basic ${restKey}`
+      }
+    });
+    res.json({ success: true, data: response.data });
+  } catch (error) {
+    console.error("OneSignal error:", error.response?.data || error.message);
+    res.status(500).json({ error: "Bildirim gönderilemedi", details: error.response?.data || error.message });
+  }
+});
+
 // TOP 50
 
 app.get("/top50", async (req, res) => {
