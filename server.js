@@ -1670,7 +1670,9 @@ app.get("/admin/media-stats", (req, res) => {
 
 app.get("/config", (req, res) => {
   const data = fs.readFileSync(CONFIG_FILE);
-  res.json(JSON.parse(data));
+  const config = JSON.parse(data);
+  config.watch_base = "https://www.youtube.com/watch?v=";
+  res.json(config);
 });
 
 app.post("/config", (req, res) => {
