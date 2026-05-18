@@ -233,7 +233,7 @@ function getStats() {
  * @param {number} maxAgeDays - Bu kadar gündür dinlenmemiş şarkıları sil
  * @param {number} maxDiskMB - Disk limiti (MB)
  */
-function cleanup(maxAgeDays = 90, maxDiskMB = 500) {
+function cleanup(maxAgeDays = 180, maxDiskMB = 50000) { // 180 gün, 50GB — kendi sunucumuz
   const now = Date.now();
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   let deletedCount = 0;

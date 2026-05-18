@@ -355,8 +355,8 @@ const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, ListObj
 
 let r2Client = null;
 const R2_BUCKET = process.env.R2_BUCKET_NAME || "ringtone-cache";
-const R2_MAX_SIZE = 9 * 1024 * 1024 * 1024; // 9GB limit (10GB free, 1GB tampon)
-const R2_CLEANUP_DAYS = 30; // 30 gün dinlenmemiş şarkıları sil
+const R2_MAX_SIZE = 50 * 1024 * 1024 * 1024; // 50GB — R2 artık yedek depo, ana depo kendi diskimiz
+const R2_CLEANUP_DAYS = 90; // 90 gün dinlenmemiş şarkıları sil (kendi sunucumuzda daha uzun tut)
 
 if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
   r2Client = new S3Client({
@@ -519,7 +519,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 300 * 1024 * 1024; // 300MB limit (Railway ephemeral disk için)
+const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB — Kendi sunucumuz (173.212.249.105), Railway limiti kaldırıldı
 
 function checkDiskSpaceAndCleanup() {
   try {
@@ -557,7 +557,7 @@ function checkDiskSpaceAndCleanup() {
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-setInterval(checkDiskSpaceAndCleanup, 15 * 1000); // 15 saniyede bir kontrol
+setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 60 saniyede bir kontrol — kendi sunucumuzda disk bolca var
 const downloadingFiles = new Set();
 
 async function downloadToCache(videoId, type, streamUrl, ua = null) {
@@ -1320,15 +1320,18 @@ app.post("/auth/token", async (req, res) => {
 });
 
 app.use(async (req, res, next) => {
-  // Tamamen açık endpoint'ler
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" || 
-      req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") || 
-      req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
-      req.path === "/converter" || req.path === "/download/mp4" ||
-      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/") ||
-      req.path === "/send-notification") {
+  // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
+  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" ||
+      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/")) {
     return next();
   }
+  // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
+  if (req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") ||
+      req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
+      req.path === "/converter") {
+    return next();
+  }
+  // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
 
   //  YÖNTEM 1: Bearer Token ile erişim (tercih edilen, daha güvenli)
   const authHeader = req.headers['authorization'];
@@ -1591,15 +1594,18 @@ function filterBlockedChannels(items, country = "all") {
 }
 
 // ARKA PLANDA ÖN-BELLEKLEME (Spotify gibi anında açılması için)
+// Kendi sunucumuzda Top25'e çıkarıldı + FFmpeg ile kalıcı disk kaydı eklendi
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
-  const top10 = items.slice(0, 10); // Sadece ilk 10'u ısıt ki rate-limit yemeyelim
-  top10.forEach((item, index) => {
+  const topItems = items.slice(0, 25); // Kendi sunucumuz — Top25'i ısıt
+  console.log(`[PREWARM] ${topItems.length} şarkı ön-ısıtma başlatılıyor...`);
+
+  topItems.forEach((item, index) => {
     const videoId = typeof item.id === "object" ? item.id.videoId : item.id;
     if (!videoId) return;
 
     const cacheKey = `stream:audio:${videoId}`;
-    // Eğer cahce'te yoksa, arka planda yavaş yavaş bulup ekle
+    // Eğer cache'te yoksa, arka planda yavaş yavaş bulup ekle
     cacheGet(cacheKey).then(cachedData => {
       if (!cachedData) {
         // Küçük gecikmelerle kuyruğa ekle (YouTube'u boğmamak için)
@@ -1609,12 +1615,36 @@ function prewarmTop10(items) {
               const ua = getRandomUA();
               const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
               await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
-              console.log(`[PREWARM_SUCCESS] ${videoId} arkaplanda hazırlandı!`);
+              console.log(`[PREWARM_SUCCESS] ${videoId} stream URL hazırlandı!`);
+
+              // KALICI KAYIT: FFmpeg ile media/ dizinine kaydet (disk cache)
+              // Zaten varsa atla
+              if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+                const title = item.snippet?.title || "Unknown";
+                const artist = item.snippet?.channelTitle || "Unknown";
+                mediaLib.upsertTrack(videoId, { title, artist, category: "listening", status: "processing" });
+
+                const cookiePath = getRandomCookie();
+                const proxyUrl = getRandomProxy(videoId);
+                ffmpegWorker.processAudio(videoId, { title, artist }, { cookiePath, proxyUrl })
+                  .then(result => {
+                    if (result && result.m4a) {
+                      mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
+                      // R2'ye yedek olarak yükle
+                      uploadToR2(`audio/${videoId}.m4a`, result.m4a).catch(() => {});
+                      console.log(`[PREWARM_DISK] ✅ ${videoId} kalıcı olarak diske kaydedildi!`);
+                    }
+                  })
+                  .catch(err => {
+                    console.warn(`[PREWARM_DISK] ⚠️ ${videoId} disk kaydı başarısız: ${err.message}`);
+                    mediaLib.markFailed(videoId, err.message);
+                  });
+              }
             } catch (err) {
-              // Sessizce yut
+              console.warn(`[PREWARM] ⚠️ ${videoId} başarısız: ${err.message}`);
             }
           }).catch(() => { });
-        }, index * 2000); // Her bir arasına 2 saniye koy
+        }, index * 3000); // Her bir arasına 3 saniye koy (kendi sunucumuz, bot tespiti azalt)
       }
     });
   });
@@ -1808,8 +1838,8 @@ app.get("/top50", async (req, res) => {
 
     await cacheSet("top50", items, CACHE_DURATION);
 
-    // Ön-ısıtma (Prewarm) proxy kotasını korumak için devre dışı bırakıldı.
-    // prewarmTop10(items);
+    // Ön-ısıtma (Prewarm) — Kendi sunucumuzda aktif! YouTube isteklerini minimuma indirir.
+    prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
     res.json({ source: "youtube", data: items });
@@ -2439,6 +2469,9 @@ async function warmTop50() {
     const items = filterBlockedChannels(response.data.items);
     await cacheSet("top50", items, CACHE_DURATION);
     console.log(`[WARMUP] Top50 cache hazır (${new Date().toLocaleTimeString()}).`);
+
+    // Kendi sunucumuzda: Top25'i arka planda diske kaydet
+    prewarmTop10(items);
   } catch (e) { console.warn("[WARMUP] Top50 çekimi başarısız (Kota veya hata):", e.message); }
 }
 

@@ -27,8 +27,8 @@ const TEMP_DIR = path.join(MEDIA_DIR, "temp");
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
 
-// FFmpeg işlem kuyruğu — aynı anda max 2 dönüşüm (CPU koruması)
-const ffmpegQueue = new PQueue({ concurrency: 2, timeout: 1200000 });
+// FFmpeg işlem kuyruğu — kendi sunucumuzda max 3 eşzamanlı dönüşüm
+const ffmpegQueue = new PQueue({ concurrency: 3, timeout: 1200000 });
 
 // yt-dlp binary yolu
 function getYtDlpBin() {

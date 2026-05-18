@@ -1,35 +1,73 @@
 version: '3.8'
 
 services:
+  # === NGINX — Reverse Proxy + Static File Server ===
+  nginx:
+    image: nginx:alpine
+    container_name: ringtone-nginx
+    restart: always
+    ports:
+      - "80:80"
+      # Domain + SSL ekleyince:
+      # - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - media_data:/app/media:ro  # Nginx media dosyalarını direkt sunar
+      # SSL sertifikaları (domain alınca):
+      # - ./ssl/cert.pem:/etc/nginx/ssl/cert.pem:ro
+      # - ./ssl/key.pem:/etc/nginx/ssl/key.pem:ro
+    depends_on:
+      - backend
+
+  # === BACKEND — Node.js + yt-dlp + FFmpeg ===
   backend:
     build: .
     container_name: ringtone-backend
     restart: always
     ports:
-      - "5000:5000"
+      - "5000:5000"  # Nginx üzerinden gelir, direkt erişim de mümkün
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
       - USE_COOKIES=true
+      - MEDIA_DIR=/app/media
     volumes:
-      - ./cookies.txt:/app/cookies.txt:ro
-      - ./oauth_credentials.json:/app/oauth_credentials.json
-      - ./proxies.txt:/app/proxies.txt:ro
+      # === KALICI DEPOLAMA (sunucu restart'ta silinmez) ===
+      - media_data:/app/media          # Şarkılar, MP3, MP4, thumbnail'ler (ANA DEPO)
+      - cache_data:/app/cache          # Geçici stream cache (10GB)
+      - ./media_db.json:/app/media_db.json  # Media kütüphanesi veritabanı (kalıcı)
+      - ./logs:/app/logs               # PM2 log dosyaları
+
+      # === YAPILANDIRMA DOSYALARI ===
+      - ./yt_cookies:/app/yt_cookies:ro
       - ./blockedChannels.json:/app/blockedChannels.json
       - ./config.json:/app/config.json
-      - cache_data:/app/cache
+      - ./proxy_data.json:/app/proxy_data.json
     depends_on:
       - redis
 
+  # === REDIS — In-Memory Cache ===
   redis:
     image: redis:alpine
     container_name: ringtone-redis
     restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"  # Sadece localhost'tan erişim (güvenlik)
     volumes:
       - redis_data:/data
 
+# === KALICI VOLUME'LAR ===
+# Docker volume'ları sunucu restart'ta silinmez
 volumes:
-  redis_data:
+  media_data:
+    driver: local
+    # İsteğe bağlı: Ayrı diske bağla (büyük SSD varsa)
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /mnt/music-storage/media
   cache_data:
+    driver: local
+  redis_data:
+    driver: local
