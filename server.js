@@ -1519,25 +1519,83 @@ if (!fs.existsSync(DATA_FILE)) {
 }
 
 /* =========================
-   RATE LIMITS
+   RATE LIMITS (Per-User + Global)
 ========================= */
+
+// Kötüye kullanım koruması: Aşırı istek atan IP'leri logla
+const abusiveIPs = new Map(); // IP -> { count, firstSeen, warned }
+
+function trackAbuse(ip) {
+  const now = Date.now();
+  if (!abusiveIPs.has(ip)) {
+    abusiveIPs.set(ip, { count: 1, firstSeen: now, warned: false });
+  } else {
+    const data = abusiveIPs.get(ip);
+    data.count++;
+    // 1 saat içinde 500+ kez limit aşarsa → ciddi kötüye kullanım
+    if (data.count > 500 && !data.warned) {
+      console.error(`[ABUSE] ⚠️ IP ${ip} son 1 saatte ${data.count} kez rate limit aştı!`);
+      data.warned = true;
+    }
+  }
+}
+
+// Her saat abuse tracker'ı temizle
+setInterval(() => abusiveIPs.clear(), 60 * 60 * 1000);
+
+// === GLOBAL LIMIT: Tüm endpoint'ler — dakikada 120 istek/IP ===
 app.use(rateLimit({
   windowMs: 60 * 1000,
-  max: 200, // Çoklu cihaz desteği: 3+ cihaz rahat kullansın
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
-    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Global)`);
-    res.status(options.statusCode).send(options.message);
+    trackAbuse(req.ip);
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Global) - ${req.path}`);
+    res.status(429).json({ error: "Çok fazla istek. Lütfen biraz bekleyin.", retryAfter: 60 });
   }
 }));
 
+// === ARAMA LİMİTİ: Dakikada 15 arama/IP (YouTube'a yük bindirmemek için) ===
 const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60, // Çoklu cihaz desteği
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
-    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search)`);
-    res.status(options.statusCode).send(options.message);
+    trackAbuse(req.ip);
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search) - q=${req.query.q || "?"}`);
+    res.status(429).json({ error: "Arama limiti aşıldı. 1 dakika bekleyin.", retryAfter: 60 });
+  }
+});
+
+// === STREAM LİMİTİ: Dakikada 30 stream/IP (normal dinleme yeterli) ===
+const streamLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    trackAbuse(req.ip);
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Stream)`);
+    res.status(429).json({ error: "Stream limiti aşıldı. Biraz bekleyin.", retryAfter: 30 });
+  }
+});
+
+// === DOWNLOAD LİMİTİ: Dakikada 10 indirme/IP ===
+const downloadLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    trackAbuse(req.ip);
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Download)`);
+    res.status(429).json({ error: "İndirme limiti aşıldı. 1 dakika bekleyin.", retryAfter: 60 });
   }
 });
 
@@ -1667,14 +1725,94 @@ function getPlayerClientForCountry(countryCode) {
 
 app.get("/health", (req, res) => {
   const mStats = mediaLib.getStats();
-  res.json({
+  const memUsage = process.memoryUsage();
+  const uptimeSec = Math.floor(process.uptime());
+  const diskFree = (() => {
+    try {
+      const result = require('child_process').execSync('df -BM /opt/app/media 2>/dev/null || echo "0M"').toString();
+      const lines = result.trim().split('\n');
+      if (lines.length > 1) {
+        const parts = lines[1].split(/\s+/);
+        return { totalMB: parseInt(parts[1]) || 0, usedMB: parseInt(parts[2]) || 0, freeMB: parseInt(parts[3]) || 0, usePercent: parts[4] || "?" };
+      }
+    } catch(e) {}
+    return null;
+  })();
+
+  const healthStatus = {
     status: "ok",
-    uptimeSeconds: Math.floor(process.uptime()),
-    memoryRssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-    redis: redis ? "connected" : "disconnected",
-    ytDlp: Date.now() < ytDlpCircuitBreakerUntil ? "circuit_breaker_open" : "ok",
-    youtubeApi: youtubeApiStatus,
-    mediaLibrary: { tracks: mStats.readyTracks, diskMB: mStats.totalDiskMB }
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: uptimeSec,
+    uptimeFormatted: `${Math.floor(uptimeSec/3600)}h ${Math.floor((uptimeSec%3600)/60)}m`,
+    memory: {
+      rssMB: Math.round(memUsage.rss / 1024 / 1024),
+      heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(memUsage.heapTotal / 1024 / 1024)
+    },
+    disk: diskFree,
+    services: {
+      redis: redis ? "connected" : "disconnected",
+      ytDlp: Date.now() < ytDlpCircuitBreakerUntil ? "circuit_breaker_open" : "ok",
+      youtubeApi: youtubeApiStatus
+    },
+    mediaLibrary: { tracks: mStats.readyTracks, diskMB: mStats.totalDiskMB },
+    rateLimits: { totalHits: stats.rateLimitHits, abusiveIPs: abusiveIPs.size },
+    stats: {
+      totalRequests: stats.totalRequests || 0,
+      cacheHits: stats.cacheHits || 0,
+      cacheMisses: stats.cacheMisses || 0
+    }
+  };
+
+  // Disk %90+ doluysa uyarı ver
+  if (diskFree && diskFree.usePercent && parseInt(diskFree.usePercent) > 90) {
+    healthStatus.status = "warning";
+    healthStatus.warning = "Disk kullanımı %90 üzerinde!";
+  }
+
+  // RAM 900MB üzeriyse uyarı (PM2 1GB'da restart eder)
+  if (healthStatus.memory.rssMB > 900) {
+    healthStatus.status = "warning";
+    healthStatus.warning = (healthStatus.warning || "") + " RAM kritik seviyede!";
+  }
+
+  res.json(healthStatus);
+});
+
+// === DETAYLI MONITORING ENDPOINT (Admin) ===
+app.get("/admin/monitoring", basicAuth, (req, res) => {
+  const mStats = mediaLib.getStats();
+  const uptimeSec = Math.floor(process.uptime());
+
+  // Son 1 saatteki abuse IP'leri listele
+  const abuseList = [];
+  abusiveIPs.forEach((data, ip) => {
+    if (data.count > 10) abuseList.push({ ip, hits: data.count, warned: data.warned });
+  });
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    server: {
+      uptime: `${Math.floor(uptimeSec/86400)}d ${Math.floor((uptimeSec%86400)/3600)}h ${Math.floor((uptimeSec%3600)/60)}m`,
+      memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      nodeVersion: process.version,
+      pid: process.pid
+    },
+    rateLimits: {
+      totalHits: stats.rateLimitHits,
+      abusiveIPs: abuseList,
+      limits: {
+        global: "120/dk per IP",
+        search: "15/dk per IP",
+        stream: "30/dk per IP",
+        download: "10/dk per IP"
+      }
+    },
+    cache: {
+      mediaLibrary: mStats,
+      redis: redis ? "connected" : "disconnected"
+    },
+    stats: stats
   });
 });
 
@@ -1967,7 +2105,7 @@ async function getBazocamCdnUrl(videoId, type = "audio") {
   }
 }
 
-app.get("/stream", async (req, res) => {
+app.get("/stream", streamLimiter, async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
     return res.status(400).json({ error: "Invalid or missing videoId" });
@@ -2215,7 +2353,7 @@ app.get("/stream", async (req, res) => {
 
 
 // VIDEO STREAM (MP4) - Yüksek Hızlı Doğrudan Aktarım (Proxy Stream)
-app.get("/stream/video", async (req, res) => {
+app.get("/stream/video", streamLimiter, async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
@@ -2498,6 +2636,43 @@ app.listen(PORT, "0.0.0.0", async () => {
   } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
 
   await warmTop50();
+
+  // === SELF-MONITORING: Her 5 dakikada sunucu durumunu kontrol et ===
+  setInterval(() => {
+    const memMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    const uptimeMin = Math.floor(process.uptime() / 60);
+
+    // RAM uyarısı
+    if (memMB > 800) {
+      console.warn(`[MONITOR] ⚠️ RAM UYARISI: ${memMB} MB kullanılıyor (limit: 1024 MB)`);
+    }
+
+    // Disk kontrolü
+    try {
+      const result = require('child_process').execSync('df -BG /opt/app/media 2>/dev/null').toString();
+      const lines = result.trim().split('\n');
+      if (lines.length > 1) {
+        const usePercent = parseInt(lines[1].split(/\s+/)[4]);
+        if (usePercent > 85) {
+          console.warn(`[MONITOR] ⚠️ DİSK UYARISI: %${usePercent} dolu!`);
+        }
+      }
+    } catch(e) {}
+
+    // Redis bağlantısı kontrolü
+    if (!redis) {
+      console.error("[MONITOR] ❌ Redis bağlantısı kopuk!");
+    }
+
+    // Her 30 dakikada özet log
+    if (uptimeMin % 30 === 0 && uptimeMin > 0) {
+      const mStats = mediaLib.getStats();
+      console.log(`[MONITOR] 📊 Durum: RAM=${memMB}MB | Uptime=${uptimeMin}dk | Şarkılar=${mStats.readyTracks} | Disk=${mStats.totalDiskMB}MB | RateLimit=${stats.rateLimitHits} | AbusiveIPs=${abusiveIPs.size}`);
+    }
+  }, 5 * 60 * 1000); // Her 5 dakikada bir
+
+  console.log("[STARTUP] ✅ Self-monitoring aktif (5dk aralıklarla)");
+  console.log("[STARTUP] 📊 Monitoring panel: /admin/monitoring");
 });
 
 /* =========================
@@ -2594,7 +2769,7 @@ async function pollConversionStatus(statusUrl, downloadUrl, maxWaitMs = 120000) 
 }
 
 // MP3 İndirme — Bazocam converter.php API Entegrasyonu
-app.get("/download/mp3", async (req, res) => {
+app.get("/download/mp3", downloadLimiter, async (req, res) => {
   try {
     const { videoId, kbps } = req.query;
 
@@ -2656,7 +2831,7 @@ app.get("/download/mp3", async (req, res) => {
 });
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
-app.get("/download/mp4", async (req, res) => {
+app.get("/download/mp4", downloadLimiter, async (req, res) => {
   try {
     const { videoId } = req.query;
 
