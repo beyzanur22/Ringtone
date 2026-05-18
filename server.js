@@ -1779,8 +1779,8 @@ app.get("/health", (req, res) => {
   res.json(healthStatus);
 });
 
-// === DETAYLI MONITORING ENDPOINT (Admin) ===
-app.get("/admin/monitoring", basicAuth, (req, res) => {
+// === DETAYLI MONITORING ENDPOINT (Admin — auth kontrolü /admin/stats ile aynı) ===
+app.get("/admin/monitoring", (req, res) => {
   const mStats = mediaLib.getStats();
   const uptimeSec = Math.floor(process.uptime());
 
