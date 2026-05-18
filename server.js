@@ -355,8 +355,8 @@ const { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, ListObj
 
 let r2Client = null;
 const R2_BUCKET = process.env.R2_BUCKET_NAME || "ringtone-cache";
-const R2_MAX_SIZE = 50 * 1024 * 1024 * 1024; // 50GB — R2 artık yedek depo, ana depo kendi diskimiz
-const R2_CLEANUP_DAYS = 90; // 90 gün dinlenmemiş şarkıları sil (kendi sunucumuzda daha uzun tut)
+const R2_MAX_SIZE = 9 * 1024 * 1024 * 1024; // 9GB — R2 free tier (10GB, 1GB tampon). Ana depo kendi diskimiz
+const R2_CLEANUP_DAYS = 60; // 60 gün dinlenmemiş şarkıları sil (free tier'da yer açmak için)
 
 if (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY) {
   r2Client = new S3Client({
