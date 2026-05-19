@@ -1,6 +1,20 @@
 require("dotenv").config();
 
 /* =========================
+   GÜVENLİK: Zorunlu env değişkenleri
+========================= */
+const APP_SECRET = process.env.APP_KEY;
+if (!APP_SECRET) {
+  console.error("[FATAL] APP_KEY env var tanımlı değil! Sunucu güvenli başlatılamaz.");
+  console.error("Çözüm: .env dosyasına APP_KEY=your_secret_here ekleyin veya PM2 ile APP_KEY tanımlayın.");
+  process.exit(1);
+}
+const BAZOCAM_PASS_ENV = process.env.BAZOCAM_PASS || "";
+if (!BAZOCAM_PASS_ENV) {
+  console.warn("[WARNING] BAZOCAM_PASS env var tanımlı değil! Bazocam API çağrıları çalışmayacak.");
+}
+
+/* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
 ========================= */
 process.on("uncaughtException", (err) => {
@@ -336,11 +350,21 @@ setTimeout(warmupAccount, 15 * 60 * 1000);
 // Sonraki ısıtmalar: 48 saatte bir (daha az şüpheli, YouTube'un radar aralığı dışında)
 setInterval(warmupAccount, 48 * 60 * 60 * 1000);
 
+// YouTube istek kuyruğu — Spotify ölçeği için:
+// concurrency: 5 yeterli (YouTube rate limit'e takılmamak için)
+// Çok yüksek yapmak YouTube ban'ına yol açar!
+// Asıl çözüm: cache hit rate'i artırmak (media_library + R2 + Redis)
 const queue = new PQueue({
-  concurrency: 5,      // YouTube bot tespitini önlemek için düşük tutuldu
+  concurrency: 5,
   interval: 2000,
   intervalCap: 3       // 2 saniyede max 3 istek (insan davranışı)
 });
+// Kuyruk izleme — yoğunluk uyarısı
+setInterval(() => {
+  if (queue.size > 20) {
+    console.warn(`[QUEUE_WARNING] YouTube kuyruğu yoğun: ${queue.size} bekleyen, ${queue.pending} aktif`);
+  }
+}, 30000);
 
 //  VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -1272,7 +1296,7 @@ app.post("/auth/token", async (req, res) => {
   try {
     const timestamp = req.headers['x-timestamp'];
     const signature = req.headers['x-signature'];
-    const EXPECTED_SECRET = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
+    const EXPECTED_SECRET = APP_SECRET;
 
     if (!timestamp || !signature) {
       return res.status(403).json({ error: "Missing credentials" });
@@ -1321,7 +1345,7 @@ app.post("/auth/token", async (req, res) => {
 
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
-  if (req.path === "/health" || req.path === "/config" || req.path === "/auth/token" ||
+  if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
       req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/")) {
     return next();
   }
@@ -1367,7 +1391,7 @@ app.use(async (req, res, next) => {
   // YÖNTEM 2: HMAC Signature ile erişim (eski yöntem, geriye uyumlu)
   const timestamp = req.headers['x-timestamp'];
   const signature = req.headers['x-signature'];
-  const EXPECTED_SECRET = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
+  const EXPECTED_SECRET = APP_SECRET;
 
   if (!timestamp || !signature) {
     console.warn(`[AUTH] Yetkisiz erişim (Eksik İmza): IP: ${req.ip} - Path: ${req.path}`);
@@ -1866,7 +1890,7 @@ app.get("/search", searchLimiter, async (req, res) => {
     try {
       console.log(`[SEARCH] Bazocam API kullanılıyor: "${query}"`);
       // Bazocam API'ye istek
-      const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=BEYZA&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
+      const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=${BAZOCAM_PASS}&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
       
       const bazocamData = response.data || [];
       const filteredData = filterBlockedChannels(bazocamData, country);
@@ -1910,7 +1934,7 @@ app.post("/stream/token", async (req, res) => {
 // ========== BAZOCAM CDN URL ÇÖZÜCÜ ==========
 // Bazocam'ın kendi proxy sistemi üzerinden Google CDN linklerini alır.
 // Böylece senin sunucunda proxy kullanmana gerek kalmaz.
-const BAZOCAM_PASS = "BEYZA";
+const BAZOCAM_PASS = BAZOCAM_PASS_ENV;
 const BAZOCAM_BASE = "https://bazocam.net";
 
 async function getBazocamCdnUrl(videoId, type = "audio") {
@@ -2607,7 +2631,7 @@ app.get("/download/mp3", async (req, res) => {
 
     try {
       // ADIM 1: Bazocam converter.php API'sine istek at (JSON yanıt döner)
-      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=BEYZA&youtubeID=${videoId}&kbps=${quality}`;
+      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
       console.log(`[DOWNLOAD_MP3] Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
 
       const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
@@ -2826,7 +2850,7 @@ setTimeout(manageDiskSpace, 5000);
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
-const ADMIN_PASS = "BEYZA";
+const ADMIN_PASS = process.env.ADMIN_PASS || "BEYZA";
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
 
 const basicAuth = (req, res, next) => {

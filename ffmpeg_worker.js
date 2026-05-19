@@ -27,8 +27,13 @@ const TEMP_DIR = path.join(MEDIA_DIR, "temp");
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
 
-// FFmpeg işlem kuyruğu — kendi sunucumuzda max 3 eşzamanlı dönüşüm
-const ffmpegQueue = new PQueue({ concurrency: 3, timeout: 1200000 });
+// FFmpeg işlem kuyruğu — CPU sayısına göre dinamik ayarlanır
+// Yüz binlerce kullanıcılı Spotify-tipi uygulama için:
+// Her FFmpeg işlemi ~1 CPU core kullanır, 1 core sisteme bırakıyoruz
+const os = require("os");
+const FFMPEG_CONCURRENCY = Math.max(2, Math.min(os.cpus().length - 1, 6));
+console.log(`[FFMPEG] Concurrency: ${FFMPEG_CONCURRENCY} (${os.cpus().length} CPU core algılandı)`);
+const ffmpegQueue = new PQueue({ concurrency: FFMPEG_CONCURRENCY, timeout: 1200000 });
 
 // yt-dlp binary yolu
 function getYtDlpBin() {

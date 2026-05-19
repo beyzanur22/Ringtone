@@ -24,7 +24,12 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 5000,
         // Kendi sunucumuz — disk bolca, cache uzun
-        MEDIA_DIR: "/app/media"
+        MEDIA_DIR: "/app/media",
+        // Güvenlik: bu değerleri .env dosyasından da okur (dotenv)
+        // PM2 env'de de tanımlamak yedek güvenlik sağlar
+        APP_KEY: "RINGTONE_MASTER_V2_SECRET_2026",
+        BAZOCAM_PASS: "BEYZA",
+        ADMIN_PASS: "BEYZA"
       }
     }
   ]
