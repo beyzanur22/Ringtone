@@ -107,17 +107,24 @@ function saveProxyData() {
   }
 }
 
-// Proxy kullanım istatistiklerini güncelle
+// Proxy kullanım istatistiklerini güncelle (bellekte, diske periyodik yaz)
+let proxyDataDirty = false;
 function trackProxyUsage(proxyIp, success) {
-  loadProxyData();
   const proxy = proxyData.active.find(p => p.ip === proxyIp);
   if (proxy) {
     if (success) proxy.successCount = (proxy.successCount || 0) + 1;
     else proxy.failCount = (proxy.failCount || 0) + 1;
     proxy.lastUsed = new Date().toISOString();
-    saveProxyData();
+    proxyDataDirty = true; // Diske yazma bekletilir
   }
 }
+// Proxy verisini 30 saniyede bir diske yaz (her istekte değil)
+setInterval(() => {
+  if (proxyDataDirty) {
+    saveProxyData();
+    proxyDataDirty = false;
+  }
+}, 30000);
 
 // Proxy sağlık skoru hesapla (%)
 function getProxyHealthScore(proxy) {
@@ -281,6 +288,17 @@ initYoutubei();
 
 //  ÇAKIŞMA ÖNLEYİCİ (Aynı anda birden fazla yt-dlp çalışmasını engeller)
 const ongoingResolutions = new Map();
+
+// Takılı kalan resolution'ları temizle (2 dakikadan eski olanlar)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of ongoingResolutions) {
+    if (val._startedAt && now - val._startedAt > 120000) {
+      ongoingResolutions.delete(key);
+      console.warn(`[RESOLUTION_CLEANUP] Takılı resolution temizlendi: ${key}`);
+    }
+  }
+}, 30000);
 
 /* =========================
    ANTI-BOT FAZ 2: HESAP ISITMA (ZOMBİ HESAP KORUMASI)
@@ -648,9 +666,8 @@ function logError(type, videoId, errorMessage) {
   const timestamp = new Date().toISOString();
   const logLine = `[${timestamp}] - [${type}] - VideoID: ${videoId || "N/A"} - Error: ${errorMessage}\n`;
   console.error(logLine.trim());
-  try {
-    fs.appendFileSync(path.join(__dirname, "error.log"), logLine);
-  } catch (e) { /* ignore */ }
+  // Asenkron yazım — event loop'u bloke etmez
+  fs.appendFile(path.join(__dirname, "error.log"), logLine, () => {});
 }
 
 let ytDlpFailCount = 0;
@@ -747,9 +764,9 @@ setInterval(() => {
     }
   }
   // Eğer hala çok büyükse en eskileri zorla sil (Yüksek kapasite limiti)
-  if (memoryCache.size > 2000) {
+  if (memoryCache.size > 10000) {
     const keys = Array.from(memoryCache.keys());
-    for (let i = 0; i < keys.length - 1000; i++) {
+    for (let i = 0; i < keys.length - 5000; i++) {
       memoryCache.delete(keys[i]);
     }
   }
@@ -1291,6 +1308,19 @@ const crypto = require("crypto");
 const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
 const API_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 saat (ms)
 
+// Token bellek sızıntısı önleyici: Her 10 dakikada expired token'ları temizle
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [token, data] of activeApiTokens) {
+    if (data.expiresAt < now) {
+      activeApiTokens.delete(token);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} expired token temizlendi, kalan: ${activeApiTokens.size}`);
+}, 10 * 60 * 1000);
+
 // Token oluşturma endpoint'i — HMAC ile çağrılır, geçici token döner
 app.post("/auth/token", async (req, res) => {
   try {
@@ -1526,10 +1556,38 @@ function setDrmHeaders(res) {
 
 
 /* =========================
-   FILES & CONFIG
+   FILES & CONFIG (Bellekte cache'lenir — her istekte disk okuma yok)
 ========================= */
 const CONFIG_FILE = "config.json";
 const DATA_FILE = "blockedChannels.json";
+
+// Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir
+let _cachedConfig = null;
+let _cachedBlockedChannels = null;
+
+function getCachedConfig() {
+  if (_cachedConfig) return _cachedConfig;
+  try {
+    _cachedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
+  } catch (e) { _cachedConfig = {}; }
+  return _cachedConfig;
+}
+
+function getCachedBlockedChannels() {
+  if (_cachedBlockedChannels !== null) return _cachedBlockedChannels;
+  try {
+    const BLOCKED_FILE_PATH = path.join(__dirname, "blocked_channels.json");
+    if (!fs.existsSync(BLOCKED_FILE_PATH)) return [];
+    _cachedBlockedChannels = JSON.parse(fs.readFileSync(BLOCKED_FILE_PATH, "utf-8"));
+  } catch (e) { _cachedBlockedChannels = []; }
+  return _cachedBlockedChannels;
+}
+
+// Her 60 saniyede cache'i yenile (dosya değişikliklerini yakala)
+setInterval(() => {
+  _cachedConfig = null;
+  _cachedBlockedChannels = null;
+}, 60000);
 
 if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
@@ -1545,9 +1603,13 @@ if (!fs.existsSync(DATA_FILE)) {
 /* =========================
    RATE LIMITS
 ========================= */
+// CGNAT NOT: Türk mobil operatörleri (Turkcell, Vodafone, Türk Telekom)
+// binlerce kullanıcıyı aynı IP'den gönderir. Limit çok düşük olursa
+// gerçek kullanıcılar bloke olur. Yüksek tutuyoruz, DDoS koruması
+// Cloudflare/nginx seviyesinde yapılmalı.
 app.use(rateLimit({
   windowMs: 60 * 1000,
-  max: 200, // Çoklu cihaz desteği: 3+ cihaz rahat kullansın
+  max: 600, // CGNAT: aynı IP'den yüzlerce kullanıcı gelebilir
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
     logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Global)`);
@@ -1557,7 +1619,7 @@ app.use(rateLimit({
 
 const searchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60, // Çoklu cihaz desteği
+  max: 200, // CGNAT: arama yoğunluğu yüksek olabilir
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
     logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search)`);
@@ -1570,17 +1632,13 @@ const searchLimiter = rateLimit({
 ========================= */
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
-const STREAM_CACHE_DURATION = 6 * 60 * 60; // 6 saat (saniye cinsinden)
+const STREAM_CACHE_DURATION = 5 * 60 * 60; // 5 saat (YouTube URL'leri ~6 saatte expire olur, cache daha önce bitmeli)
 const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
 const BLOCKED_FILE = path.join(__dirname, "blocked_channels.json");
 
 function getBlockedChannels() {
-  try {
-    if (!fs.existsSync(BLOCKED_FILE)) return [];
-    const data = fs.readFileSync(BLOCKED_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch (e) { return []; }
+  return getCachedBlockedChannels();
 }
 
 function filterBlockedChannels(items, country = "all") {
@@ -1676,8 +1734,7 @@ function prewarmTop10(items) {
 
 function getPlayerClientForCountry(countryCode) {
   try {
-    const data = fs.readFileSync(CONFIG_FILE, "utf-8");
-    const configData = JSON.parse(data);
+    const configData = getCachedConfig();
     if (configData.countries && configData.countries[countryCode]) {
       return configData.countries[countryCode];
     }
@@ -1723,14 +1780,14 @@ app.get("/admin/media-stats", (req, res) => {
 });
 
 app.get("/config", (req, res) => {
-  const data = fs.readFileSync(CONFIG_FILE);
-  const config = JSON.parse(data);
+  const config = { ...getCachedConfig() };
   config.watch_base = "https://www.youtube.com/watch?v=";
   res.json(config);
 });
 
 app.post("/config", (req, res) => {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(req.body, null, 2));
+  _cachedConfig = null; // Cache'i hemen invalidate et
   res.json({ message: "Config updated successfully" });
 });
 
@@ -2111,6 +2168,7 @@ app.get("/stream", async (req, res) => {
       });
 
       const ongoingKey = `ongoing:${typeStr}:${videoId}`;
+      resolutionPromise._startedAt = Date.now();
       ongoingResolutions.set(ongoingKey, resolutionPromise);
       streamUrl = await resolutionPromise;
 
