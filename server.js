@@ -2048,6 +2048,53 @@ async function getBazocamCdnUrl(videoId, type = "audio") {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  CACHE NOTIFY — Android NewPipe ile çaldığında backend'e bildir
+//  Backend arka planda şarkıyı diske indirir (bir sonraki istekte diskten gelir)
+// ═══════════════════════════════════════════════════════════════
+app.post("/cache-notify", express.json(), async (req, res) => {
+  const { videoId, url, type } = req.body;
+  if (!videoId || !url) return res.status(400).json({ error: "videoId and url required" });
+
+  const typeStr = type === "video" ? "video" : "audio";
+  const ext = typeStr === "audio" ? "m4a" : "mp4";
+  const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${ext}`);
+
+  // Zaten diskde varsa skip
+  if (fs.existsSync(localFile)) {
+    return res.json({ status: "already_cached" });
+  }
+
+  // Media Library'de varsa skip
+  const mediaTrack = mediaLib.getReadyTrack(videoId, ext === "m4a" ? "m4a" : "mp4");
+  if (mediaTrack?.files?.[ext === "m4a" ? "m4a" : "mp4"]) {
+    return res.json({ status: "already_in_library" });
+  }
+
+  // Arka planda indir (kullanıcıyı bekletme)
+  res.json({ status: "downloading" });
+
+  try {
+    await downloadToCache(videoId, typeStr, url);
+    console.log(`[CACHE_NOTIFY] ✅ ${typeStr}_${videoId} arka planda indirildi`);
+
+    // FFmpeg ile kalıcı kütüphaneye de ekle
+    if (typeStr === "audio" && !mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+      mediaLib.upsertTrack(videoId, { title: videoId, category: "listening", status: "processing" });
+      ffmpegWorker.addJob(videoId, url, "m4a", (result) => {
+        if (result.m4a) {
+          mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
+          console.log(`[CACHE_NOTIFY] 🎵 Media Library'ye eklendi: ${videoId}`);
+        }
+      }, (err) => {
+        mediaLib.markFailed(videoId, err.message);
+      });
+    }
+  } catch (e) {
+    console.warn(`[CACHE_NOTIFY] ❌ İndirme başarısız: ${videoId} — ${e.message}`);
+  }
+});
+
 app.get("/stream", async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
