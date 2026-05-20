@@ -561,7 +561,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
-const MAX_CACHE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB — Kendi sunucumuz (173.212.249.105), Railway limiti kaldırıldı
+const MAX_CACHE_SIZE = 30 * 1024 * 1024 * 1024; // 30GB — Contabo VPS (145GB disk, 137GB boş)
 
 function checkDiskSpaceAndCleanup() {
   try {
@@ -2860,50 +2860,10 @@ app.get("/download/mp4", async (req, res) => {
   }
 });
 
-// ---------------- DISK MANAGER (10GB Limit) ----------------
-// Önbelleği (cache) yönetir, 10GB'ı aşarsa en eski dosyaları siler.
-async function manageDiskSpace() {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    if (!fs.existsSync(CACHE_DIR)) return;
-
-    const files = fs.readdirSync(CACHE_DIR);
-    let totalSize = 0;
-    const fileList = [];
-
-    for (const file of files) {
-      const filePath = path.join(CACHE_DIR, file);
-      const stats = fs.statSync(filePath);
-      totalSize += stats.size;
-      fileList.push({ path: filePath, size: stats.size, atime: stats.atime });
-    }
-
-    const maxSizeBytes = 350 * 1024 * 1024; // 350 MB
-    const targetSizeBytes = 250 * 1024 * 1024; // 250 MB'a düşür
-
-    if (totalSize > maxSizeBytes) {
-      console.log(`[DISK_MANAGER] Limit asildi: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB. Temizlik basliyor...`);
-      fileList.sort((a, b) => a.atime - b.atime);
-
-      for (const fileObj of fileList) {
-        if (totalSize <= targetSizeBytes) break;
-        try {
-          fs.unlinkSync(fileObj.path);
-          totalSize -= fileObj.size;
-          console.log(`[DISK_MANAGER] Silindi: ${path.basename(fileObj.path)}`);
-        } catch (e) { }
-      }
-      console.log(`[DISK_MANAGER] Temizlik tamamlandi. Yeni boyut: ${(totalSize / 1024 / 1024 / 1024).toFixed(2)} GB.`);
-    }
-  } catch (err) {
-    console.error("[DISK_MANAGER_ERR]", err.message);
-  }
-}
-
-
-setInterval(manageDiskSpace, 15 * 60 * 1000); // 15 dk
-setTimeout(manageDiskSpace, 5000);
+// ---------------- DISK MANAGER ----------------
+// NOT: Eski Railway döneminden kalan 350MB limitli manageDiskSpace() kaldırıldı.
+// Disk yönetimi artık tek noktadan yapılıyor: checkDiskSpaceAndCleanup() (10GB limit, 60 saniyede bir)
+// + Media Library cleanup (50GB, 180 gün) + R2 cleanup (9GB, 60 gün)
 
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
