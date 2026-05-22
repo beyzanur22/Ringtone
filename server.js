@@ -602,6 +602,18 @@ function checkDiskSpaceAndCleanup() {
 setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 60 saniyede bir kontrol — kendi sunucumuzda disk bolca var
 const downloadingFiles = new Set();
 
+// 403 durumunda yeni stream URL almak için helper
+async function getFreshStreamUrl(videoId, type) {
+  try {
+    // Önce Youtubei ile dene
+    const url = await resolveWithYoutubei(videoId, type);
+    if (url) return url;
+  } catch (_) { }
+  // Youtubei başarısızsa cache'deki URL'yi temizle ve null dön
+  try { await cacheGet(`stream:${type}:${videoId}`); } catch (_) { }
+  return null;
+}
+
 async function downloadToCache(videoId, type, streamUrl, ua = null) {
   const ext = type === "audio" ? "m4a" : "mp4";
   const fileName = `${type}_${videoId}.${ext}`;
@@ -612,48 +624,69 @@ async function downloadToCache(videoId, type, streamUrl, ua = null) {
 
   downloadingFiles.add(fileName);
   try {
-    const headers = {
-      "Referer": "https://www.youtube.com/"
-    };
-    if (ua) headers["User-Agent"] = ua;
-
-    const response = await axios({
-      method: 'GET',
-      url: streamUrl,
-      responseType: 'stream',
-      timeout: 120000,
-      headers: headers,
-      validateStatus: (status) => status >= 200 && status < 400
-    });
-
-    const writer = fs.createWriteStream(tempPath);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    fs.renameSync(tempPath, filePath);
-
-    // Final kontrol: Eğer dosya çok küçükse kaydetme, sil!
-    const stats = fs.statSync(filePath);
-    const minSize = type === "video" ? 150 * 1024 : 20 * 1024;
-    if (stats.size < minSize) {
-      fs.unlinkSync(filePath);
-      throw new Error(`Download successful but file too small (${(stats.size / 1024).toFixed(1)} KB) - likely bot detection.`);
-    }
-
-    console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
-    // Arka planda R2'ye de yükle (kalıcı bulut cache)
-    const r2Key = `${type}/${videoId}.${ext}`;
-    uploadToR2(r2Key, filePath).catch(() => { });
+    await _downloadToCacheAttempt(videoId, type, streamUrl, ua, tempPath, filePath, fileName);
   } catch (err) {
-    console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    // 403 = URL süresi dolmuş → yeni URL al, tekrar dene
+    if (err.message && err.message.includes("403")) {
+      try {
+        console.log(`[DISK_CACHE] 403 aldı, yeni URL alınıyor: ${videoId}`);
+        const freshUrl = await getFreshStreamUrl(videoId, type);
+        if (freshUrl) {
+          await _downloadToCacheAttempt(videoId, type, freshUrl, ua, tempPath, filePath, fileName);
+        } else {
+          console.log(`[DISK_CACHE_ERR] ${fileName} yeni URL alınamadı`);
+        }
+      } catch (retryErr) {
+        console.log(`[DISK_CACHE_ERR] ${fileName} retry başarısız: ${retryErr.message}`);
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      }
+    } else {
+      console.log(`[DISK_CACHE_ERR] ${fileName} indirilemedi: ${err.message}`);
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    }
   } finally {
     downloadingFiles.delete(fileName);
   }
+}
+
+async function _downloadToCacheAttempt(videoId, type, streamUrl, ua, tempPath, filePath, fileName) {
+  const headers = {
+    "Referer": "https://www.youtube.com/"
+  };
+  if (ua) headers["User-Agent"] = ua;
+
+  const response = await axios({
+    method: 'GET',
+    url: streamUrl,
+    responseType: 'stream',
+    timeout: 120000,
+    headers: headers,
+    validateStatus: (status) => status >= 200 && status < 400
+  });
+
+  const writer = fs.createWriteStream(tempPath);
+  response.data.pipe(writer);
+
+  await new Promise((resolve, reject) => {
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
+
+  fs.renameSync(tempPath, filePath);
+
+  // Final kontrol: Eğer dosya çok küçükse kaydetme, sil!
+  const ext = type === "audio" ? "m4a" : "mp4";
+  const stats = fs.statSync(filePath);
+  const minSize = type === "video" ? 150 * 1024 : 20 * 1024;
+  if (stats.size < minSize) {
+    fs.unlinkSync(filePath);
+    throw new Error(`Download successful but file too small (${(stats.size / 1024).toFixed(1)} KB) - likely bot detection.`);
+  }
+
+  console.log(`[DISK_CACHE] Kaydedildi: ${fileName} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+  // Arka planda R2'ye de yükle (kalıcı bulut cache)
+  const r2Key = `${type}/${videoId}.${ext}`;
+  uploadToR2(r2Key, filePath).catch(() => { });
 }
 
 // Gereksiz ikinci disk silici temizlendi.
