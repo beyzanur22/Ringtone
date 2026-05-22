@@ -556,41 +556,47 @@ setTimeout(cleanupR2, 2 * 60 * 1000);
 
 /* =========================
    PHASE 6: DISK CACHING
+   Tüm cache dosyaları tek bir yerde: /app/media/ altında
+   FFmpeg kalıcı dosyaları ve stream cache aynı dizinde toplanır
 ========================= */
-const CACHE_DIR = path.join(__dirname, 'cache');
-if (!fs.existsSync(CACHE_DIR)) {
-  fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
-const MAX_CACHE_SIZE = 30 * 1024 * 1024 * 1024; // 30GB — Contabo VPS (145GB disk, 137GB boş)
+const MEDIA_BASE = process.env.MEDIA_DIR || "/app/media";
+const CACHE_DIR = path.join(MEDIA_BASE, "audio"); // M4A audio cache → /app/media/audio/
+const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /app/media/video/
+[CACHE_DIR, VIDEO_CACHE_DIR].forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+const MAX_CACHE_SIZE = 80 * 1024 * 1024 * 1024; // 80GB — Contabo VPS (145GB disk, kalıcı cache)
 
 function checkDiskSpaceAndCleanup() {
   try {
-    if (!fs.existsSync(CACHE_DIR)) return;
-    const files = fs.readdirSync(CACHE_DIR).map(f => {
-      const p = path.join(CACHE_DIR, f);
-      return { path: p, stat: fs.statSync(p), name: f };
-    });
-
+    // Tüm cache dizinlerini tara (audio + video)
+    const allDirs = [CACHE_DIR, VIDEO_CACHE_DIR];
+    let allFiles = [];
     const now = Date.now();
-    for (const file of files) {
-      if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
-        try { fs.unlinkSync(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
+
+    for (const dir of allDirs) {
+      if (!fs.existsSync(dir)) continue;
+      const dirFiles = fs.readdirSync(dir).map(f => {
+        const p = path.join(dir, f);
+        try { return { path: p, stat: fs.statSync(p), name: f }; } catch (_) { return null; }
+      }).filter(Boolean);
+
+      // Temp dosyaları temizle
+      for (const file of dirFiles) {
+        if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
+          try { fs.unlinkSync(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
+        }
       }
+      allFiles.push(...dirFiles);
     }
 
-    const currentFiles = fs.readdirSync(CACHE_DIR).map(f => {
-      const p = path.join(CACHE_DIR, f);
-      return { path: p, stat: fs.statSync(p), name: f };
-    });
-
-    const totalSize = currentFiles.reduce((acc, f) => acc + f.stat.size, 0);
+    const totalSize = allFiles.reduce((acc, f) => acc + f.stat.size, 0);
     if (totalSize > MAX_CACHE_SIZE) {
-      console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024).toFixed(1)} MB). Temizleniyor...`);
-      // Aktif indirmeleri silmemek icin sadece tamamlanmis dosyalari sil (.mp4, .m4a)
-      const finishedFiles = currentFiles.filter(f => f.name.endsWith('.mp4') || f.name.endsWith('.m4a'));
-      finishedFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
+      console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024 / 1024).toFixed(1)} GB). Temizleniyor...`);
+      const finishedFiles = allFiles.filter(f => f.name.endsWith('.mp4') || f.name.endsWith('.m4a') || f.name.endsWith('.mp3'));
+      finishedFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs); // En eski ilk silinir
       let deletedSize = 0;
-      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.5); // %50'ye kadar temizle
+      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.7); // %70'e kadar temizle
       for (const file of finishedFiles) {
         if (deletedSize >= targetToDelete) break;
         try { fs.unlinkSync(file.path); deletedSize += file.stat.size; } catch (e) { }
@@ -617,7 +623,8 @@ async function getFreshStreamUrl(videoId, type) {
 async function downloadToCache(videoId, type, streamUrl, ua = null) {
   const ext = type === "audio" ? "m4a" : "mp4";
   const fileName = `${type}_${videoId}.${ext}`;
-  const filePath = path.join(CACHE_DIR, fileName);
+  const targetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+  const filePath = path.join(targetDir, fileName);
   const tempPath = filePath + ".tmp";
 
   if (fs.existsSync(filePath) || downloadingFiles.has(fileName)) return;
@@ -2195,7 +2202,10 @@ app.get("/stream", async (req, res) => {
     const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
     const extStr = typeStr === "audio" ? "m4a" : "mp4";
     const r2Key = `${typeStr}/${videoId}.${extStr}`;
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    const targetCacheDir = typeStr === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+    const localFile = path.join(targetCacheDir, `${typeStr}_${videoId}.${extStr}`);
+    // Eski format uyumluluğu: FFmpeg "videoId.m4a", downloadToCache "audio_videoId.m4a" kaydediyor
+    const altFile = path.join(targetCacheDir, `${videoId}.${extStr}`);
 
     //  KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz)
     const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
@@ -2213,12 +2223,14 @@ app.get("/stream", async (req, res) => {
     }
 
     // KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
-    if (fs.existsSync(localFile)) {
-      const stats = fs.statSync(localFile);
+    // İki format kontrol: "audio_videoId.m4a" (downloadToCache) ve "videoId.m4a" (FFmpeg)
+    const diskFile = fs.existsSync(localFile) ? localFile : (fs.existsSync(altFile) ? altFile : null);
+    if (diskFile) {
+      const stats = fs.statSync(diskFile);
       const minSize = typeStr === "video" ? 100 * 1024 : 20 * 1024;
       if (stats.size < minSize) {
-        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${localFile}`);
-        fs.unlinkSync(localFile);
+        console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${diskFile}`);
+        fs.unlinkSync(diskFile);
       } else {
         console.log(`[DISK_CACHE_HIT]  Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         if (req.path.includes("download")) {
@@ -2228,8 +2240,8 @@ app.get("/stream", async (req, res) => {
         res.setHeader("Content-Length", stats.size);
         res.setHeader("Accept-Ranges", "bytes");
         // Arka planda R2'ye yükle
-        uploadToR2(r2Key, localFile).catch(() => { });
-        return res.sendFile(localFile);
+        uploadToR2(r2Key, diskFile).catch(() => { });
+        return res.sendFile(diskFile);
       }
     }
 
