@@ -233,7 +233,7 @@ function getStats() {
  * @param {number} maxAgeDays - Bu kadar gündür dinlenmemiş şarkıları sil
  * @param {number} maxDiskMB - Disk limiti (MB)
  */
-function cleanup(maxAgeDays = 180, maxDiskMB = 80000) { // 180 gün, 80GB — Contabo VPS (145GB disk)
+function cleanup(maxAgeDays = 365, maxDiskMB = 80000) { // 365 gün, 80GB — Contabo VPS (145GB disk)
   const now = Date.now();
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   let deletedCount = 0;

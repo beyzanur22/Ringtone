@@ -1592,7 +1592,8 @@ setInterval(() => {
 if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
     global: { enabled: true, mode: "youtube" },
-    countries: {}
+    countries: {},
+    mp3Provider: { bazocam: true, backend: true }
   }, null, 2));
 }
 
@@ -2734,43 +2735,71 @@ app.get("/download/mp3", async (req, res) => {
     // Kalite seçimi: 128, 192 veya 320 kbps
     const quality = ["128", "192", "320"].includes(kbps) ? kbps : "128";
 
-    try {
-      // ADIM 1: Bazocam converter.php API'sine istek at (JSON yanıt döner)
-      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
-      console.log(`[DOWNLOAD_MP3] Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
+    // Config'den provider ayarlarını oku
+    const config = getCachedConfig();
+    const mp3Config = config.mp3Provider || { bazocam: true, backend: true };
+    const bazocamEnabled = mp3Config.bazocam !== false;
+    const backendEnabled = mp3Config.backend !== false;
 
-      const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
-      const data = apiResponse.data;
+    console.log(`[DOWNLOAD_MP3] Provider ayarları — Bazocam: ${bazocamEnabled}, Backend: ${backendEnabled}`);
 
-      console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | job=${data.job_id || "?"}`);
+    // BAZOCAM ile dene (açıksa)
+    if (bazocamEnabled) {
+      try {
+        const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
+        console.log(`[DOWNLOAD_MP3] Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
 
-      if (data.status === "cached" && (data.download || data.download_url)) {
-        // Cache'de var — doğrudan MP3'ü çek ve Android'e aktar
-        console.log(`[DOWNLOAD_MP3] Bazocam CACHE HIT: ${videoId}`);
-        return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
+        const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
+        const data = apiResponse.data;
+
+        console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | job=${data.job_id || "?"}`);
+
+        if (data.status === "cached" && (data.download || data.download_url)) {
+          console.log(`[DOWNLOAD_MP3] Bazocam CACHE HIT: ${videoId}`);
+          return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
+        }
+
+        if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
+          console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
+          const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
+          console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
+          return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
+        }
+
+        throw new Error(`Bazocam beklenmeyen yanıt: ${JSON.stringify(data).substring(0, 200)}`);
+
+      } catch (apiErr) {
+        console.warn(`[DOWNLOAD_MP3] BAZOCAM BAŞARISIZ (${apiErr.message}).`);
+
+        // Bazocam başarısız — backend açıksa yedek olarak devam et
+        if (backendEnabled) {
+          console.log(`[DOWNLOAD_MP3] Backend yedek sisteme geçiliyor...`);
+          if (!res.headersSent) {
+            res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+            await ytdlpStream(videoId, "audio", req, res);
+          }
+          return;
+        }
+
+        // İkisi de çalışmadı
+        if (!res.headersSent) {
+          return res.status(500).json({ error: "Bazocam failed and backend fallback is disabled" });
+        }
       }
-
-      if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
-        // Dönüştürme başladı — tamamlanana kadar bekle
-        console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
-
-        // İlk istekten aldığımız linki pollConversionStatus'a geçiriyoruz
-        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
-
-        console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
-        return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
-      }
-
-      // Beklenmeyen yanıt formatı — yedek sisteme düş
-      throw new Error(`Bazocam beklenmeyen yanıt: ${JSON.stringify(data).substring(0, 200)}`);
-
-    } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP3]  BAZOCAM BAŞARISIZ (${apiErr.message}). Yedek sisteme geçiliyor...`);
-
-      // YEDEK: Kendi yt-dlp pipeline'ı (Bazocam çökerse diye)
+    }
+    // Sadece backend açıksa (bazocam kapalı)
+    else if (backendEnabled) {
+      console.log(`[DOWNLOAD_MP3] Bazocam kapalı, backend ile indiriliyor: ${videoId}`);
       if (!res.headersSent) {
         res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
         await ytdlpStream(videoId, "audio", req, res);
+      }
+    }
+    // İkisi de kapalı
+    else {
+      console.warn(`[DOWNLOAD_MP3] Her iki provider da kapalı!`);
+      if (!res.headersSent) {
+        return res.status(503).json({ error: "MP3 download is currently disabled" });
       }
     }
 
