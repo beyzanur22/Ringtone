@@ -1936,6 +1936,23 @@ app.get("/top50", async (req, res) => {
   }
 });
 
+// DEBUG: Ülke bazlı Top50 test endpoint'i — tarayıcıdan /top50/test/TR veya /top50/test/US ile dene
+app.get("/top50/test/:region", async (req, res) => {
+  const region = (req.params.region || "US").toUpperCase();
+  const cacheKey = `top50:${region}`;
+  const cached = await cacheGet(cacheKey);
+  const titles = cached
+    ? cached.slice(0, 10).map((item, i) => `${i+1}. ${item.snippet?.title || "?"}`)
+    : null;
+  res.json({
+    region,
+    cacheKey,
+    hasCachedData: !!cached,
+    totalCached: cached ? cached.length : 0,
+    first10: titles || "Cache boş — henüz bu ülke için istek gelmemiş"
+  });
+});
+
 // SEARCH
 app.get("/search", searchLimiter, async (req, res) => {
   const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
