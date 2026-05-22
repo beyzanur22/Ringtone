@@ -2381,7 +2381,8 @@ app.get("/stream", async (req, res) => {
     response.data.pipe(res);
 
     if (typeof streamUrl !== 'undefined') {
-      downloadToCache(videoId, typeStr, streamUrl, ua).catch(e => { });
+      // downloadToCache kaldırıldı — FFmpeg worker tek başına kalıcı cache'i yönetir
+      // Eski downloadToCache, YouTube URL'si expire olunca 403 alıyordu
 
       //  ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
       const isVideo = typeStr === "video";
