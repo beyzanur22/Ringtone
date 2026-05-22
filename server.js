@@ -2679,23 +2679,37 @@ app.get("/stream/video", async (req, res) => {
 
 // Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif bölgeler
 const WARM_REGIONS = [
+  // Türkçe
   "TR",  // 🇹🇷 Türkiye
+  // İngilizce
   "US",  // 🇺🇸 Amerika
-  "DE",  // 🇩🇪 Almanya
   "GB",  // 🇬🇧 İngiltere
-  "FR",  // 🇫🇷 Fransa
+  "CA",  // 🇨🇦 Kanada
+  "AU",  // 🇦🇺 Avustralya
+  // Almanca
+  "DE",  // 🇩🇪 Almanya
   "NL",  // 🇳🇱 Hollanda
-  "AZ",  // 🇦🇿 Azerbaycan
-  "SA",  // 🇸🇦 Suudi Arabistan
-  "BR",  // 🇧🇷 Brezilya (pt-BR)
-  "IN",  // 🇮🇳 Hindistan
+  // Fransızca
+  "FR",  // 🇫🇷 Fransa
+  // Portekizce
   "PT",  // 🇵🇹 Portekiz
+  "BR",  // 🇧🇷 Brezilya
+  // İspanyolca
   "ES",  // 🇪🇸 İspanya
   "MX",  // 🇲🇽 Meksika
   "AR",  // 🇦🇷 Arjantin
   "CO",  // 🇨🇴 Kolombiya
   "CL",  // 🇨🇱 Şili
   "PE",  // 🇵🇪 Peru
+  // Arapça
+  "SA",  // 🇸🇦 Suudi Arabistan
+  "EG",  // 🇪🇬 Mısır
+  "AE",  // 🇦🇪 BAE (Dubai)
+  "IQ",  // 🇮🇶 Irak
+  "MA",  // 🇲🇦 Fas
+  // Diğer
+  "AZ",  // 🇦🇿 Azerbaycan
+  "IN",  // 🇮🇳 Hindistan
 ];
 
 async function warmTop50() {
