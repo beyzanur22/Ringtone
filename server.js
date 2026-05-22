@@ -1376,7 +1376,8 @@ app.post("/auth/token", async (req, res) => {
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
-      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/")) {
+      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/") ||
+      req.path.startsWith("/top50/test")) {
     return next();
   }
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
