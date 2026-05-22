@@ -1063,7 +1063,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
   let lastError = null;
 
-  let clientsToTry = ["android_vr", "android", "web", "default"];
+  let clientsToTry = ["android_vr", "android"];
   if (countryClient && countryClient !== "default") {
     clientsToTry = [countryClient, ...clientsToTry.filter(c => c !== countryClient)];
   }
