@@ -894,7 +894,8 @@ function ytdlpStream(videoId, type, req, res) {
   return new Promise((resolve, reject) => {
     const ext = type === "audio" ? "m4a" : "mp4";
     const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
-    const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
+    const targetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+    const outputFile = path.join(targetDir, `${type}_${videoId}.${ext}`);
     const tempFile = outputFile + ".pipe.tmp";
 
     const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" :
@@ -975,8 +976,9 @@ function ytdlpDirectDownload(videoId, type) {
     const format = type === "audio"
       ? "bestaudio[ext=m4a]/bestaudio"
       : "b[ext=mp4][height<=720]/best[ext=mp4]/b/best";
-    const outputFile = path.join(CACHE_DIR, `${type}_${videoId}.${ext}`);
-    const tempFile = path.join(CACHE_DIR, `temp_${videoId}.${ext}`);
+    const dlTargetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+    const outputFile = path.join(dlTargetDir, `${type}_${videoId}.${ext}`);
+    const tempFile = path.join(dlTargetDir, `temp_${videoId}.${ext}`);
 
     if (fs.existsSync(outputFile)) {
       const stats = fs.statSync(outputFile);
@@ -2140,10 +2142,12 @@ app.post("/cache-notify", express.json(), async (req, res) => {
 
   const typeStr = type === "video" ? "video" : "audio";
   const ext = typeStr === "audio" ? "m4a" : "mp4";
-  const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${ext}`);
+  const targetDir = typeStr === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+  const localFile = path.join(targetDir, `${typeStr}_${videoId}.${ext}`);
+  const altFile = path.join(targetDir, `${videoId}.${ext}`);
 
   // Zaten diskde varsa skip
-  if (fs.existsSync(localFile)) {
+  if (fs.existsSync(localFile) || fs.existsSync(altFile)) {
     return res.json({ status: "already_cached" });
   }
 
@@ -2457,7 +2461,8 @@ app.get("/stream/video", async (req, res) => {
     setDrmHeaders(res);
 
     const r2Key = `video/${videoId}.mp4`;
-    const localVideoFile = path.join(CACHE_DIR, `video_${videoId}.mp4`);
+    const localVideoFile = path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`);
+    const altVideoFile = path.join(VIDEO_CACHE_DIR, `${videoId}.mp4`);
 
     // KATMAN -1: FFMPEG MEDIA LIBRARY (Kendi diskimizden video)
     const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
@@ -2495,13 +2500,14 @@ app.get("/stream/video", async (req, res) => {
       }
     }
 
-    //  KATMAN 0: DISK CACHE (Anlık)
-    if (fs.existsSync(localVideoFile)) {
-      const vStats = fs.statSync(localVideoFile);
+    //  KATMAN 0: DISK CACHE (Anlık) — iki format kontrol
+    const diskVideoFile = fs.existsSync(localVideoFile) ? localVideoFile : (fs.existsSync(altVideoFile) ? altVideoFile : null);
+    if (diskVideoFile) {
+      const vStats = fs.statSync(diskVideoFile);
       if (vStats.size > 100 * 1024) {
         const fileSize = vStats.size;
         console.log(`[DISK_VIDEO_HIT] +++ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
-        uploadToR2(r2Key, localVideoFile).catch(() => { });
+        uploadToR2(r2Key, diskVideoFile).catch(() => { });
 
         //  Range Request desteği (ExoPlayer için ZORUNLU)
         const range = req.headers.range;
@@ -2517,7 +2523,7 @@ app.get("/stream/video", async (req, res) => {
             "Content-Length": chunkSize,
             "Content-Type": "video/mp4",
           });
-          const fileStream = fs.createReadStream(localVideoFile, { start, end });
+          const fileStream = fs.createReadStream(diskVideoFile, { start, end });
           return fileStream.pipe(res);
         } else {
           res.writeHead(200, {
@@ -2525,11 +2531,11 @@ app.get("/stream/video", async (req, res) => {
             "Content-Type": "video/mp4",
             "Accept-Ranges": "bytes",
           });
-          const fileStream = fs.createReadStream(localVideoFile);
+          const fileStream = fs.createReadStream(diskVideoFile);
           return fileStream.pipe(res);
         }
       } else {
-        fs.unlinkSync(localVideoFile);
+        fs.unlinkSync(diskVideoFile);
       }
     }
 
@@ -2920,7 +2926,6 @@ app.get("/download/mp4", async (req, res) => {
 
     const typeStr = "video";
     const extStr = "mp4";
-    const localFile = path.join(CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
 
     // KATMAN -1: FFmpeg Media Library (kalıcı MP4 dosyası)
     const mediaTrack = mediaLib.getReadyTrack(videoId, "mp4");
@@ -2935,17 +2940,20 @@ app.get("/download/mp4", async (req, res) => {
       return res.sendFile(fileToPipe);
     }
 
-    // 1. Disk cache - dosya varsa Content-Length ile anında gönder
-    if (fs.existsSync(localFile)) {
-      const fileStats = fs.statSync(localFile);
+    // KATMAN 0: Disk cache — iki format kontrol (video_videoId.mp4 + videoId.mp4)
+    const localFile = path.join(VIDEO_CACHE_DIR, `${typeStr}_${videoId}.${extStr}`);
+    const altFile = path.join(VIDEO_CACHE_DIR, `${videoId}.${extStr}`);
+    const diskFile = fs.existsSync(localFile) ? localFile : (fs.existsSync(altFile) ? altFile : null);
+    if (diskFile) {
+      const fileStats = fs.statSync(diskFile);
       if (fileStats.size < 150 * 1024) {
-        fs.unlinkSync(localFile);
+        fs.unlinkSync(diskFile);
       } else {
         console.log(`[DOWNLOAD_MP4] Cache Hit! ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
         res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Content-Length", fileStats.size);
         res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-        return res.sendFile(localFile);
+        return res.sendFile(diskFile);
       }
     }
 
