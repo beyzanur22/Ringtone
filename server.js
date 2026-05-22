@@ -565,7 +565,7 @@ const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /
 [CACHE_DIR, VIDEO_CACHE_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
-const MAX_CACHE_SIZE = 80 * 1024 * 1024 * 1024; // 80GB — Contabo VPS (145GB disk, kalıcı cache)
+const MAX_CACHE_SIZE = 125 * 1024 * 1024 * 1024; // 125GB — Contabo VPS (145GB disk), 20GB sisteme kalır
 
 function checkDiskSpaceAndCleanup() {
   try {
