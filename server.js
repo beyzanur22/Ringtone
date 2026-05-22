@@ -2707,6 +2707,8 @@ const WARM_REGIONS = [
   "AE",  // 🇦🇪 BAE (Dubai)
   "IQ",  // 🇮🇶 Irak
   "MA",  // 🇲🇦 Fas
+  // Rusça
+  "RU",  // 🇷🇺 Rusya
   // Diğer
   "AZ",  // 🇦🇿 Azerbaycan
   "IN",  // 🇮🇳 Hindistan
