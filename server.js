@@ -610,13 +610,32 @@ const downloadingFiles = new Set();
 
 // 403 durumunda yeni stream URL almak için helper
 async function getFreshStreamUrl(videoId, type) {
+  // Eski cache'i temizle (403 almış URL'yi sil)
   try {
-    // Önce Youtubei ile dene
-    const url = await resolveWithYoutubei(videoId, type);
-    if (url) return url;
+    if (redis) await redis.del(`stream:${type}:${videoId}`);
+    else memoryCache.delete(`stream:${type}:${videoId}`);
   } catch (_) { }
-  // Youtubei başarısızsa cache'deki URL'yi temizle ve null dön
-  try { await cacheGet(`stream:${type}:${videoId}`); } catch (_) { }
+
+  // 1) Youtubei ile dene
+  try {
+    const url = await resolveWithYoutubei(videoId, type);
+    if (url) {
+      console.log(`[FRESH_URL] Youtubei ile yeni URL alındı: ${videoId}`);
+      return url;
+    }
+  } catch (_) { }
+
+  // 2) yt-dlp ile dene (daha güvenilir)
+  try {
+    const ua = getRandomUA();
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "bestvideo[ext=mp4]/bestvideo";
+    const url = await resolveStreamUrl(`https://www.youtube.com/watch?v=${videoId}`, format, ua);
+    if (url) {
+      console.log(`[FRESH_URL] yt-dlp ile yeni URL alındı: ${videoId}`);
+      return url;
+    }
+  } catch (_) { }
+
   return null;
 }
 
