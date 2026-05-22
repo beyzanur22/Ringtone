@@ -1876,12 +1876,16 @@ app.post("/send-notification", async (req, res) => {
 // TOP 50
 
 app.get("/top50", async (req, res) => {
-  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+  // Ülke tespiti: Cloudflare header > Android X-Country header > fallback US
+  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "US";
+  const region = country.toUpperCase();
+  const cacheKey = `top50:${region}`;
+
   try {
-    // Redis cache kontrol
-    const cached = await cacheGet("top50");
+    // Redis cache kontrol (ülke bazlı)
+    const cached = await cacheGet(cacheKey);
     if (cached) {
-      return res.json({ source: "cache", data: cached });
+      return res.json({ source: "cache", region, data: cached });
     }
 
     let items;
@@ -1890,7 +1894,7 @@ app.get("/top50", async (req, res) => {
         params: {
           part: "snippet,contentDetails,statistics",
           chart: "mostPopular",
-          regionCode: "US",
+          regionCode: region,
           maxResults: 50,
           videoCategoryId: 10,
           key: YOUTUBE_API_KEY
@@ -1900,10 +1904,10 @@ app.get("/top50", async (req, res) => {
       youtubeApiStatus = "ok";
     } catch (apiError) {
       if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
-        logError("API_FALLBACK", null, "YouTube API Quota exceeded or forbidden. Using Piped API fallback config for top50.");
+        logError("API_FALLBACK", null, `YouTube API Quota exceeded. Piped fallback for top50 region=${region}`);
         youtubeApiStatus = "quota_exceeded";
         stats.youtubeApiQuotaExceeded++;
-        const pipedRes = await fetchFromPiped("/trending?region=US");
+        const pipedRes = await fetchFromPiped(`/trending?region=${region}`);
         const pipedItems = pipedRes.data.map(item => ({
           id: (item.url || "").split("?v=")[1],
           snippet: {
@@ -1918,16 +1922,16 @@ app.get("/top50", async (req, res) => {
       }
     }
 
-    await cacheSet("top50", items, CACHE_DURATION);
+    await cacheSet(cacheKey, items, CACHE_DURATION);
 
     // Ön-ısıtma (Prewarm) — Kendi sunucumuzda aktif! YouTube isteklerini minimuma indirir.
     prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
-    res.json({ source: "youtube", data: items });
+    res.json({ source: "youtube", region, data: items });
   } catch (error) {
-    logError("TOP50", null, error.message);
-    console.error("TOP50 ERROR:", error.message);
+    logError("TOP50", null, `region=${region} ${error.message}`);
+    console.error(`TOP50 ERROR [${region}]:`, error.message);
     res.status(500).json({ error: "API error" });
   }
 });
@@ -2584,25 +2588,34 @@ app.get("/stream/video", async (req, res) => {
    WARMUP & START
 ========================= */
 
-async function warmTop50() {
-  try {
-    const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
-      params: {
-        part: "snippet,contentDetails,statistics",
-        chart: "mostPopular",
-        regionCode: "US",
-        maxResults: 50,
-        videoCategoryId: 10,
-        key: YOUTUBE_API_KEY
-      }
-    });
-    const items = filterBlockedChannels(response.data.items);
-    await cacheSet("top50", items, CACHE_DURATION);
-    console.log(`[WARMUP] Top50 cache hazır (${new Date().toLocaleTimeString()}).`);
+// Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif bölgeler
+const WARM_REGIONS = ["TR", "US", "DE", "GB", "FR", "NL", "AZ", "SA", "BR", "IN"];
 
-    // Kendi sunucumuzda: Top25'i arka planda diske kaydet
-    prewarmTop10(items);
-  } catch (e) { console.warn("[WARMUP] Top50 çekimi başarısız (Kota veya hata):", e.message); }
+async function warmTop50() {
+  for (const region of WARM_REGIONS) {
+    try {
+      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+        params: {
+          part: "snippet,contentDetails,statistics",
+          chart: "mostPopular",
+          regionCode: region,
+          maxResults: 50,
+          videoCategoryId: 10,
+          key: YOUTUBE_API_KEY
+        }
+      });
+      const items = filterBlockedChannels(response.data.items);
+      await cacheSet(`top50:${region}`, items, CACHE_DURATION);
+      console.log(`[WARMUP] Top50 ${region} cache hazır.`);
+
+      // İlk bölge (TR) için prewarm yap
+      if (region === WARM_REGIONS[0]) prewarmTop10(items);
+    } catch (e) {
+      console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
+      // Quota aşıldıysa diğer bölgeleri de deneme
+      if (e.response && (e.response.status === 403 || e.response.status === 429)) break;
+    }
+  }
 }
 
 // Her 50 dakikada bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sürekli taze cache)
