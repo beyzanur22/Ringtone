@@ -1893,7 +1893,7 @@ app.delete("/blocked-channels/:id", (req, res) => {
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
 
-// ONESIGNAL BİLDİRİM GÖNDERME
+// ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
 app.post("/send-notification", async (req, res) => {
   const { appId: bodyAppId, restKey: bodyRestKey, title, message } = req.body;
   if (!title || !message) {
@@ -1903,34 +1903,34 @@ app.post("/send-notification", async (req, res) => {
   const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
   const restKey = bodyRestKey || process.env.ONESIGNAL_REST_KEY || "";
 
-  try {
-    const { exec } = require("child_process");
-    // Escaping double quotes for shell command
-    const safeTitle = title.replace(/"/g, '\\"');
-    const safeMessage = message.replace(/"/g, '\\"');
-    
-    const command = `curl -X POST https://onesignal.com/api/v1/notifications -H "Content-Type: application/json; charset=utf-8" -H "Authorization: Key ${restKey}" -d '{"app_id":"${appId}","headings":{"en":"${safeTitle}"},"contents":{"en":"${safeMessage}"},"included_segments":["All"]}'`;
+  if (!restKey) {
+    return res.status(400).json({ success: false, details: "REST API Key boş. Panelden veya .env'den tanımlayın." });
+  }
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Exec error: ${error.message}`);
-        return res.status(500).json({ success: false, details: error.message });
-      }
-      
-      console.log(`Curl stdout: ${stdout}`);
-      
-      try {
-        const responseData = JSON.parse(stdout);
-        if (responseData.errors) {
-          return res.status(400).json({ success: false, details: responseData.errors[0] });
-        }
-        return res.json({ success: true, data: responseData });
-      } catch (e) {
-        return res.json({ success: true, data: stdout });
-      }
+  try {
+    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": `Basic ${restKey}`
+      },
+      body: JSON.stringify({
+        app_id: appId,
+        headings: { en: title },
+        contents: { en: message },
+        included_segments: ["All"]
+      })
     });
+
+    const data = await response.json();
+    console.log("[OneSignal]", JSON.stringify(data));
+
+    if (data.errors && data.errors.length > 0) {
+      return res.status(400).json({ success: false, details: data.errors[0] });
+    }
+    return res.json({ success: true, data });
   } catch (error) {
-    console.error("Genel hata:", error);
+    console.error("[OneSignal] Hata:", error.message);
     res.status(500).json({ success: false, details: error.message });
   }
 });
