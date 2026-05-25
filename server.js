@@ -26,6 +26,10 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error(`[FATAL] İşlenmeyen Promise hatası (sunucu ÇÖKMEDEN kurtarıldı):`, reason);
 });
 
+// PM2 Cluster: Worker ID — periyodik görevler sadece worker 0'da çalışsın (4x tekrar önlenir)
+const WORKER_ID = parseInt(process.env.NODE_APP_INSTANCE || process.env.pm_id || "0");
+const isPrimaryWorker = WORKER_ID === 0;
+
 // Memory izleme — RAM dolmadan uyar
 setInterval(() => {
   const mem = process.memoryUsage();
@@ -253,7 +257,7 @@ function getRandomProxy(videoId = null) {
 
 // Başlangıçta yükle + her 5 dakikada bir unban kontrolü yap
 loadRotationAssets();
-setInterval(loadRotationAssets, 5 * 60 * 1000);
+if (isPrimaryWorker) setInterval(loadRotationAssets, 5 * 60 * 1000);
 
 /* =========================
    YOUTUBEI.JS OAUTH2 SETUP
@@ -366,9 +370,10 @@ async function warmupAccount() {
 }
 
 // İlk ısıtma: sunucu açıldıktan 15 dakika sonra (hemen başlamamak daha doğal)
-setTimeout(warmupAccount, 15 * 60 * 1000);
-// Sonraki ısıtmalar: 48 saatte bir (daha az şüpheli, YouTube'un radar aralığı dışında)
-setInterval(warmupAccount, 48 * 60 * 60 * 1000);
+if (isPrimaryWorker) {
+  setTimeout(warmupAccount, 15 * 60 * 1000);
+  setInterval(warmupAccount, 48 * 60 * 60 * 1000);
+}
 
 // YouTube istek kuyruğu — Çoklu kullanım ölçeği:
 // concurrency: 12 → aynı anda 12 paralel YouTube çözümleme
@@ -553,10 +558,11 @@ async function cleanupR2() {
   }
 }
 
-// Her 6 saatte bir otomatik temizlik çalıştır
-setInterval(cleanupR2, 6 * 60 * 60 * 1000);
-// Startup'tan 2 dakika sonra ilk temizliği yap
-setTimeout(cleanupR2, 2 * 60 * 1000);
+// Her 6 saatte bir otomatik temizlik (sadece primary worker)
+if (isPrimaryWorker) {
+  setInterval(cleanupR2, 6 * 60 * 60 * 1000);
+  setTimeout(cleanupR2, 2 * 60 * 1000);
+}
 
 /* =========================
    PHASE 6: DISK CACHING
@@ -609,7 +615,7 @@ function checkDiskSpaceAndCleanup() {
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 60 saniyede bir kontrol — kendi sunucumuzda disk bolca var
+if (isPrimaryWorker) setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 60 saniyede bir kontrol — sadece primary worker
 const downloadingFiles = new Set();
 
 // 403 durumunda yeni stream URL almak için helper
@@ -1208,8 +1214,10 @@ async function refreshPipedInstances() {
     console.warn(`[PIPED_REFRESH] Güncel liste alınamadı: ${e.message}`);
   }
 }
-setTimeout(refreshPipedInstances, 5000);
-setInterval(refreshPipedInstances, 30 * 60 * 1000);
+if (isPrimaryWorker) {
+  setTimeout(refreshPipedInstances, 5000);
+  setInterval(refreshPipedInstances, 30 * 60 * 1000);
+}
 
 // Dinamik + statik Invidious instance listesi
 let INVIDIOUS_INSTANCES = [
@@ -1237,8 +1245,10 @@ async function refreshInvidiousInstances() {
     console.warn(`[INVIDIOUS_REFRESH] Güncel liste alınamadı: ${e.message}`);
   }
 }
-setTimeout(refreshInvidiousInstances, 6000);
-setInterval(refreshInvidiousInstances, 30 * 60 * 1000);
+if (isPrimaryWorker) {
+  setTimeout(refreshInvidiousInstances, 6000);
+  setInterval(refreshInvidiousInstances, 30 * 60 * 1000);
+}
 
 async function fetchFromPiped(endpointPath) {
   let lastError = null;
@@ -2780,8 +2790,8 @@ async function warmTop50() {
   }
 }
 
-// Her 50 dakikada bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sürekli taze cache)
-setInterval(warmTop50, 50 * 60 * 1000);
+// Her 50 dakikada bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sadece primary worker)
+if (isPrimaryWorker) setInterval(warmTop50, 50 * 60 * 1000);
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, "0.0.0.0", async () => {
@@ -2802,7 +2812,7 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
     memoryCache.clear();
   } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
 
-  await warmTop50();
+  if (isPrimaryWorker) await warmTop50();
 });
 
 // Fix 5: playlistJobs temizleme — tamamlanmış/hatalı jobları 10dk sonra sil
