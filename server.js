@@ -101,7 +101,9 @@ function saveProxyData() {
     if (proxyData.banHistory && proxyData.banHistory.length > 100) {
       proxyData.banHistory = proxyData.banHistory.slice(-100);
     }
-    fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2));
+    fs.promises.writeFile(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2)).catch(e => {
+      console.error("[PROXY_DB] Yazma hatası:", e.message);
+    });
   } catch (e) {
     console.error("[PROXY_DB] Yazma hatası:", e.message);
   }
@@ -892,8 +894,34 @@ async function resolveWithYoutubei(videoId, type) {
 
 const { execFile, spawn } = require("child_process");
 
+// yt-dlp eşzamanlılık limiti — aynı anda max 6 yt-dlp process'i çalışsın
+let activeYtdlpCount = 0;
+const MAX_YTDLP_CONCURRENT = 6;
+const ytdlpWaitQueue = [];
+
+function acquireYtdlpSlot() {
+  return new Promise((resolve) => {
+    if (activeYtdlpCount < MAX_YTDLP_CONCURRENT) {
+      activeYtdlpCount++;
+      resolve();
+    } else {
+      ytdlpWaitQueue.push(resolve);
+    }
+  });
+}
+
+function releaseYtdlpSlot() {
+  if (ytdlpWaitQueue.length > 0) {
+    const next = ytdlpWaitQueue.shift();
+    next();
+  } else {
+    activeYtdlpCount--;
+  }
+}
+
 function ytdlpStream(videoId, type, req, res) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    await acquireYtdlpSlot();
     const ext = type === "audio" ? "m4a" : "mp4";
     const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
     const targetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
@@ -944,6 +972,7 @@ function ytdlpStream(videoId, type, req, res) {
     });
 
     ytdlpProc.on("close", (code) => {
+      releaseYtdlpSlot();
       cacheWriter.end();
       if (code === 0) {
         console.log(`[YTDL_STREAM] Başarıyla tamamlandı: ${videoId}`);
@@ -972,7 +1001,8 @@ function ytdlpStream(videoId, type, req, res) {
 }
 
 function ytdlpDirectDownload(videoId, type) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    await acquireYtdlpSlot();
     const ext = type === "audio" ? "m4a" : "mp4";
     // Video için: en iyi video+audio birleştir, yoksa hazır birleşik al
     const format = type === "audio"
@@ -1030,6 +1060,7 @@ function ytdlpDirectDownload(videoId, type) {
       timeout: 900000, // 15 dakika (büyük videolar için)
       maxBuffer: 50 * 1024 * 1024
     }, (error, stdout, stderr) => {
+      releaseYtdlpSlot();
 
       if (error) {
         console.error(`[YTDL_DIRECT] Hata: ${stderr || error.message}`);
@@ -1350,7 +1381,7 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 app.use((req, res, next) => {
   stats.totalRequests++;
@@ -1850,10 +1881,14 @@ app.get("/config", (req, res) => {
   res.json(config);
 });
 
-app.post("/config", (req, res) => {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(req.body, null, 2));
-  _cachedConfig = null; // Cache'i hemen invalidate et
-  res.json({ message: "Config updated successfully" });
+app.post("/config", async (req, res) => {
+  try {
+    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(req.body, null, 2));
+    _cachedConfig = null; // Cache'i hemen invalidate et
+    res.json({ message: "Config updated successfully" });
+  } catch (e) {
+    res.status(500).json({ error: "Config write failed: " + e.message });
+  }
 });
 
 app.get("/blocked-channels", (req, res) => {
@@ -1864,14 +1899,14 @@ app.get("/blocked-channels", (req, res) => {
   } catch (e) { res.json([]); }
 });
 
-app.post("/blocked-channels", (req, res) => {
+app.post("/blocked-channels", async (req, res) => {
   try {
     let blocked = [];
     if (fs.existsSync(BLOCKED_FILE)) {
-      blocked = JSON.parse(fs.readFileSync(BLOCKED_FILE, "utf-8") || "[]");
+      blocked = JSON.parse(await fs.promises.readFile(BLOCKED_FILE, "utf-8") || "[]");
     }
     const { id, channels, countries, type } = req.body;
-    
+
     const existingIndex = blocked.findIndex(b => b.id === id);
     if (existingIndex >= 0) {
       blocked[existingIndex] = { id, channels, countries, type: type || "channel" };
@@ -1879,18 +1914,18 @@ app.post("/blocked-channels", (req, res) => {
       const newId = id || Date.now().toString() + "-" + Math.random().toString(36).substring(2, 9);
       blocked.push({ id: newId, channels: channels || [], countries: countries || "all", type: type || "channel" });
     }
-    
-    fs.writeFileSync(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
+
+    await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
 
-app.delete("/blocked-channels/:id", (req, res) => {
+app.delete("/blocked-channels/:id", async (req, res) => {
   try {
     if (!fs.existsSync(BLOCKED_FILE)) return res.json({ success: true });
-    let blocked = JSON.parse(fs.readFileSync(BLOCKED_FILE, "utf-8") || "[]");
+    let blocked = JSON.parse(await fs.promises.readFile(BLOCKED_FILE, "utf-8") || "[]");
     blocked = blocked.filter(ch => ch.id !== req.params.id);
-    fs.writeFileSync(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
+    await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
@@ -2679,41 +2714,15 @@ app.get("/stream/video", async (req, res) => {
    WARMUP & START
 ========================= */
 
-// Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif bölgeler
+// Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif 6 bölge
+// Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
 const WARM_REGIONS = [
-  // Türkçe
-  "TR",  // 🇹🇷 Türkiye
-  // İngilizce
+  "TR",  // 🇹🇷 Türkiye (ana hedef)
   "US",  // 🇺🇸 Amerika
-  "GB",  // 🇬🇧 İngiltere
-  "CA",  // 🇨🇦 Kanada
-  "AU",  // 🇦🇺 Avustralya
-  // Almanca
   "DE",  // 🇩🇪 Almanya
-  "NL",  // 🇳🇱 Hollanda
-  // Fransızca
-  "FR",  // 🇫🇷 Fransa
-  // Portekizce
-  "PT",  // 🇵🇹 Portekiz
   "BR",  // 🇧🇷 Brezilya
-  // İspanyolca
-  "ES",  // 🇪🇸 İspanya
-  "MX",  // 🇲🇽 Meksika
-  "AR",  // 🇦🇷 Arjantin
-  "CO",  // 🇨🇴 Kolombiya
-  "CL",  // 🇨🇱 Şili
-  "PE",  // 🇵🇪 Peru
-  // Arapça
-  "SA",  // 🇸🇦 Suudi Arabistan
-  "EG",  // 🇪🇬 Mısır
-  "AE",  // 🇦🇪 BAE (Dubai)
-  "IQ",  // 🇮🇶 Irak
-  "MA",  // 🇲🇦 Fas
-  // Rusça
   "RU",  // 🇷🇺 Rusya
-  // Diğer
   "AZ",  // 🇦🇿 Azerbaycan
-  "IN",  // 🇮🇳 Hindistan
 ];
 
 async function warmTop50() {
@@ -2747,7 +2756,7 @@ async function warmTop50() {
 setInterval(warmTop50, 50 * 60 * 1000);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", async () => {
+const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
   console.log(`Redis: ${redis ? "bağlı" : "in-memory fallback"}`);
 
@@ -2767,6 +2776,45 @@ app.listen(PORT, "0.0.0.0", async () => {
 
   await warmTop50();
 });
+
+// Fix 5: playlistJobs temizleme — tamamlanmış/hatalı jobları 10dk sonra sil
+setInterval(() => {
+  if (!global.playlistJobs) return;
+  const now = Date.now();
+  for (const [id, job] of Object.entries(global.playlistJobs)) {
+    if (job.status === 'completed' || job.status === 'error') {
+      if (!job._doneAt) { job._doneAt = now; continue; }
+      if (now - job._doneAt > 10 * 60 * 1000) {
+        delete global.playlistJobs[id];
+        console.log(`[PLAYLIST_CLEANUP] Job silindi: ${id}`);
+      }
+    }
+  }
+}, 60 * 1000);
+
+// Fix 7: Graceful shutdown — SIGTERM/SIGINT
+function gracefulShutdown(signal) {
+  console.log(`[SHUTDOWN] ${signal} alındı, bağlantılar kapatılıyor...`);
+  server.close(() => {
+    console.log("[SHUTDOWN] HTTP server kapatıldı.");
+    if (redis) {
+      redis.quit().then(() => {
+        console.log("[SHUTDOWN] Redis bağlantısı kapatıldı.");
+        process.exit(0);
+      }).catch(() => process.exit(0));
+    } else {
+      process.exit(0);
+    }
+  });
+  // 15 saniye içinde kapanmazsa zorla kapat
+  setTimeout(() => {
+    console.error("[SHUTDOWN] Zorla kapatılıyor (timeout)");
+    process.exit(1);
+  }, 15000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 /* =========================
    BAZOCAM.NET YARDIMCI FONKSİYONLAR
@@ -3084,7 +3132,11 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
-const ADMIN_PASS = process.env.ADMIN_PASS || "BEYZA";
+const ADMIN_PASS = process.env.ADMIN_PASS;
+if (!ADMIN_PASS) {
+  console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
+  process.exit(1);
+}
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
 
 const basicAuth = (req, res, next) => {
@@ -3266,7 +3318,7 @@ app.get("/proxy-panel/test", basicAuth, async (req, res) => {
 });
 
 // ---------------- CONVERTER PAGE ----------------
-app.get("/converter", (req, res) => {
+app.get("/converter", basicAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "converter.html"));
 });
 
