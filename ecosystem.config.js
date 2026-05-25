@@ -19,13 +19,17 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss",
       merge_logs: true,
 
-      // Environment — Secret key'ler .env dosyasında tutulur (dotenv ile okunur)
-      // GÜVENLİK: Hassas bilgileri ASLA buraya yazmayın!
+      // Environment
       env: {
         NODE_ENV: "production",
         PORT: 5000,
-        MEDIA_DIR: "/app/media"
-        // APP_KEY, BAZOCAM_PASS, ADMIN_PASS → .env dosyasında tanımlayın
+        // Kendi sunucumuz — disk bolca, cache uzun
+        MEDIA_DIR: "/app/media",
+        // Güvenlik: bu değerleri .env dosyasından da okur (dotenv)
+        // PM2 env'de de tanımlamak yedek güvenlik sağlar
+        APP_KEY: "RINGTONE_MASTER_V2_SECRET_2026",
+        BAZOCAM_PASS: "BEYZA",
+        ADMIN_PASS: "BEYZA"
       }
     }
   ]
