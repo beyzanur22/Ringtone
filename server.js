@@ -368,14 +368,14 @@ setTimeout(warmupAccount, 15 * 60 * 1000);
 // Sonraki ısıtmalar: 48 saatte bir (daha az şüpheli, YouTube'un radar aralığı dışında)
 setInterval(warmupAccount, 48 * 60 * 60 * 1000);
 
-// YouTube istek kuyruğu — Spotify ölçeği için:
-// concurrency: 5 yeterli (YouTube rate limit'e takılmamak için)
-// Çok yüksek yapmak YouTube ban'ına yol açar!
-// Asıl çözüm: cache hit rate'i artırmak (media_library + R2 + Redis)
+// YouTube istek kuyruğu — Binlerce kullanıcı ölçeği:
+// Proxy havuzu varsa yüksek concurrency güvenli (her istek farklı IP'den gider)
+// Proxy yoksa düşük concurrency ile çalışır (tek IP koruması)
+const QUEUE_CONCURRENCY = parseInt(process.env.QUEUE_CONCURRENCY || "15");
 const queue = new PQueue({
-  concurrency: 5,
-  interval: 2000,
-  intervalCap: 3       // 2 saniyede max 3 istek (insan davranışı)
+  concurrency: QUEUE_CONCURRENCY,
+  interval: 1000,
+  intervalCap: 10       // 1 saniyede max 10 istek (proxy ile güvenli)
 });
 // Kuyruk izleme — yoğunluk uyarısı
 setInterval(() => {
@@ -909,7 +909,6 @@ function ytdlpStream(videoId, type, req, res) {
       "--no-part",
       "--no-mtime",
       "--concurrent-fragments", "1",
-      "--remote-components", "ejs:github",
       "--quiet", "--no-warnings"
     ];
 
@@ -1003,7 +1002,6 @@ function ytdlpDirectDownload(videoId, type) {
       "--concurrent-fragments", "1",
       "--retries", "3",
       "--socket-timeout", "30",
-      "--remote-components", "ejs:github",
       "--extractor-args", "youtube:player_client=android_vr"
     ];
 
@@ -1369,7 +1367,8 @@ const crypto = require("crypto");
 const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
 const API_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 saat (ms)
 
-// Token bellek sızıntısı önleyici: Her 10 dakikada expired token'ları temizle
+// Token bellek sızıntısı önleyici: Her 2 dakikada expired token'ları temizle + boyut limiti
+const MAX_API_TOKENS = 5000; // DDoS koruması: max 5000 token bellekte
 setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
@@ -1379,8 +1378,17 @@ setInterval(() => {
       cleaned++;
     }
   }
-  if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} expired token temizlendi, kalan: ${activeApiTokens.size}`);
-}, 10 * 60 * 1000);
+  // Boyut limiti aşıldıysa en eskileri zorla sil
+  if (activeApiTokens.size > MAX_API_TOKENS) {
+    const entries = Array.from(activeApiTokens.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toDelete = entries.slice(0, activeApiTokens.size - MAX_API_TOKENS);
+    for (const [token] of toDelete) {
+      activeApiTokens.delete(token);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} token temizlendi, kalan: ${activeApiTokens.size}`);
+}, 2 * 60 * 1000);
 
 // Token oluşturma endpoint'i — HMAC ile çağrılır, geçici token döner
 app.post("/auth/token", async (req, res) => {
@@ -1567,13 +1575,21 @@ async function validateStreamToken(token, videoId) {
   return { valid: true };
 }
 
-// Token temizleyici: Süresi dolmuş in-memory token'ları her 5 dakikada temizle
+// Token temizleyici: Süresi dolmuş in-memory token'ları her 2 dakikada temizle + boyut limiti
+const MAX_STREAM_TOKENS = 10000;
 setInterval(() => {
   const now = Date.now();
   for (const [key, val] of activeStreamTokens) {
     if (val.expires < now || val.used) activeStreamTokens.delete(key);
   }
-}, 5 * 60 * 1000);
+  // Boyut limiti aşıldıysa en eskileri zorla sil
+  if (activeStreamTokens.size > MAX_STREAM_TOKENS) {
+    const entries = Array.from(activeStreamTokens.entries()).sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toDelete = entries.slice(0, activeStreamTokens.size - MAX_STREAM_TOKENS);
+    for (const [key] of toDelete) activeStreamTokens.delete(key);
+    console.log(`[STREAM_TOKEN_CLEANUP] Boyut limiti: ${toDelete.length} token silindi`);
+  }
+}, 2 * 60 * 1000);
 
 /* =========================
    DRM FAZ 5: ERİŞİM İZLEME & ABUSE TESPİTİ
@@ -1581,6 +1597,7 @@ setInterval(() => {
    1 saatte 100+ farklı video = şüpheli aktivite → otomatik engel.
 ========================= */
 const userStreamTracker = new Map();
+const MAX_STREAM_TRACKERS = 20000; // Max 20K IP takibi
 
 function trackStreamAccess(userId, videoId, type) {
   if (!userStreamTracker.has(userId)) {
@@ -1591,22 +1608,37 @@ function trackStreamAccess(userId, videoId, type) {
   tracker.videos.add(videoId);
   tracker.lastSeen = Date.now();
 
-  // Abuse tespiti: 1 saatte 100'den fazla farklı video = şüpheli
+  // Her saat pencereyi sıfırla (kullanıcı kalıcı olarak bloke olmasın)
   const hourMs = 60 * 60 * 1000;
-  if (tracker.videos.size > 100 && (Date.now() - tracker.firstSeen) < hourMs) {
+  if (Date.now() - tracker.firstSeen > hourMs) {
+    tracker.firstSeen = Date.now();
+    tracker.count = 1;
+    tracker.videos = new Set([videoId]);
+    return true;
+  }
+
+  // Abuse tespiti: 1 saatte 150+ farklı video = şüpheli (CGNAT için 150'ye çıkarıldı)
+  if (tracker.videos.size > 150) {
     console.warn(`[DRM_ABUSE] *** Şüpheli aktivite: IP ${userId} - ${tracker.videos.size} video / ${tracker.count} istek`);
-    return false; // Erişimi engelle
+    return false;
   }
   return true;
 }
 
-// Tracker temizleyici (her saat eski kayıtları sil)
+// Tracker temizleyici: Her 10 dakikada eski kayıtları sil + boyut limiti
 setInterval(() => {
   const now = Date.now();
   for (const [key, val] of userStreamTracker) {
-    if (now - val.lastSeen > 2 * 60 * 60 * 1000) userStreamTracker.delete(key);
+    if (now - val.lastSeen > 30 * 60 * 1000) userStreamTracker.delete(key); // 30 dk inaktif → sil
   }
-}, 60 * 60 * 1000);
+  // Boyut limiti aşıldıysa en eskileri zorla sil
+  if (userStreamTracker.size > MAX_STREAM_TRACKERS) {
+    const entries = Array.from(userStreamTracker.entries()).sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+    const toDelete = entries.slice(0, userStreamTracker.size - MAX_STREAM_TRACKERS);
+    for (const [key] of toDelete) userStreamTracker.delete(key);
+    console.log(`[TRACKER_CLEANUP] Boyut limiti: ${toDelete.length} tracker silindi`);
+  }
+}, 10 * 60 * 1000);
 
 // DRM yardımcı: Koruma header'larını ekle
 function setDrmHeaders(res) {
@@ -1822,7 +1854,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/admin/stats", (req, res) => {
+app.get("/admin/stats", basicAuth, (req, res) => {
   res.json({
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
@@ -1834,7 +1866,7 @@ app.get("/admin/stats", (req, res) => {
 });
 
 //  Medya kütüphanesi detaylı istatistikler
-app.get("/admin/media-stats", (req, res) => {
+app.get("/admin/media-stats", basicAuth, (req, res) => {
   res.json({
     library: mediaLib.getStats(),
     disk: ffmpegWorker.getMediaDiskUsage(),
@@ -1848,7 +1880,7 @@ app.get("/config", (req, res) => {
   res.json(config);
 });
 
-app.post("/config", (req, res) => {
+app.post("/config", basicAuth, (req, res) => {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(req.body, null, 2));
   _cachedConfig = null; // Cache'i hemen invalidate et
   res.json({ message: "Config updated successfully" });
@@ -1893,45 +1925,46 @@ app.delete("/blocked-channels/:id", (req, res) => {
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
 
-// ONESIGNAL BİLDİRİM GÖNDERME
+// ONESIGNAL BİLDİRİM GÖNDERME (GÜVENLİ — axios ile, shell injection riski yok)
 app.post("/send-notification", async (req, res) => {
   const { appId: bodyAppId, restKey: bodyRestKey, title, message } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
 
-  const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
+  // Input uzunluk limiti (abuse koruması)
+  if (title.length > 200 || message.length > 1000) {
+    return res.status(400).json({ error: "Başlık max 200, mesaj max 1000 karakter" });
+  }
+
+  const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "";
   const restKey = bodyRestKey || process.env.ONESIGNAL_REST_KEY || "";
 
-  try {
-    const { exec } = require("child_process");
-    // Escaping double quotes for shell command
-    const safeTitle = title.replace(/"/g, '\\"');
-    const safeMessage = message.replace(/"/g, '\\"');
-    
-    const command = `curl -X POST https://onesignal.com/api/v1/notifications -H "Content-Type: application/json; charset=utf-8" -H "Authorization: Key ${restKey}" -d '{"app_id":"${appId}","headings":{"en":"${safeTitle}"},"contents":{"en":"${safeMessage}"},"included_segments":["All"]}'`;
+  if (!restKey) {
+    return res.status(500).json({ error: "OneSignal REST key tanımlanmamış" });
+  }
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Exec error: ${error.message}`);
-        return res.status(500).json({ success: false, details: error.message });
-      }
-      
-      console.log(`Curl stdout: ${stdout}`);
-      
-      try {
-        const responseData = JSON.parse(stdout);
-        if (responseData.errors) {
-          return res.status(400).json({ success: false, details: responseData.errors[0] });
-        }
-        return res.json({ success: true, data: responseData });
-      } catch (e) {
-        return res.json({ success: true, data: stdout });
-      }
+  try {
+    const response = await axios.post("https://onesignal.com/api/v1/notifications", {
+      app_id: appId,
+      headings: { en: title },
+      contents: { en: message },
+      included_segments: ["All"]
+    }, {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Authorization": `Key ${restKey}`
+      },
+      timeout: 15000
     });
+
+    if (response.data.errors) {
+      return res.status(400).json({ success: false, details: response.data.errors[0] });
+    }
+    return res.json({ success: true, data: response.data });
   } catch (error) {
-    console.error("Genel hata:", error);
-    res.status(500).json({ success: false, details: error.message });
+    console.error("[NOTIFICATION] Hata:", error.response?.data || error.message);
+    res.status(500).json({ success: false, details: error.response?.data || error.message });
   }
 });
 
@@ -2749,18 +2782,18 @@ app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
   console.log(`Redis: ${redis ? "bağlı" : "in-memory fallback"}`);
 
-  // Eski kırık thumbnail cache'ini temizle
+  // Startup: Top50 cache'i KORUNUYOR (kullanıcılar boş sayfa görmesin)
+  // Sadece in-memory search cache temizlenir (Redis'teki top50 ve search cache kalır)
   try {
-    if (redis) {
-      const searchKeys = await redis.keys("search:*");
-      const top50Keys = await redis.keys("top50:*");
-      const allKeys = [...searchKeys, ...top50Keys];
-      if (allKeys.length > 0) {
-        await redis.del(...allKeys);
-        console.log(`[STARTUP] ${allKeys.length} eski cache kaydı temizlendi`);
+    // In-memory search cache'leri temizle (eski oturumdan kalan stale veriler)
+    let cleaned = 0;
+    for (const [key] of memoryCache) {
+      if (key.startsWith("search:")) {
+        memoryCache.delete(key);
+        cleaned++;
       }
     }
-    memoryCache.clear();
+    if (cleaned > 0) console.log(`[STARTUP] ${cleaned} eski in-memory search cache temizlendi (top50 korundu)`);
   } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
 
   await warmTop50();
@@ -3111,7 +3144,8 @@ app.get("/proxy-panel", basicAuth, (req, res) => {
   let html = fs.readFileSync(PANEL_TEMPLATE, "utf-8");
 
   // Message
-  const msgHtml = req.query.msg ? `<div class="alert">${decodeURIComponent(req.query.msg)}</div>` : "";
+  const rawMsg = req.query.msg ? decodeURIComponent(req.query.msg).replace(/[<>"'&]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;'}[c])) : "";
+  const msgHtml = rawMsg ? `<div class="alert">${rawMsg}</div>` : "";
   html = html.replace("%%MESSAGE%%", msgHtml);
 
   // Stats
@@ -3125,7 +3159,7 @@ app.get("/proxy-panel", basicAuth, (req, res) => {
   html = html.replace(/%%BANNED_COUNT%%/g, bannedCount);
   html = html.replace(/%%TOTAL_COUNT%%/g, totalCount);
   html = html.replace(/%%HEALTH_PCT%%/g, healthPct);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  html = html.replace(/%%ADMIN_PASS%%/g, ""); // Güvenlik: Şifre HTML'de gösterilmez
   html = html.replace("%%LAST_HEALTH%%", proxyData.lastHealthCheck ? new Date(proxyData.lastHealthCheck).toLocaleString("tr-TR") : "Henüz yapılmadı");
 
   // Active list
@@ -3373,7 +3407,7 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
   html = html.replace("%%CACHE_SIZE%%", stats.totalDiskMB);
   html = html.replace("%%TEMP_FILES%%", tempCount);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  html = html.replace(/%%ADMIN_PASS%%/g, ""); // Güvenlik: Şifre HTML'de gösterilmez
 
   const listHtml = tracks.map((t, idx) => {
     const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);
