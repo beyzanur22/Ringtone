@@ -105,9 +105,7 @@ function saveProxyData() {
     if (proxyData.banHistory && proxyData.banHistory.length > 100) {
       proxyData.banHistory = proxyData.banHistory.slice(-100);
     }
-    fs.promises.writeFile(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2)).catch(e => {
-      console.error("[PROXY_DB] Yazma hatası:", e.message);
-    });
+    fs.writeFileSync(PROXY_DATA_FILE, JSON.stringify(proxyData, null, 2));
   } catch (e) {
     console.error("[PROXY_DB] Yazma hatası:", e.message);
   }
