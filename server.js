@@ -368,18 +368,20 @@ setTimeout(warmupAccount, 15 * 60 * 1000);
 // Sonraki ısıtmalar: 48 saatte bir (daha az şüpheli, YouTube'un radar aralığı dışında)
 setInterval(warmupAccount, 48 * 60 * 60 * 1000);
 
-// YouTube istek kuyruğu — Spotify ölçeği için:
-// concurrency: 5 yeterli (YouTube rate limit'e takılmamak için)
-// Çok yüksek yapmak YouTube ban'ına yol açar!
-// Asıl çözüm: cache hit rate'i artırmak (media_library + R2 + Redis)
+// YouTube istek kuyruğu — Çoklu kullanım ölçeği:
+// concurrency: 12 → aynı anda 12 paralel YouTube çözümleme
+// intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
+// timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 5,
-  interval: 2000,
-  intervalCap: 3       // 2 saniyede max 3 istek (insan davranışı)
+  concurrency: 12,
+  interval: 1000,
+  intervalCap: 8,       // 1 saniyede max 8 istek
+  timeout: 30000,       // 30 saniye sonra otomatik iptal
+  throwOnTimeout: true  // Timeout olunca hata fırlat (catch'e düşsün)
 });
-// Kuyruk izleme — yoğunluk uyarısı
+// Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
 setInterval(() => {
-  if (queue.size > 20) {
+  if (queue.size > 50) {
     console.warn(`[QUEUE_WARNING] YouTube kuyruğu yoğun: ${queue.size} bekleyen, ${queue.pending} aktif`);
   }
 }, 30000);
