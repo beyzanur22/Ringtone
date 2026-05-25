@@ -1383,6 +1383,7 @@ app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
+
 app.use((req, res, next) => {
   stats.totalRequests++;
   const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
@@ -1416,7 +1417,7 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // Token oluşturma endpoint'i — HMAC ile çağrılır, geçici token döner
-app.post("/auth/token", async (req, res) => {
+app.post("/auth/token", authLimiter, async (req, res) => {
   try {
     const timestamp = req.headers['x-timestamp'];
     const signature = req.headers['x-signature'];
@@ -1719,6 +1720,28 @@ const searchLimiter = rateLimit({
   handler: (req, res, next, options) => {
     stats.rateLimitHits++;
     logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Search)`);
+    res.status(options.statusCode).send(options.message);
+  }
+});
+
+// Stream/Download: CGNAT uyumlu ama biraz daha kısıtlı (ağır endpointler)
+const streamLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100, // CGNAT: stream/download yoğunluğu
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Stream)`);
+    res.status(options.statusCode).send(options.message);
+  }
+});
+
+// Auth: Brute-force koruması (daha düşük limit)
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30, // CGNAT: auth istekleri, her kullanıcı 1 kez yapmalı
+  handler: (req, res, next, options) => {
+    stats.rateLimitHits++;
+    logError("RATE_LIMIT", null, `IP ${req.ip} rate limit aştı (Auth)`);
     res.status(options.statusCode).send(options.message);
   }
 });
@@ -2091,7 +2114,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 });
 
 // DRM FAZ 2: Stream Token Endpoint — İstemci önce token alır
-app.post("/stream/token", async (req, res) => {
+app.post("/stream/token", streamLimiter, async (req, res) => {
   try {
     const { videoId, type } = req.body;
     if (!videoId || !isValidVideoId(videoId)) {
@@ -2218,7 +2241,7 @@ app.post("/cache-notify", express.json(), async (req, res) => {
   }
 });
 
-app.get("/stream", async (req, res) => {
+app.get("/stream", streamLimiter, async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
     return res.status(400).json({ error: "Invalid or missing videoId" });
@@ -2473,7 +2496,7 @@ app.get("/stream", async (req, res) => {
 
 
 // VIDEO STREAM (MP4) - Yüksek Hızlı Doğrudan Aktarım (Proxy Stream)
-app.get("/stream/video", async (req, res) => {
+app.get("/stream/video", streamLimiter, async (req, res) => {
   try {
     const { videoId } = req.query;
     if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
@@ -2910,7 +2933,7 @@ async function pollConversionStatus(statusUrl, downloadUrl, maxWaitMs = 120000) 
 }
 
 // MP3 İndirme — Bazocam converter.php API Entegrasyonu
-app.get("/download/mp3", async (req, res) => {
+app.get("/download/mp3", streamLimiter, async (req, res) => {
   try {
     const { videoId, kbps } = req.query;
 
@@ -3000,7 +3023,7 @@ app.get("/download/mp3", async (req, res) => {
 });
 
 //mp4 - VERİ ANINDA AKAR — progress bar çalışır
-app.get("/download/mp4", async (req, res) => {
+app.get("/download/mp4", streamLimiter, async (req, res) => {
   try {
     const { videoId } = req.query;
 
