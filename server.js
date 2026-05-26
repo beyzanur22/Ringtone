@@ -30,6 +30,28 @@ process.on("unhandledRejection", (reason, promise) => {
 const WORKER_ID = parseInt(process.env.NODE_APP_INSTANCE || process.env.pm_id || "0");
 const isPrimaryWorker = WORKER_ID === 0;
 
+// Proxy URL'deki şifreyi maskele (loglara şifre yazılmasın)
+function maskProxyUrl(url) {
+  if (!url) return url;
+  try { return url.replace(/:([^:@]+)@/, ':***@'); } catch { return '***'; }
+}
+
+// Güvenli pipe: stream hata handler'ı ekler (FD leak önler)
+function safePipe(source, dest) {
+  source.on('error', (err) => {
+    console.error('[SAFE_PIPE] Source error:', err.message);
+    if (!dest.destroyed) dest.end();
+  });
+  dest.on('error', (err) => {
+    console.error('[SAFE_PIPE] Dest error:', err.message);
+    if (!source.destroyed) source.destroy();
+  });
+  dest.on('close', () => {
+    if (!source.destroyed) source.destroy();
+  });
+  return source.pipe(dest);
+}
+
 // Memory izleme — RAM dolmadan uyar
 setInterval(() => {
   const mem = process.memoryUsage();
@@ -122,13 +144,15 @@ function trackProxyUsage(proxyIp, success) {
     proxyDataDirty = true; // Diske yazma bekletilir
   }
 }
-// Proxy verisini 30 saniyede bir diske yaz (her istekte değil)
-setInterval(() => {
-  if (proxyDataDirty) {
-    saveProxyData();
-    proxyDataDirty = false;
-  }
-}, 30000);
+// Proxy verisini 30 saniyede bir diske yaz (sadece primary worker — cluster race condition önlemi)
+if (isPrimaryWorker) {
+  setInterval(() => {
+    if (proxyDataDirty) {
+      saveProxyData();
+      proxyDataDirty = false;
+    }
+  }, 30000);
+}
 
 // Proxy sağlık skoru hesapla (%)
 function getProxyHealthScore(proxy) {
@@ -293,9 +317,15 @@ initYoutubei();
 //  ÇAKIŞMA ÖNLEYİCİ (Aynı anda birden fazla yt-dlp çalışmasını engeller)
 const ongoingResolutions = new Map();
 
-// Takılı kalan resolution'ları temizle (2 dakikadan eski olanlar)
+// Takılı kalan resolution'ları temizle (2 dakikadan eski olanlar) + hard cap
 setInterval(() => {
   const now = Date.now();
+  // Hard cap: 5000'den fazla entry birikirse en eskileri sil
+  if (ongoingResolutions.size > 5000) {
+    const keys = Array.from(ongoingResolutions.keys());
+    for (let i = 0; i < keys.length - 2500; i++) ongoingResolutions.delete(keys[i]);
+    console.warn(`[RESOLUTION_CLEANUP] Hard cap: ${keys.length} → 2500`);
+  }
   for (const [key, val] of ongoingResolutions) {
     if (val._startedAt && now - val._startedAt > 120000) {
       ongoingResolutions.delete(key);
@@ -1052,7 +1082,7 @@ function ytdlpDirectDownload(videoId, type) {
     // Proxy Rotasyonu 
     const dlProxy = getRandomProxy(videoId);
 
-    console.log("[PROXY_TEST]", dlProxy);
+    console.log("[PROXY_TEST]", maskProxyUrl(dlProxy));
 
     if (dlProxy) {
       args.push("--proxy", dlProxy);
@@ -1151,7 +1181,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         }
 
         console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}${useProxy ? '' : ' (NO PROXY)'}`);
-        console.log("PROXY TEST:", opts.proxy);
+        console.log("PROXY TEST:", maskProxyUrl(opts.proxy));
         const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
         const url = result.toString().trim();
 
@@ -1165,7 +1195,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
         const errMsg = (err.stderr || err.message || '').toString();
         // Proxy 402 (kota bitmiş) hatası → proxy'yi panelden otomatik banla ve proxy'siz tekrar dene
         if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy') || errMsg.includes('407') || errMsg.includes('Proxy Authentication Required') || errMsg.includes('429') || errMsg.includes('Sign in to confirm'))) {
-          console.warn(`[PROXY_UYARISI] 🚨 PROXY BANLANDI VEYA BİTTİ: ${currentProxy}`);
+          console.warn(`[PROXY_UYARISI] 🚨 PROXY BANLANDI VEYA BİTTİ: ${maskProxyUrl(currentProxy)}`);
           if (currentProxy) banProxy(currentProxy); // Panelde 6 saat banla
           console.warn(`[yt-dlp] Proxy hatası (402/407/429). Proxy'siz deneniyor...`);
           continue; // useProxy=false döngüsüne geç
@@ -1411,7 +1441,7 @@ const crypto = require("crypto");
 const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
 const API_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 saat (ms)
 
-// Token bellek sızıntısı önleyici: Her 10 dakikada expired token'ları temizle
+// Token bellek sızıntısı önleyici: Her 10 dakikada expired token'ları temizle + hard cap
 setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
@@ -1421,6 +1451,8 @@ setInterval(() => {
       cleaned++;
     }
   }
+  // Hard cap: 50K token'dan fazlası birikirse hepsini temizle
+  if (activeApiTokens.size > 50000) { activeApiTokens.clear(); console.warn("[TOKEN_CLEANUP] Hard cap aşıldı, tüm tokenlar temizlendi"); }
   if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} expired token temizlendi, kalan: ${activeApiTokens.size}`);
 }, 10 * 60 * 1000);
 
@@ -1612,6 +1644,12 @@ async function validateStreamToken(token, videoId) {
 // Token temizleyici: Süresi dolmuş in-memory token'ları her 5 dakikada temizle
 setInterval(() => {
   const now = Date.now();
+  // Hard cap: 20K token'dan fazlası birikirse eskileri sil
+  if (activeStreamTokens.size > 20000) {
+    const keys = Array.from(activeStreamTokens.keys());
+    for (let i = 0; i < keys.length - 10000; i++) activeStreamTokens.delete(keys[i]);
+    console.warn(`[STREAM_TOKEN_CLEANUP] Hard cap: ${keys.length} → 10000`);
+  }
   for (const [key, val] of activeStreamTokens) {
     if (val.expires < now || val.used) activeStreamTokens.delete(key);
   }
@@ -1645,6 +1683,12 @@ function trackStreamAccess(userId, videoId, type) {
 // Tracker temizleyici (her saat eski kayıtları sil)
 setInterval(() => {
   const now = Date.now();
+  // Hard cap: 10K tracker'dan fazlası birikirse eskileri sil
+  if (userStreamTracker.size > 10000) {
+    const keys = Array.from(userStreamTracker.keys());
+    for (let i = 0; i < keys.length - 5000; i++) userStreamTracker.delete(keys[i]);
+    console.warn(`[TRACKER_CLEANUP] Hard cap: ${keys.length} → 5000`);
+  }
   for (const [key, val] of userStreamTracker) {
     if (now - val.lastSeen > 2 * 60 * 60 * 1000) userStreamTracker.delete(key);
   }
@@ -2348,7 +2392,7 @@ app.get("/stream", async (req, res) => {
         console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId}`);
         if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
-        r2Data.stream.pipe(res);
+        safePipe(r2Data.stream, res);
         return;
       }
     } catch (r2Err) { /* R2 yoksa YouTube'a devam */ }
@@ -2455,7 +2499,7 @@ app.get("/stream", async (req, res) => {
     if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
     if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
-    response.data.pipe(res);
+    safePipe(response.data, res);
 
     if (typeof streamUrl !== 'undefined') {
       // downloadToCache kaldırıldı — FFmpeg worker tek başına kalıcı cache'i yönetir
@@ -2561,7 +2605,7 @@ app.get("/stream/video", async (req, res) => {
           "Content-Type": "video/mp4",
         });
         const fileStream = fs.createReadStream(videoFile, { start, end });
-        return fileStream.pipe(res);
+        return safePipe(fileStream, res);
       } else {
         res.writeHead(200, {
           "Content-Length": fileSize,
@@ -2569,7 +2613,7 @@ app.get("/stream/video", async (req, res) => {
           "Accept-Ranges": "bytes",
         });
         const fileStream = fs.createReadStream(videoFile);
-        return fileStream.pipe(res);
+        return safePipe(fileStream, res);
       }
     }
 
@@ -2597,7 +2641,7 @@ app.get("/stream/video", async (req, res) => {
             "Content-Type": "video/mp4",
           });
           const fileStream = fs.createReadStream(diskVideoFile, { start, end });
-          return fileStream.pipe(res);
+          return safePipe(fileStream, res);
         } else {
           res.writeHead(200, {
             "Content-Length": fileSize,
@@ -2605,7 +2649,7 @@ app.get("/stream/video", async (req, res) => {
             "Accept-Ranges": "bytes",
           });
           const fileStream = fs.createReadStream(diskVideoFile);
-          return fileStream.pipe(res);
+          return safePipe(fileStream, res);
         }
       } else {
         fs.unlinkSync(diskVideoFile);
@@ -2619,7 +2663,7 @@ app.get("/stream/video", async (req, res) => {
         console.log(`[R2_VIDEO_HIT] --> Video R2'den sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
-        r2Data.stream.pipe(res);
+        safePipe(r2Data.stream, res);
         return;
       }
     } catch (r2Err) { }
@@ -2709,7 +2753,7 @@ app.get("/stream/video", async (req, res) => {
     if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
     if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
 
-    response.data.pipe(res);
+    safePipe(response.data, res);
 
     // ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
@@ -2893,7 +2937,7 @@ async function streamMp3FromUrl(downloadUrl, videoId, title, res) {
     res.setHeader("Content-Length", cLength);
   }
 
-  response.data.pipe(res);
+  safePipe(response.data, res);
   try { mediaLib.recordAccess(videoId); } catch (e) { }
 }
 
@@ -3086,7 +3130,7 @@ app.get("/download/mp4", async (req, res) => {
         res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
         if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
-        return r2Data.stream.pipe(res);
+        return safePipe(r2Data.stream, res);
       }
     } catch (e) { }
 
@@ -3129,7 +3173,7 @@ app.get("/download/mp4", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
     if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
 
-    response.data.pipe(res);
+    safePipe(response.data, res);
 
     // ARKA PLANDA - FFmpeg ile videoyu kalıcı kaydet
     if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
