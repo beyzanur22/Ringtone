@@ -1511,8 +1511,14 @@ app.post("/auth/token", async (req, res) => {
 app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
-      req.path === "/blocked-channels" || req.path.startsWith("/blocked-channels/") ||
+      (req.path === "/blocked-channels" && req.method === "GET") ||
       req.path.startsWith("/top50/test")) {
+    return next();
+  }
+  // Admin panel frontend (X-App-Key ile doğrulama)
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification"];
+  const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
+  if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
     return next();
   }
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
