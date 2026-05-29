@@ -14,6 +14,30 @@ if (!BAZOCAM_PASS_ENV) {
   console.warn("[WARNING] BAZOCAM_PASS env var tanımlı değil! Bazocam API çağrıları çalışmayacak.");
 }
 
+// ✅ ADMIN_PASS + basicAuth — tüm admin endpoint'lerden önce tanımlanmalı
+const ADMIN_PASS = process.env.ADMIN_PASS;
+if (!ADMIN_PASS) {
+  console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
+  process.exit(1);
+}
+
+const basicAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+  const authData = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+  const user = authData[0];
+  const pass = authData[1];
+  if (user === 'admin' && pass === ADMIN_PASS) {
+    return next();
+  } else {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+};
+
 /* =========================
    CRASH PROTECTION (Sunucu asla çökmesin)
 ========================= */
@@ -1130,7 +1154,8 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
   let lastError = null;
 
-  let clientsToTry = ["android_vr", "android"];
+  // android_vr: cookie'siz çalışır (bot tespiti düşük). Başarısız olursa web/android fallback.
+  let clientsToTry = ["android_vr", "web", "android"];
   if (countryClient && countryClient !== "default") {
     clientsToTry = [countryClient, ...clientsToTry.filter(c => c !== countryClient)];
   }
@@ -1200,7 +1225,8 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
           console.warn(`[yt-dlp] Proxy hatası (402/407/429). Proxy'siz deneniyor...`);
           continue; // useProxy=false döngüsüne geç
         }
-        console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
+        const shortErr = (err.stderr || err.message || '').toString().split('\n')[0].substring(0, 200);
+        console.warn(`[yt-dlp] client=${client} başarısız: ${shortErr}`);
         lastError = err;
         break; // proxy'siz de deneme, bir sonraki client'a geç
       }
@@ -2017,17 +2043,19 @@ app.delete("/blocked-channels/:id", async (req, res) => {
 });
 
 // ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
-app.post("/send-notification", async (req, res) => {
-  const { appId: bodyAppId, restKey: bodyRestKey, title, message } = req.body;
+// ✅ FIX: basicAuth eklendi — sadece admin bildirim gönderebilir
+// ✅ FIX: appId ve restKey sadece env'den alınır, body'den kabul edilmez
+app.post("/send-notification", basicAuth, async (req, res) => {
+  const { title, message } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
 
-  const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = bodyRestKey || process.env.ONESIGNAL_REST_KEY || "";
+  const appId = process.env.ONESIGNAL_APP_ID;
+  const restKey = process.env.ONESIGNAL_REST_KEY || "";
 
-  if (!restKey) {
-    return res.status(400).json({ success: false, details: "REST API Key boş. Panelden veya .env'den tanımlayın." });
+  if (!appId || !restKey) {
+    return res.status(400).json({ success: false, details: "ONESIGNAL_APP_ID veya ONESIGNAL_REST_KEY .env'de tanımlı değil." });
   }
 
   try {
@@ -2263,6 +2291,17 @@ app.post("/cache-notify", express.json(), async (req, res) => {
   const { videoId, url, type } = req.body;
   if (!videoId || !url) return res.status(400).json({ error: "videoId and url required" });
 
+  // ✅ FIX: URL doğrulama — sadece güvenilir kaynaklardan indirmeye izin ver
+  if (!isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid videoId" });
+  try {
+    const parsedUrl = new URL(url);
+    const allowedHosts = ["googlevideo.com", "youtube.com", "ytimg.com", "ggpht.com"];
+    if (!allowedHosts.some(h => parsedUrl.hostname.endsWith(h))) {
+      console.warn(`[CACHE_NOTIFY] ⚠️ Reddedilen URL host: ${parsedUrl.hostname}`);
+      return res.status(400).json({ error: "URL not allowed" });
+    }
+  } catch (e) { return res.status(400).json({ error: "Invalid URL" }); }
+
   const typeStr = type === "video" ? "video" : "audio";
   const ext = typeStr === "audio" ? "m4a" : "mp4";
   const targetDir = typeStr === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
@@ -2345,7 +2384,7 @@ app.get("/stream", async (req, res) => {
     // DRM: Koruma header'ları
     setDrmHeaders(res);
 
-    const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
+    // ✅ FIX: typeStr zaten üstte tanımlı, tekrar tanımlama kaldırıldı
     const extStr = typeStr === "audio" ? "m4a" : "mp4";
     const r2Key = `${typeStr}/${videoId}.${extStr}`;
     const targetCacheDir = typeStr === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
@@ -2412,8 +2451,9 @@ app.get("/stream", async (req, res) => {
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
 
-    const cacheKey = `stream:audio:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
+    // ✅ FIX: streamCacheKey olarak yeniden adlandırıldı (üstteki cacheKey ile çakışma önlendi)
+    const streamCacheKey = `stream:audio:${videoId}`;
+    const cachedData = await cacheGet(streamCacheKey);
     let streamUrl, ua;
 
     if (cachedData && cachedData.url) {
@@ -2440,7 +2480,7 @@ app.get("/stream", async (req, res) => {
       streamUrl = await resolutionPromise;
 
       // Stream URL'leri 5 saat cache'le
-      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+      await cacheSet(streamCacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
@@ -2472,8 +2512,8 @@ app.get("/stream", async (req, res) => {
 
       if (fetchErr.response && fetchErr.response.status === 403) {
         console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
-        if (redis) await redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
+        if (redis) await redis.del(streamCacheKey);
+        memoryCache.delete(streamCacheKey);
 
         // Arka planda kalıcı indirmeyi başlat
         if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
@@ -2650,6 +2690,13 @@ app.get("/stream/video", async (req, res) => {
           const parts = range.replace(/bytes=/, "").split("-");
           const start = parseInt(parts[0], 10);
           const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+          // ✅ FIX: 416 Range Not Satisfiable koruması eklendi
+          if (start >= fileSize) {
+            res.writeHead(416, { "Content-Range": `bytes */${fileSize}` });
+            return res.end();
+          }
+
           const chunkSize = (end - start) + 1;
 
           res.writeHead(206, {
@@ -2858,18 +2905,12 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
   console.log(`Redis: ${redis ? "bağlı" : "in-memory fallback"}`);
 
-  // Eski kırık thumbnail cache'ini temizle
+  // ✅ FIX: Startup'ta TÜM cache'leri silmek thundering herd yaratıyordu
+  // Artık sadece memory cache temizleniyor (Redis cache korunuyor — restart sonrası yük azalır)
+  // Top50 warmup zaten eski cache'in üzerine yazar
   try {
-    if (redis) {
-      const searchKeys = await redis.keys("search:*");
-      const top50Keys = await redis.keys("top50:*");
-      const allKeys = [...searchKeys, ...top50Keys];
-      if (allKeys.length > 0) {
-        await redis.del(...allKeys);
-        console.log(`[STARTUP] ${allKeys.length} eski cache kaydı temizlendi`);
-      }
-    }
     memoryCache.clear();
+    console.log("[STARTUP] Memory cache temizlendi (Redis cache korunuyor)");
   } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
 
   if (isPrimaryWorker) await warmTop50();
@@ -3119,7 +3160,11 @@ app.get("/download/mp4", async (req, res) => {
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Length", fStats.size);
       res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-      return res.sendFile(fileToPipe);
+      // ✅ FIX: 416 error callback eklendi
+      return res.sendFile(fileToPipe, (err) => {
+        if (err && err.status === 416) return res.status(416).end();
+        if (err && !res.headersSent) res.status(500).end();
+      });
     }
 
     // KATMAN 0: Disk cache — iki format kontrol (video_videoId.mp4 + videoId.mp4)
@@ -3230,31 +3275,8 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
-const ADMIN_PASS = process.env.ADMIN_PASS;
-if (!ADMIN_PASS) {
-  console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
-  process.exit(1);
-}
+// ✅ ADMIN_PASS ve basicAuth artık dosyanın başında tanımlı (satır ~15)
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
-
-const basicAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    return res.status(401).send('Authentication required');
-  }
-
-  const authData = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
-  const user = authData[0];
-  const pass = authData[1];
-
-  if (user === 'admin' && pass === ADMIN_PASS) {
-    return next();
-  } else {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    return res.status(401).send('Authentication required');
-  }
-};
 
 app.get("/proxy-panel", basicAuth, (req, res) => {
   loadProxyData();
@@ -3277,7 +3299,9 @@ app.get("/proxy-panel", basicAuth, (req, res) => {
   html = html.replace(/%%BANNED_COUNT%%/g, bannedCount);
   html = html.replace(/%%TOTAL_COUNT%%/g, totalCount);
   html = html.replace(/%%HEALTH_PCT%%/g, healthPct);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  // ✅ FIX: ADMIN_PASS artık HTML'e enjekte edilmiyor (güvenlik)
+// Panel JavaScript'i basicAuth header'ını kullanarak istek atar
+html = html.replace(/%%ADMIN_PASS%%/g, "");
   html = html.replace("%%LAST_HEALTH%%", proxyData.lastHealthCheck ? new Date(proxyData.lastHealthCheck).toLocaleString("tr-TR") : "Henüz yapılmadı");
 
   // Active list
@@ -3525,7 +3549,9 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
   html = html.replace("%%CACHE_SIZE%%", stats.totalDiskMB);
   html = html.replace("%%TEMP_FILES%%", tempCount);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  // ✅ FIX: ADMIN_PASS artık HTML'e enjekte edilmiyor (güvenlik)
+// Panel JavaScript'i basicAuth header'ını kullanarak istek atar
+html = html.replace(/%%ADMIN_PASS%%/g, "");
 
   const listHtml = tracks.map((t, idx) => {
     const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);
