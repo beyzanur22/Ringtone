@@ -2364,7 +2364,10 @@ app.get("/stream", async (req, res) => {
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/mp4");
         res.setHeader("Content-Length", fSize);
         res.setHeader("Accept-Ranges", "bytes");
-        return res.sendFile(mediaFile);
+        return res.sendFile(mediaFile, (err) => {
+          if (err && err.status === 416) return res.status(416).end();
+          if (err && !res.headersSent) res.status(500).end();
+        });
       }
     }
 
@@ -2387,7 +2390,10 @@ app.get("/stream", async (req, res) => {
         res.setHeader("Accept-Ranges", "bytes");
         // Arka planda R2'ye yükle
         uploadToR2(r2Key, diskFile).catch(() => { });
-        return res.sendFile(diskFile);
+        return res.sendFile(diskFile, (err) => {
+          if (err && err.status === 416) return res.status(416).end();
+          if (err && !res.headersSent) res.status(500).end();
+        });
       }
     }
 
@@ -2602,6 +2608,12 @@ app.get("/stream/video", async (req, res) => {
         const parts = range.replace(/bytes=/, "").split("-");
         const start = parseInt(parts[0], 10);
         const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+        if (start >= fileSize) {
+          res.writeHead(416, { "Content-Range": `bytes */${fileSize}` });
+          return res.end();
+        }
+
         const chunkSize = (end - start) + 1;
 
         res.writeHead(206, {
