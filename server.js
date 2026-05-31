@@ -13,6 +13,25 @@ const BAZOCAM_PASS_ENV = process.env.BAZOCAM_PASS || "";
 if (!BAZOCAM_PASS_ENV) {
   console.warn("[WARNING] BAZOCAM_PASS env var tanımlı değil! Bazocam API çağrıları çalışmayacak.");
 }
+const ADMIN_PASS = process.env.ADMIN_PASS;
+if (!ADMIN_PASS) {
+  console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
+  process.exit(1);
+}
+const basicAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+  const authData = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+  if (authData[0] === 'admin' && authData[1] === ADMIN_PASS) {
+    return next();
+  } else {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required');
+  }
+};
 
 /* =========================
    CRASH PROTECTION — PM2 otomatik restart yapar
@@ -1965,7 +1984,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/admin/stats", (req, res) => {
+app.get("/admin/stats", basicAuth, (req, res) => {
   res.json({
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
@@ -1977,7 +1996,7 @@ app.get("/admin/stats", (req, res) => {
 });
 
 //  Medya kütüphanesi detaylı istatistikler
-app.get("/admin/media-stats", (req, res) => {
+app.get("/admin/media-stats", basicAuth, (req, res) => {
   res.json({
     library: mediaLib.getStats(),
     disk: ffmpegWorker.getMediaDiskUsage(),
@@ -3254,31 +3273,8 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
-const ADMIN_PASS = process.env.ADMIN_PASS;
-if (!ADMIN_PASS) {
-  console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
-  process.exit(1);
-}
+// ADMIN_PASS ve basicAuth dosyanın başında tanımlı (satır ~15)
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
-
-const basicAuth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    return res.status(401).send('Authentication required');
-  }
-
-  const authData = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
-  const user = authData[0];
-  const pass = authData[1];
-
-  if (user === 'admin' && pass === ADMIN_PASS) {
-    return next();
-  } else {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
-    return res.status(401).send('Authentication required');
-  }
-};
 
 app.get("/proxy-panel", basicAuth, (req, res) => {
   loadProxyData();
@@ -3301,7 +3297,7 @@ app.get("/proxy-panel", basicAuth, (req, res) => {
   html = html.replace(/%%BANNED_COUNT%%/g, bannedCount);
   html = html.replace(/%%TOTAL_COUNT%%/g, totalCount);
   html = html.replace(/%%HEALTH_PCT%%/g, healthPct);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  html = html.replace(/%%ADMIN_PASS%%/g, "");
   html = html.replace("%%LAST_HEALTH%%", proxyData.lastHealthCheck ? new Date(proxyData.lastHealthCheck).toLocaleString("tr-TR") : "Henüz yapılmadı");
 
   // Active list
@@ -3549,7 +3545,7 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
   html = html.replace("%%CACHE_SIZE%%", stats.totalDiskMB);
   html = html.replace("%%TEMP_FILES%%", tempCount);
-  html = html.replace(/%%ADMIN_PASS%%/g, ADMIN_PASS);
+  html = html.replace(/%%ADMIN_PASS%%/g, "");
 
   const listHtml = tracks.map((t, idx) => {
     const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);

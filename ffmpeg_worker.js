@@ -228,8 +228,9 @@ function downloadRawAudio(videoId, outputPath, options = {}) {
       env: { ...process.env, PATH: "/usr/local/bin:" + (process.env.PATH || "") }
     }, (error, stdout, stderr) => {
       if (error) {
-        console.error(`[FFMPEG_WORKER] yt-dlp hatası: ${stderr || error.message}`);
-        return reject(new Error(`yt-dlp download failed: ${error.message}`));
+        const errMsg = (stderr || error.message || '').split('\n')[0].substring(0, 200);
+        console.warn(`[FFMPEG_WORKER] yt-dlp hatası: ${errMsg}`);
+        return reject(new Error(`yt-dlp download failed: ${errMsg}`));
       }
       if (!fs.existsSync(outputPath) || !isValidFile(outputPath, 10 * 1024)) {
         return reject(new Error("yt-dlp dosya oluşturamadı veya çok küçük"));
