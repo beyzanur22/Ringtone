@@ -15,11 +15,23 @@ if (!BAZOCAM_PASS_ENV) {
 }
 
 /* =========================
-   CRASH PROTECTION (Sunucu asla çökmesin)
+   CRASH PROTECTION — PM2 otomatik restart yapar
 ========================= */
 process.on("uncaughtException", (err) => {
-  console.error(`[FATAL] Yakalanmamış hata (sunucu ÇÖKMEDEN kurtarıldı): ${err.message}`);
+  console.error(`[FATAL] Yakalanmamış hata: ${err.message}`);
   console.error(err.stack);
+  // Bozuk state'te çalışmak yerine PM2'nin yeniden başlatmasını sağla
+  try {
+    const shutdownTimer = setTimeout(() => process.exit(1), 5000);
+    shutdownTimer.unref();
+    if (typeof server !== 'undefined' && server.close) {
+      server.close(() => process.exit(1));
+    } else {
+      process.exit(1);
+    }
+  } catch (e) {
+    process.exit(1);
+  }
 });
 
 process.on("unhandledRejection", (reason, promise) => {
@@ -605,45 +617,48 @@ const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /
 });
 const MAX_CACHE_SIZE = 125 * 1024 * 1024 * 1024; // 125GB — Contabo VPS (145GB disk), 20GB sisteme kalır
 
-function checkDiskSpaceAndCleanup() {
+// Async disk temizleme — event loop'u bloke etmez
+async function checkDiskSpaceAndCleanup() {
   try {
-    // Tüm cache dizinlerini tara (audio + video)
     const allDirs = [CACHE_DIR, VIDEO_CACHE_DIR];
     let allFiles = [];
     const now = Date.now();
 
     for (const dir of allDirs) {
-      if (!fs.existsSync(dir)) continue;
-      const dirFiles = fs.readdirSync(dir).map(f => {
+      try { await fs.promises.access(dir); } catch { continue; }
+      const entries = await fs.promises.readdir(dir);
+      for (const f of entries) {
         const p = path.join(dir, f);
-        try { return { path: p, stat: fs.statSync(p), name: f }; } catch (_) { return null; }
-      }).filter(Boolean);
+        try {
+          const stat = await fs.promises.stat(p);
+          allFiles.push({ path: p, stat, name: f });
+        } catch (_) { /* dosya silinmiş olabilir */ }
+      }
 
       // Temp dosyaları temizle
-      for (const file of dirFiles) {
+      for (const file of allFiles) {
         if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
-          try { fs.unlinkSync(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
+          try { await fs.promises.unlink(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
         }
       }
-      allFiles.push(...dirFiles);
     }
 
     const totalSize = allFiles.reduce((acc, f) => acc + f.stat.size, 0);
     if (totalSize > MAX_CACHE_SIZE) {
       console.log(`[DISK_CLEANUP] Disk doluyor (${(totalSize / 1024 / 1024 / 1024).toFixed(1)} GB). Temizleniyor...`);
       const finishedFiles = allFiles.filter(f => f.name.endsWith('.mp4') || f.name.endsWith('.m4a') || f.name.endsWith('.mp3'));
-      finishedFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs); // En eski ilk silinir
+      finishedFiles.sort((a, b) => a.stat.mtimeMs - b.stat.mtimeMs);
       let deletedSize = 0;
-      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.7); // %70'e kadar temizle
+      const targetToDelete = totalSize - (MAX_CACHE_SIZE * 0.7);
       for (const file of finishedFiles) {
         if (deletedSize >= targetToDelete) break;
-        try { fs.unlinkSync(file.path); deletedSize += file.stat.size; } catch (e) { }
+        try { await fs.promises.unlink(file.path); deletedSize += file.stat.size; } catch (e) { }
       }
       console.log(`[DISK_CLEANUP] ${(deletedSize / 1024 / 1024).toFixed(1)} MB yer açıldı.`);
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-if (isPrimaryWorker) setInterval(checkDiskSpaceAndCleanup, 60 * 1000); // 60 saniyede bir kontrol — sadece primary worker
+if (isPrimaryWorker) setInterval(checkDiskSpaceAndCleanup, 60 * 1000);
 const downloadingFiles = new Set();
 
 // 403 durumunda yeni stream URL almak için helper
@@ -928,18 +943,27 @@ async function resolveWithYoutubei(videoId, type) {
 
 const { execFile, spawn } = require("child_process");
 
-// yt-dlp eşzamanlılık limiti — aynı anda max 6 yt-dlp process'i çalışsın
+// yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 3 = 12 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 6;
+const MAX_YTDLP_CONCURRENT = 3; // Worker başına 3 (4 worker = 12 toplam)
+const MAX_YTDLP_QUEUE = 50;     // Kuyruk sınırı — aşılırsa hemen hata dön
+const YTDLP_SLOT_TIMEOUT = 30000; // 30 saniye bekle, slot açılmazsa timeout
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (activeYtdlpCount < MAX_YTDLP_CONCURRENT) {
       activeYtdlpCount++;
       resolve();
+    } else if (ytdlpWaitQueue.length >= MAX_YTDLP_QUEUE) {
+      reject(new Error("yt-dlp queue full, try again later"));
     } else {
-      ytdlpWaitQueue.push(resolve);
+      const timer = setTimeout(() => {
+        const idx = ytdlpWaitQueue.findIndex(item => item.resolve === resolve);
+        if (idx > -1) ytdlpWaitQueue.splice(idx, 1);
+        reject(new Error("yt-dlp slot timeout"));
+      }, YTDLP_SLOT_TIMEOUT);
+      ytdlpWaitQueue.push({ resolve: () => { clearTimeout(timer); resolve(); } });
     }
   });
 }
@@ -947,9 +971,9 @@ function acquireYtdlpSlot() {
 function releaseYtdlpSlot() {
   if (ytdlpWaitQueue.length > 0) {
     const next = ytdlpWaitQueue.shift();
-    next();
+    next.resolve(); // Yeni format: { resolve: fn }
   } else {
-    activeYtdlpCount--;
+    activeYtdlpCount = Math.max(0, activeYtdlpCount - 1);
   }
 }
 
