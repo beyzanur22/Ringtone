@@ -301,10 +301,19 @@ function convertToM4A(inputPath, outputPath, metadata = {}) {
 
     const proc = spawn(ffmpeg, args, { stdio: ["ignore", "pipe", "pipe"] });
 
+    // Zombie process koruması: 10 dakika sonra zorla öldür
+    const killTimer = setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill('SIGKILL');
+        console.warn(`[FFMPEG_WORKER] ⚠️ Zombie process öldürüldü (10dk timeout): ${path.basename(inputPath)}`);
+      }
+    }, 10 * 60 * 1000);
+
     let stderr = "";
     proc.stderr.on("data", (d) => { stderr += d.toString(); });
 
     proc.on("close", (code) => {
+      clearTimeout(killTimer);
       if (code !== 0) {
         console.error(`[FFMPEG_WORKER] M4A dönüşüm hatası (code ${code}): ${stderr.slice(-500)}`);
         safeDelete(outputPath);
@@ -318,7 +327,7 @@ function convertToM4A(inputPath, outputPath, metadata = {}) {
       resolve(outputPath);
     });
 
-    proc.on("error", (err) => reject(new Error(`FFmpeg spawn error: ${err.message}`)));
+    proc.on("error", (err) => { clearTimeout(killTimer); reject(new Error(`FFmpeg spawn error: ${err.message}`)); });
   });
 }
 
@@ -383,10 +392,20 @@ function convertToMP4(inputPath, outputPath, metadata = {}) {
     args.push(outputPath);
 
     const proc = spawn(ffmpeg, args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    // Zombie process koruması: 15 dakika (video daha uzun sürer)
+    const killTimer = setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill('SIGKILL');
+        console.warn(`[FFMPEG_WORKER] ⚠️ Video zombie process öldürüldü (15dk timeout)`);
+      }
+    }, 15 * 60 * 1000);
+
     let stderr = "";
     proc.stderr.on("data", (d) => { stderr += d.toString(); });
 
     proc.on("close", (code) => {
+      clearTimeout(killTimer);
       if (code !== 0) {
         safeDelete(outputPath);
         return reject(new Error(`FFmpeg MP4 failed (code ${code})`));
@@ -394,7 +413,7 @@ function convertToMP4(inputPath, outputPath, metadata = {}) {
       resolve(outputPath);
     });
 
-    proc.on("error", (err) => reject(err));
+    proc.on("error", (err) => { clearTimeout(killTimer); reject(err); });
   });
 }
 

@@ -763,11 +763,14 @@ async function _downloadToCacheAttempt(videoId, type, streamUrl, ua, tempPath, f
   });
 
   const writer = fs.createWriteStream(tempPath);
-  response.data.pipe(writer);
+  safePipe(response.data, writer);
 
   await new Promise((resolve, reject) => {
     writer.on('finish', resolve);
-    writer.on('error', reject);
+    writer.on('error', (err) => {
+      try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch(e) {}
+      reject(err);
+    });
   });
 
   fs.renameSync(tempPath, filePath);
@@ -1048,8 +1051,13 @@ function ytdlpStream(videoId, type, req, res) {
       if (msg.includes("ERROR")) console.error(`[YTDL_STREAM] Hata: ${msg}`);
     });
 
+    let slotReleased = false;
+    function safeReleaseSlot() {
+      if (!slotReleased) { slotReleased = true; releaseYtdlpSlot(); }
+    }
+
     ytdlpProc.on("close", (code) => {
-      releaseYtdlpSlot();
+      safeReleaseSlot();
       cacheWriter.end();
       if (code === 0) {
         console.log(`[YTDL_STREAM] Başarıyla tamamlandı: ${videoId}`);
@@ -1070,9 +1078,15 @@ function ytdlpStream(videoId, type, req, res) {
     });
 
     req.on("close", () => {
-      if (ytdlpProc) ytdlpProc.kill();
+      if (ytdlpProc && !ytdlpProc.killed) {
+        ytdlpProc.kill('SIGTERM');
+        setTimeout(() => { if (!ytdlpProc.killed) ytdlpProc.kill('SIGKILL'); }, 5000);
+      }
       cacheWriter.end();
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      safeReleaseSlot(); // Client kopunca slot'u serbest bırak
+      setTimeout(() => {
+        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch(e) {}
+      }, 1000);
     });
   });
 }
@@ -1439,22 +1453,35 @@ const axiosClient = axios.create({
   httpsAgent: new https.Agent({ keepAlive: true })
 });
 
-//  AKILLI PROXY ROUTING: Proxy SADECE YouTube/googlevideo URL'lerinde kullanılır
-// Piped/Invidious URL'lerinde proxy kullanılmaz → bandwidth tasarrufu
+// AKILLI PROXY ROUTING + Agent Cache (her istekte yeni agent oluşturmak yerine cache'le)
+const proxyAgentCache = new Map();
+function getOrCreateProxyAgent(proxyUrl) {
+  if (!proxyAgentCache.has(proxyUrl)) {
+    proxyAgentCache.set(proxyUrl, new HttpsProxyAgent(proxyUrl));
+  }
+  return proxyAgentCache.get(proxyUrl);
+}
+// Proxy havuzu değişince cache'i temizle
+setInterval(() => {
+  for (const key of proxyAgentCache.keys()) {
+    if (!proxyPool.includes(key)) proxyAgentCache.delete(key);
+  }
+}, 5 * 60 * 1000);
+
 function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
   const config = { ...extraConfig };
   const targetUrl = config._targetUrl || "";
   const needsProxy = targetUrl.includes("googlevideo.com") ||
     targetUrl.includes("youtube.com") ||
     targetUrl.includes("ytimg.com") ||
-    targetUrl === ""; // URL belirtilmemişse güvenli tarafta kal
+    targetUrl === "";
 
   const proxyUrl = getRandomProxy(videoId);
   if (proxyUrl && needsProxy) {
-    config.httpsAgent = new HttpsProxyAgent(proxyUrl);
-    config.httpAgent = undefined; // proxy agent kullanılacak
+    config.httpsAgent = getOrCreateProxyAgent(proxyUrl);
+    config.httpAgent = undefined;
   }
-  delete config._targetUrl; // axios'a göndermeden önce temizle
+  delete config._targetUrl;
   return config;
 }
 
@@ -2333,14 +2360,16 @@ app.post("/cache-notify", express.json(), async (req, res) => {
     // FFmpeg ile kalıcı kütüphaneye de ekle
     if (typeStr === "audio" && !mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
       mediaLib.upsertTrack(videoId, { title: videoId, category: "listening", status: "processing" });
-      ffmpegWorker.addJob(videoId, url, "m4a", (result) => {
-        if (result.m4a) {
-          mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
+      const cookiePath = getRandomCookie();
+      const proxyUrl = getRandomProxy(videoId);
+      ffmpegWorker.processAudio(videoId, { title: videoId }, { format: "m4a", cookiePath, proxyUrl })
+        .then(result => {
+          mediaLib.markReady(videoId, result);
           console.log(`[CACHE_NOTIFY] 🎵 Media Library'ye eklendi: ${videoId}`);
-        }
-      }, (err) => {
-        mediaLib.markFailed(videoId, err.message);
-      });
+        })
+        .catch(err => {
+          mediaLib.markFailed(videoId, err.message);
+        });
     }
   } catch (e) {
     console.warn(`[CACHE_NOTIFY] ❌ İndirme başarısız: ${videoId} — ${e.message}`);
