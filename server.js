@@ -2230,22 +2230,64 @@ app.get("/search", searchLimiter, async (req, res) => {
     const cached = await cacheGet(cacheKey);
     if (cached) return res.json(cached);
 
+    // ADIM 1: Bazocam API
+    let searchResult = null;
     try {
       console.log(`[SEARCH] Bazocam API kullanılıyor: "${query}"`);
-      // Bazocam API'ye istek
       const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=${BAZOCAM_PASS}&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
-      
+
       const bazocamData = response.data || [];
       const filteredData = filterBlockedChannels(bazocamData, country);
-      const result = { data: filteredData, nextPageToken: null };
-      
-      await cacheSet(cacheKey, result, SEARCH_CACHE_DURATION);
-      res.setHeader("Cache-Control", "no-store");
-      res.json(result);
-
+      searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
       logError("SEARCH_BAZOCAM_FAIL", null, `Bazocam arama başarısız: ${apiError.message}`);
-      throw apiError;
+    }
+
+    // ADIM 2: Bazocam başarısız → YouTube Data API fallback
+    if (!searchResult && YOUTUBE_API_KEY) {
+      try {
+        console.log(`[SEARCH] YouTube API fallback: "${query}"`);
+        const ytResponse = await axiosClient.get("https://www.googleapis.com/youtube/v3/search", {
+          params: {
+            part: "snippet",
+            q: query,
+            type: "video",
+            videoCategoryId: "10",
+            maxResults: 20,
+            key: YOUTUBE_API_KEY
+          },
+          timeout: 8000
+        });
+
+        const ytItems = (ytResponse.data.items || []).map(item => ({
+          id: item.id.videoId,
+          title: item.snippet.title,
+          url: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+          thumbnailUrl: item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url || "",
+          uploader: item.snippet.channelTitle,
+          uploaderUrl: "",
+          duration: 0,
+          snippet: {
+            title: item.snippet.title,
+            channelTitle: item.snippet.channelTitle,
+            channelId: item.snippet.channelId || ""
+          }
+        }));
+
+        const filteredYt = filterBlockedChannels(ytItems, country);
+        searchResult = { data: filteredYt, nextPageToken: ytResponse.data.nextPageToken || null };
+        console.log(`[SEARCH] YouTube API fallback başarılı: ${filteredYt.length} sonuç`);
+      } catch (ytError) {
+        logError("SEARCH_YT_FAIL", null, `YouTube API arama başarısız: ${ytError.message}`);
+      }
+    }
+
+    if (searchResult) {
+      await cacheSet(cacheKey, searchResult, SEARCH_CACHE_DURATION);
+      res.setHeader("Cache-Control", "no-store");
+      res.json(searchResult);
+    } else {
+      throw new Error("Tüm arama kaynakları başarısız");
     }
 
   } catch (error) {
