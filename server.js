@@ -3353,6 +3353,159 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
+// ADMIN ANASAYFA — tüm panellere tek noktadan erişim
+app.get("/admin", basicAuth, (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Melodia Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f11;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    .logo {
+      font-size: 32px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 48px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      width: 100%;
+      max-width: 900px;
+    }
+    .card {
+      background: #1a1a1f;
+      border: 1px solid #2a2a35;
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-decoration: none;
+      color: #fff;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .card:hover {
+      background: #22222a;
+      border-color: #a855f7;
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(168,85,247,0.15);
+    }
+    .icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .card-info h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .card-info p  { font-size: 13px; color: #888; }
+    .stats {
+      width: 100%;
+      max-width: 900px;
+      background: #1a1a1f;
+      border: 1px solid #2a2a35;
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-top: 20px;
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .stat { text-align: center; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #a855f7; }
+    .stat-label { font-size: 12px; color: #666; margin-top: 2px; }
+    .footer { margin-top: 40px; color: #444; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="logo">🎵 Melodia</div>
+  <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+
+  <div class="grid">
+    <a class="card" href="/cache-panel">
+      <div class="icon" style="background:#1e293b">💾</div>
+      <div class="card-info">
+        <h3>Cache Panel</h3>
+        <p>Media önbelleği yönetimi</p>
+      </div>
+    </a>
+    <a class="card" href="/proxy-panel">
+      <div class="icon" style="background:#1e2a1e">🔁</div>
+      <div class="card-info">
+        <h3>Proxy Panel</h3>
+        <p>Proxy havuzu ve ban yönetimi</p>
+      </div>
+    </a>
+    <a class="card" href="/playlist-cache">
+      <div class="icon" style="background:#2a1e1e">🎶</div>
+      <div class="card-info">
+        <h3>Playlist Cache</h3>
+        <p>Top 50 önbellekleme</p>
+      </div>
+    </a>
+    <a class="card" href="/converter">
+      <div class="icon" style="background:#1e1e2a">🔄</div>
+      <div class="card-info">
+        <h3>Converter</h3>
+        <p>MP3/MP4 dönüştürücü</p>
+      </div>
+    </a>
+    <a class="card" href="/admin/stats">
+      <div class="icon" style="background:#2a1e2a">📊</div>
+      <div class="card-info">
+        <h3>İstatistikler</h3>
+        <p>Sunucu & API durumu</p>
+      </div>
+    </a>
+    <a class="card" href="/health">
+      <div class="icon" style="background:#1e2a24">❤️</div>
+      <div class="card-info">
+        <h3>Health Check</h3>
+        <p>Sistem sağlık durumu</p>
+      </div>
+    </a>
+  </div>
+
+  <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
+
+  <script>
+    // Sunucu uptime göster
+    fetch('/health').then(r=>r.json()).then(d=>{
+      const h = Math.floor(d.uptimeSeconds/3600);
+      const m = Math.floor((d.uptimeSeconds%3600)/60);
+      document.querySelector('.subtitle').textContent =
+        'Admin Paneli · Uptime: ' + h + 's ' + m + 'dk · RAM: ' + d.memoryRssMB + ' MB';
+    }).catch(()=>{});
+  </script>
+</body>
+</html>`);
+});
+
+// ==========================================
 // ADMIN_PASS ve basicAuth dosyanın başında tanımlı (satır ~15)
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
 

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node --check server.js)"
+      "Bash(node --check server.js)",
+      "Bash(find /c/Users/beyza/AndroidStudioProjects/RingtoneMasterV2/app/src/main/res -name \"strings.xml\" | sort)",
+      "Read(//c/Users/beyza/Desktop/RingtoneMasterV2/app/**)",
+      "Bash(sed -i 's/Welcome to RingtoneMaster\\\\./Welcome to Melodia./g' /c/Users/beyza/Desktop/RingtoneMasterV2/app/src/main/res/values/strings.xml)",
+      "Bash(sed -i \"s/RingtoneMaster-DRM/Melodia-DRM/g\" /c/Users/beyza/Desktop/RingtoneMasterV2/app/src/main/res/values/strings.xml)"
     ]
   }
 }
