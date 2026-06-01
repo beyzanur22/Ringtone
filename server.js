@@ -2088,7 +2088,7 @@ app.delete("/blocked-channels/:id", async (req, res) => {
 
 // ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
 app.post("/send-notification", async (req, res) => {
-  const { appId: bodyAppId, restKey: bodyRestKey, title, message } = req.body;
+  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
@@ -2101,18 +2101,27 @@ app.post("/send-notification", async (req, res) => {
   }
 
   try {
+    const notifPayload = {
+      app_id: appId,
+      headings: { en: title },
+      contents: { en: message },
+      included_segments: ["All"]
+    };
+
+    // Görsel URL (büyük resim)
+    if (imageUrl) notifPayload.big_picture = imageUrl;
+    // Tıklanınca açılacak URL
+    if (actionUrl) notifPayload.url = actionUrl;
+    // Zamanlanmış gönderim (ISO 8601 formatı)
+    if (sendAt) notifPayload.send_after = sendAt;
+
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Authorization": `Basic ${restKey}`
       },
-      body: JSON.stringify({
-        app_id: appId,
-        headings: { en: title },
-        contents: { en: message },
-        included_segments: ["All"]
-      })
+      body: JSON.stringify(notifPayload)
     });
 
     const data = await response.json();
@@ -2542,8 +2551,8 @@ app.get("/stream", async (req, res) => {
         console.warn(`[PROXY_UYARISI]  AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
       }
 
-      if (fetchErr.response && fetchErr.response.status === 403) {
-        console.warn(`[STREAM_AUDIO] 403 Forbidden hatası. Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
+        console.warn(`[STREAM_AUDIO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
 
@@ -2809,8 +2818,8 @@ app.get("/stream/video", async (req, res) => {
         console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
       }
 
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404)) {
-        console.warn(`[STREAM_VIDEO] 403/404 — Axios engellendi. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
+      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
+        console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
         memoryCache.delete(cacheKey);
 
