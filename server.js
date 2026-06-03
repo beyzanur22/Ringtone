@@ -962,11 +962,11 @@ async function resolveWithYoutubei(videoId, type) {
 
 const { execFile, spawn } = require("child_process");
 
-// yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 3 = 12 toplam process
+// yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 5; // Worker başına 5 (4 worker = 20 toplam)
-const MAX_YTDLP_QUEUE = 100;    // Kuyruk sınırı — aşılırsa hemen hata dön
-const YTDLP_SLOT_TIMEOUT = 30000; // 30 saniye bekle, slot açılmazsa timeout
+const MAX_YTDLP_CONCURRENT = 8;  // Worker başına 8 (4 worker = 32 toplam) — Contabo VPS için güvenli
+const MAX_YTDLP_QUEUE = 400;     // Kuyruk sınırı yükseltildi — yoğun trafikte hata azalır
+const YTDLP_SLOT_TIMEOUT = 20000; // 30s → 20s: Takılı slot'lar daha hızlı serbest kalır
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
@@ -1928,7 +1928,7 @@ function filterBlockedChannels(items, country = "all") {
 // Kendi sunucumuzda Top25'e çıkarıldı + FFmpeg ile kalıcı disk kaydı eklendi
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
-  const topItems = items.slice(0, 25); // Kendi sunucumuz — Top25'i ısıt
+  const topItems = items.slice(0, 50); // Kendi sunucumuz — Top50'i ısıt
   console.log(`[PREWARM] ${topItems.length} şarkı ön-ısıtma başlatılıyor...`);
 
   topItems.forEach((item, index) => {
