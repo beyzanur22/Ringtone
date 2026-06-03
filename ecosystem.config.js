@@ -6,7 +6,7 @@ module.exports = {
       instances: 1, // Tek instance — media_db.json dosya kilidi çakışmasını önler
                      // Cluster mode FFmpeg + yt-dlp ile çakışma yaratır
       exec_mode: "fork",
-      max_memory_restart: "1G", // 1GB RAM'i aşarsa otomatik restart
+      max_memory_restart: "1500M", // 1.5GB RAM'i aşarsa otomatik restart
       watch: false,
       autorestart: true,
       restart_delay: 3000, // Restart arasında 3 saniye bekle
