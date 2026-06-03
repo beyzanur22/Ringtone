@@ -567,9 +567,18 @@ async function cleanupR2() {
     console.log(`[R2_CLEANUP] R2 deposu: ${allObjects.length} dosya, ${(totalSize / 1024 / 1024).toFixed(1)} MB`);
 
     // Redis'ten son erişim zamanlarını al
+    // GÜVENLİK: Redis bağlı değilse temizlik yapma — erişim geçmişi olmadan
+    // tüm dosyalar "hiç erişilmemiş" görünür ve yanlışlıkla silinir.
+    if (!redis) {
+      console.warn("[R2_CLEANUP] Redis bağlı değil, temizlik atlandı (veri kaybı önlendi).");
+      return;
+    }
     let lastAccessMap = {};
-    if (redis) {
+    try {
       lastAccessMap = await redis.hgetall("r2:last_access") || {};
+    } catch (redisErr) {
+      console.warn("[R2_CLEANUP] Redis okuma hatası, temizlik atlandı:", redisErr.message);
+      return;
     }
 
     const now = Date.now();
@@ -1518,8 +1527,18 @@ setInterval(() => {
       cleaned++;
     }
   }
-  // Hard cap: 50K token'dan fazlası birikirse hepsini temizle
-  if (activeApiTokens.size > 50000) { activeApiTokens.clear(); console.warn("[TOKEN_CLEANUP] Hard cap aşıldı, tüm tokenlar temizlendi"); }
+  // Hard cap: 50K token'dan fazlası birikirse en eski %50'sini sil
+  // Eskiden: activeApiTokens.clear() — TÜM kullanıcılar aynı anda logout oluyordu!
+  // Şimdi: Sadece en eski yarısı siliniyor, aktif kullanıcılar etkilenmiyor.
+  if (activeApiTokens.size > 50000) {
+    const entries = Array.from(activeApiTokens.entries())
+      .sort((a, b) => a[1].createdAt - b[1].createdAt); // en eskiden yeniye sırala
+    const deleteCount = Math.floor(entries.length / 2);  // en eski %50'yi sil
+    for (let i = 0; i < deleteCount; i++) {
+      activeApiTokens.delete(entries[i][0]);
+    }
+    console.warn(`[TOKEN_CLEANUP] Hard cap: en eski ${deleteCount} token silindi, kalan: ${activeApiTokens.size}`);
+  }
   if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} expired token temizlendi, kalan: ${activeApiTokens.size}`);
 }, 10 * 60 * 1000);
 
