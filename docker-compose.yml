@@ -51,7 +51,7 @@ services:
     image: redis:alpine
     container_name: ringtone-redis
     restart: always
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save 60 1
     ports:
       - "127.0.0.1:6379:6379"  # Sadece localhost'tan erişim (güvenlik)
     volumes:

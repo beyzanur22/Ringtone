@@ -208,9 +208,6 @@ function autoUnbanProxies() {
   if (changed) saveProxyData();
 }
 
-///
-
-// Her 30 dakikada health check çalıştır (KOTA DOSTU: Kapatıldı)
 // setInterval(runHealthCheck, 30 * 60 * 1000);
 // Sunucu açıldıktan 1 dakika sonra ilk health check (KOTA DOSTU: Kapatıldı)
 // setTimeout(runHealthCheck, 60 * 1000);
@@ -439,9 +436,9 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 12,
+  concurrency: 20,
   interval: 1000,
-  intervalCap: 8,       // 1 saniyede max 8 istek
+  intervalCap: 12,      // 1 saniyede max 12 istek
   timeout: 30000,       // 30 saniye sonra otomatik iptal
   throwOnTimeout: true  // Timeout olunca hata fırlat (catch'e düşsün)
 });
@@ -967,8 +964,8 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 3 = 12 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 3; // Worker başına 3 (4 worker = 12 toplam)
-const MAX_YTDLP_QUEUE = 50;     // Kuyruk sınırı — aşılırsa hemen hata dön
+const MAX_YTDLP_CONCURRENT = 5; // Worker başına 5 (4 worker = 20 toplam)
+const MAX_YTDLP_QUEUE = 100;    // Kuyruk sınırı — aşılırsa hemen hata dön
 const YTDLP_SLOT_TIMEOUT = 30000; // 30 saniye bekle, slot açılmazsa timeout
 const ytdlpWaitQueue = [];
 

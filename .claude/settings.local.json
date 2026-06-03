@@ -5,7 +5,13 @@
       "Bash(find /c/Users/beyza/AndroidStudioProjects/RingtoneMasterV2/app/src/main/res -name \"strings.xml\" | sort)",
       "Read(//c/Users/beyza/Desktop/RingtoneMasterV2/app/**)",
       "Bash(sed -i 's/Welcome to RingtoneMaster\\\\./Welcome to Melodia./g' /c/Users/beyza/Desktop/RingtoneMasterV2/app/src/main/res/values/strings.xml)",
-      "Bash(sed -i \"s/RingtoneMaster-DRM/Melodia-DRM/g\" /c/Users/beyza/Desktop/RingtoneMasterV2/app/src/main/res/values/strings.xml)"
+      "Bash(sed -i \"s/RingtoneMaster-DRM/Melodia-DRM/g\" /c/Users/beyza/Desktop/RingtoneMasterV2/app/src/main/res/values/strings.xml)",
+      "WebFetch(domain:github.com)",
+      "Bash(find \"C:\\\\Users\\\\beyza\\\\AndroidStudioProjects\\\\RingtoneMasterV2\" -name \"build.gradle*\" -type f)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cd \"C:\\\\Users\\\\beyza\\\\Desktop\\\\NewPipeExtractor-dev\" && grep -r \"www.youtube.com\\\\|youtube.com\" extractor/src/main/java --include=\"*.java\" | head -5)",
+      "Bash(gh auth *)",
+      "Bash(find \"C:\\\\Users\\\\beyza\\\\Desktop\\\\RingtoneMasterV2\" -type f \\\\\\( -name \"*.kt\" -o -name \"build.gradle*\" -o -name \"AndroidManifest.xml\" \\\\\\) 2>/dev/null | head -30)"
     ]
   }
 }
