@@ -49,10 +49,17 @@ function saveDB() {
   }
 }
 
-// Periyodik kayıt (her 30 saniye, sadece değişiklik varsa)
-setInterval(() => {
-  if (dirty) saveDB();
-}, SAVE_INTERVAL);
+// Periyodik kayıt — SADECE Worker 0 yazar (race condition önlemi)
+// PM2 cluster'da 4 worker aynı dosyaya yazarsa veri bozulur
+// Çözüm: Sadece primary worker (0) diske yazar
+const WORKER_ID = parseInt(process.env.NODE_APP_INSTANCE || process.env.pm_id || "0");
+const isPrimaryWorker = WORKER_ID === 0;
+
+if (isPrimaryWorker) {
+  setInterval(() => {
+    if (dirty) saveDB();
+  }, SAVE_INTERVAL);
+}
 
 // Başlangıçta yükle
 loadDB();

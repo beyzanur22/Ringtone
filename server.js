@@ -1494,7 +1494,26 @@ function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
 const app = express();
 app.set("trust proxy", 1);
 
-app.use(cors());
+app.use(cors({
+  origin: function(origin, callback) {
+    // Android uygulaması origin göndermez → izin ver
+    // Tarayıcı tabanlı isteklerde sadece güvenilir originler
+    const allowed = [
+      "https://music.cevapla.tv",
+      "https://cevapla.tv",
+      undefined, // Android/mobile app
+      null
+    ];
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS: İzinsiz origin: " + origin));
+    }
+  },
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token"],
+  credentials: false
+}));
 app.use(express.json({ limit: '1mb' }));
 
 
