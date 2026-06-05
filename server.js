@@ -436,11 +436,11 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 20,
+  concurrency: 8,       // 8 paralel çözümleme (4 worker × 8 = 32 toplam — RAM koruması)
   interval: 1000,
-  intervalCap: 12,      // 1 saniyede max 12 istek
-  timeout: 30000,       // 30 saniye sonra otomatik iptal
-  throwOnTimeout: true  // Timeout olunca hata fırlat (catch'e düşsün)
+  intervalCap: 6,       // 1 saniyede max 6 istek (YouTube ban eşiği altı)
+  timeout: 15000,       // 15 saniye sonra otomatik iptal (hızlı fail)
+  throwOnTimeout: true
 });
 // Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
 setInterval(() => {
@@ -830,87 +830,42 @@ const stats = {
 /* =========================
    REDIS CACHE (fallback: in-memory)
 ========================= */
-let redis = null;
-const memoryCache = new Map(); // Redis yoksa fallback
+// REDIS ZORUNLU KILINDI: Bellek sızıntılarını önlemek için in-memory fallback tamamen kaldırıldı.
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
+  maxRetriesPerRequest: null, // Sürekli denemeye devam et
+  retryStrategy: (times) => {
+    console.warn(`[Redis] Yeniden bağlanılıyor... Deneme: ${times}`);
+    return Math.min(times * 1000, 5000); // Max 5 saniyede bir dene
+  },
+  enableOfflineQueue: true // Redis kapalıysa istekleri sıraya al (hata fırlatmak yerine)
+});
 
-try {
-  redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-    maxRetriesPerRequest: 1,
-    retryStrategy: (times) => {
-      if (times > 2) {
-        return null; // retry durduruluyor
-      }
-      return Math.min(times * 500, 2000);
-    },
-    lazyConnect: true,
-    enableOfflineQueue: false
-  });
+redis.on("error", (err) => {
+  console.error("[Redis] KRİTİK HATA! Redis bağlantısı koptu. Sistem kararlılığı tehlikede:", err.message);
+});
 
-  // Unhandled error event'leri yakala
-  redis.on("error", (err) => {
-    if (redis) {
-      console.warn("[Redis] Bağlantı hatası, in-memory cache'e geçiliyor");
-      redis.disconnect();
-      redis = null;
-    }
-  });
-
-  redis.connect().then(() => {
-    console.log("[Redis] Bağlantı başarılı");
-  }).catch(() => {
-    console.warn("[Redis] Bağlantı başarısız, in-memory cache aktif");
-    if (redis) {
-      redis.disconnect();
-    }
-    redis = null;
-  });
-} catch (e) {
-  console.warn("[Redis] Init hatası, in-memory cache aktif");
-  redis = null;
-}
+redis.on("connect", () => {
+  console.log("[Redis] Bağlantı başarılı! Sisteme güvenli cache sağlandı.");
+});
 
 // Cache helper fonksiyonları
 async function cacheGet(key) {
   try {
-    if (redis) {
-      const val = await redis.get(key);
-      return val ? JSON.parse(val) : null;
-    }
-  } catch (e) { /* Redis hata, fallback */ }
-  // In-memory fallback
-  const cached = memoryCache.get(key);
-  if (cached && Date.now() < cached.expire) return cached.data;
-  if (cached) memoryCache.delete(key);
-  return null;
+    const val = await redis.get(key);
+    return val ? JSON.parse(val) : null;
+  } catch (e) {
+    console.error(`[Redis] Okuma hatası (${key}):`, e.message);
+    return null;
+  }
 }
 
 async function cacheSet(key, data, ttlSeconds) {
   try {
-    if (redis) {
-      await redis.set(key, JSON.stringify(data), "EX", ttlSeconds);
-      return;
-    }
-  } catch (e) { /* Redis hata, fallback */ }
-  // In-memory fallback
-  memoryCache.set(key, { data, expire: Date.now() + (ttlSeconds * 1000) });
+    await redis.set(key, JSON.stringify(data), "EX", ttlSeconds);
+  } catch (e) {
+    console.error(`[Redis] Yazma hatası (${key}):`, e.message);
+  }
 }
-
-// OOM (Out of Memory) önleyici temizlik: Belleği şişiren eski aramaları süpür
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of memoryCache.entries()) {
-    if (now >= value.expire) {
-      memoryCache.delete(key);
-    }
-  }
-  // Eğer hala çok büyükse en eskileri zorla sil (Yüksek kapasite limiti)
-  if (memoryCache.size > 10000) {
-    const keys = Array.from(memoryCache.keys());
-    for (let i = 0; i < keys.length - 5000; i++) {
-      memoryCache.delete(keys[i]);
-    }
-  }
-}, 60 * 1000);
 
 // Bots & Jitter
 const USER_AGENTS = [
@@ -973,8 +928,8 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 8;  // Worker başına 8 (4 worker = 32 toplam) — Contabo VPS için güvenli
-const MAX_YTDLP_QUEUE = 400;     // Kuyruk sınırı yükseltildi — yoğun trafikte hata azalır
+const MAX_YTDLP_CONCURRENT = 2;  // Worker başına 2 (4 worker = 8 toplam) — RAM koruması
+const MAX_YTDLP_QUEUE = 50;      // 50'den fazla beklemesin — bellek şişmesini önler
 const YTDLP_SLOT_TIMEOUT = 20000; // 30s → 20s: Takılı slot'lar daha hızlı serbest kalır
 const ytdlpWaitQueue = [];
 
@@ -1245,7 +1200,7 @@ async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
 
         console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}${useProxy ? '' : ' (NO PROXY)'}`);
         console.log("PROXY TEST:", maskProxyUrl(opts.proxy));
-        const result = await ytdlp(videoUrl, opts, { env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
+        const result = await ytdlp(videoUrl, opts, { timeout: 30000, env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
         const url = result.toString().trim();
 
         if (url && url.startsWith("http")) {
@@ -1536,33 +1491,7 @@ const crypto = require("crypto");
 // TOKEN EXCHANGE: Geçici API token'ları yönetimi
 // APK'daki secret key sadece 1 kez /auth/token için kullanılır
 // Sonraki tüm istekler geçici token ile yapılır
-const activeApiTokens = new Map(); // token -> { createdAt, expiresAt, ip }
 const API_TOKEN_TTL = 24 * 60 * 60 * 1000; // 24 saat (ms)
-
-// Token bellek sızıntısı önleyici: Her 10 dakikada expired token'ları temizle + hard cap
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [token, data] of activeApiTokens) {
-    if (data.expiresAt < now) {
-      activeApiTokens.delete(token);
-      cleaned++;
-    }
-  }
-  // Hard cap: 50K token'dan fazlası birikirse en eski %50'sini sil
-  // Eskiden: activeApiTokens.clear() — TÜM kullanıcılar aynı anda logout oluyordu!
-  // Şimdi: Sadece en eski yarısı siliniyor, aktif kullanıcılar etkilenmiyor.
-  if (activeApiTokens.size > 50000) {
-    const entries = Array.from(activeApiTokens.entries())
-      .sort((a, b) => a[1].createdAt - b[1].createdAt); // en eskiden yeniye sırala
-    const deleteCount = Math.floor(entries.length / 2);  // en eski %50'yi sil
-    for (let i = 0; i < deleteCount; i++) {
-      activeApiTokens.delete(entries[i][0]);
-    }
-    console.warn(`[TOKEN_CLEANUP] Hard cap: en eski ${deleteCount} token silindi, kalan: ${activeApiTokens.size}`);
-  }
-  if (cleaned > 0) console.log(`[TOKEN_CLEANUP] ${cleaned} expired token temizlendi, kalan: ${activeApiTokens.size}`);
-}, 10 * 60 * 1000);
 
 // Token oluşturma endpoint'i — HMAC ile çağrılır, geçici token döner
 app.post("/auth/token", async (req, res) => {
@@ -1596,19 +1525,15 @@ app.post("/auth/token", async (req, res) => {
       ip: req.ip
     };
 
-    activeApiTokens.set(token, tokenData);
-
-    // Redis'e de kaydet (sunucu restart'larında korunsun)
+    // Redis'e kaydet (sunucu restart'larında korunsun)
     try {
-      if (redis) await redis.set(`api:token:${token}`, JSON.stringify(tokenData), "EX", Math.floor(API_TOKEN_TTL / 1000));
-    } catch (e) { }
-
-    // Eski expired token'ları temizle (bellek yönetimi)
-    for (const [t, d] of activeApiTokens) {
-      if (d.expiresAt < Date.now()) activeApiTokens.delete(t);
+      await redis.set(`api:token:${token}`, JSON.stringify(tokenData), "EX", Math.floor(API_TOKEN_TTL / 1000));
+    } catch (e) {
+      console.error("[AUTH_TOKEN] Redis kayıt hatası:", e.message);
+      return res.status(500).json({ error: "Redis kayıt hatası" });
     }
 
-    console.log(`[AUTH_TOKEN] --> Yeni API token verildi: IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
+    console.log(`[AUTH_TOKEN] --> Yeni API token verildi (Redis): IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
     res.json({ token, expiresIn: API_TOKEN_TTL / 1000 }); // saniye cinsinden süre
   } catch (err) {
     console.error("[AUTH_TOKEN] Token oluşturma hatası:", err.message);
@@ -1646,18 +1571,14 @@ app.use(async (req, res, next) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
 
-    // Önce memory'den kontrol
-    let tokenData = activeApiTokens.get(token);
-
-    // Memory'de yoksa Redis'ten kontrol
-    if (!tokenData && redis) {
-      try {
-        const redisData = await redis.get(`api:token:${token}`);
-        if (redisData) {
-          tokenData = JSON.parse(redisData);
-          activeApiTokens.set(token, tokenData); // memory'e de ekle
-        }
-      } catch (e) { }
+    let tokenData = null;
+    try {
+      const redisData = await redis.get(`api:token:${token}`);
+      if (redisData) {
+        tokenData = JSON.parse(redisData);
+      }
+    } catch (e) {
+      console.error("[AUTH_TOKEN] Redis token doğrulama hatası:", e.message);
     }
 
     if (tokenData && tokenData.expiresAt > Date.now()) {
@@ -1666,8 +1587,7 @@ app.use(async (req, res, next) => {
 
     // Token geçersiz veya süresi dolmuş
     if (tokenData) {
-      activeApiTokens.delete(token);
-      try { if (redis) await redis.del(`api:token:${token}`); } catch (e) { }
+      try { await redis.del(`api:token:${token}`); } catch (e) { }
     }
     // Token geçersizse HMAC'a düş (geriye uyumluluk)
   }
@@ -1707,7 +1627,7 @@ app.use(async (req, res, next) => {
    Token'lar mevcut cache key'lerinden tamamen bağımsızdır (drm:token:* prefix).
 ========================= */
 const DRM_TOKEN_TTL = 15 * 60; // 15 dakika (saniye)
-const activeStreamTokens = new Map(); // Redis yoksa fallback
+// Stream Token'ları SADECE Redis üzerinde tutulur (OOM koruması)
 
 async function generateStreamToken(videoId, userId, type = "audio") {
   const token = crypto.randomBytes(32).toString("hex");
@@ -1715,34 +1635,30 @@ async function generateStreamToken(videoId, userId, type = "audio") {
   const tokenData = { videoId, userId, type, expires, used: false, createdAt: Date.now() };
 
   try {
-    if (redis) {
-      await redis.set(`drm:token:${token}`, JSON.stringify(tokenData), "EX", DRM_TOKEN_TTL);
-    }
-  } catch (e) { /* Redis hata, in-memory fallback */ }
-  activeStreamTokens.set(token, tokenData);
-
-  console.log(`[DRM] Token üretildi: ${token.substring(0, 8)}... | videoId: ${videoId} | type: ${type}`);
-  return { token, expires };
+    await redis.set(`drm:token:${token}`, JSON.stringify(tokenData), "EX", DRM_TOKEN_TTL);
+    console.log(`[DRM] Token üretildi (Redis): ${token.substring(0, 8)}... | videoId: ${videoId} | type: ${type}`);
+    return { token, expires };
+  } catch (e) {
+    console.error(`[DRM] Token üretme hatası: ${e.message}`);
+    throw new Error("Redis bağlantı hatası nedeniyle token üretilemedi");
+  }
 }
 
 async function validateStreamToken(token, videoId) {
   let entry = null;
 
-  // Önce Redis'ten kontrol et
   try {
-    if (redis) {
-      const redisData = await redis.get(`drm:token:${token}`);
-      if (redisData) entry = JSON.parse(redisData);
-    }
-  } catch (e) { /* Redis hata, in-memory fallback */ }
+    const redisData = await redis.get(`drm:token:${token}`);
+    if (redisData) entry = JSON.parse(redisData);
+  } catch (e) {
+    console.error(`[DRM] Token doğrulama hatası: ${e.message}`);
+    return { valid: false, reason: "Sunucu içi doğrulama hatası" };
+  }
 
-  // Redis'te yoksa in-memory'den bak
-  if (!entry) entry = activeStreamTokens.get(token);
   if (!entry) return { valid: false, reason: "Token bulunamadı" };
 
   if (entry.expires < Date.now()) {
-    activeStreamTokens.delete(token);
-    try { if (redis) await redis.del(`drm:token:${token}`); } catch (e) { }
+    try { await redis.del(`drm:token:${token}`); } catch (e) { }
     return { valid: false, reason: "Token süresi dolmuş" };
   }
   if (entry.videoId !== videoId) return { valid: false, reason: "Video ID uyuşmuyor" };
@@ -1750,28 +1666,13 @@ async function validateStreamToken(token, videoId) {
 
   // Token'ı kullanıldı olarak işaretle (tek kullanımlık)
   entry.used = true;
-  activeStreamTokens.set(token, entry);
   try {
-    if (redis) await redis.set(`drm:token:${token}`, JSON.stringify(entry), "EX", 60); // 1 dk sonra otomatik silinir
+    await redis.set(`drm:token:${token}`, JSON.stringify(entry), "EX", 60); // 1 dk sonra otomatik silinir
   } catch (e) { }
 
-  console.log(`[DRM] Token doğrulandı: ${token.substring(0, 8)}... | videoId: ${videoId}`);
+  console.log(`[DRM] Token doğrulandı (Redis): ${token.substring(0, 8)}... | videoId: ${videoId}`);
   return { valid: true };
 }
-
-// Token temizleyici: Süresi dolmuş in-memory token'ları her 5 dakikada temizle
-setInterval(() => {
-  const now = Date.now();
-  // Hard cap: 20K token'dan fazlası birikirse eskileri sil
-  if (activeStreamTokens.size > 20000) {
-    const keys = Array.from(activeStreamTokens.keys());
-    for (let i = 0; i < keys.length - 10000; i++) activeStreamTokens.delete(keys[i]);
-    console.warn(`[STREAM_TOKEN_CLEANUP] Hard cap: ${keys.length} → 10000`);
-  }
-  for (const [key, val] of activeStreamTokens) {
-    if (val.expires < now || val.used) activeStreamTokens.delete(key);
-  }
-}, 5 * 60 * 1000);
 
 /* =========================
    DRM FAZ 5: ERİŞİM İZLEME & ABUSE TESPİTİ
@@ -1926,7 +1827,7 @@ app.use("/download", streamLimiter);
 ========================= */
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
-const STREAM_CACHE_DURATION = 5 * 60 * 60; // 5 saat (YouTube URL'leri ~6 saatte expire olur, cache daha önce bitmeli)
+const STREAM_CACHE_DURATION = 5.5 * 60 * 60; // 5.5 saat (YouTube URL max 6 saat, cache'i son ana kadar kullan)
 const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
 const BLOCKED_FILE = path.join(__dirname, "blocked_channels.json");
