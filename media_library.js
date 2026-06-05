@@ -1,35 +1,31 @@
 /**
- * Media Library — Medya Kütüphanesi Veritabanı
- * 
- * Her indirilen/dönüştürülen şarkının kaydını tutar.
- * JSON dosyası tabanlı basit veritabanı (SQLite'a gerek yok).
- * 
- * Her kayıt:
- * - videoId, title, artist, duration
- * - Dosya yolları (m4a, mp3, mp4, thumbnail)
- * - Dosya boyutları
- * - İşlem durumu (processing, ready, failed)
- * - Erişim sayacı, son erişim zamanı
+ * Media Library — Cluster-Safe Veritabanı
+ *
+ * PM2 cluster mode (4 instance) için güvenli:
+ * - Okuma: her worker bellekten okur (hızlı)
+ * - Yazma: sadece Worker 0 diske yazar
+ * - Senkronizasyon: Worker 0 her 30 saniyede diske yazar,
+ *   diğer worker'lar her 60 saniyede diskten okur (eventual consistency)
  */
 
 const fs = require("fs");
 const path = require("path");
 const DB_FILE = path.join(__dirname, "media_db.json");
-const SAVE_INTERVAL = 30 * 1000; // 30 saniyede bir diske yaz
+const SAVE_INTERVAL = 30 * 1000;
+const SYNC_INTERVAL = 60 * 1000;
 
 let db = { tracks: {}, stats: { totalProcessed: 0, totalFailed: 0 } };
 let dirty = false;
 
-// ═══════════════════════════════════════
-//  VERİTABANI YÜKLEME / KAYDETME
-// ═══════════════════════════════════════
+const WORKER_ID = parseInt(process.env.NODE_APP_INSTANCE || process.env.pm_id || "0");
+const isPrimaryWorker = WORKER_ID === 0;
 
 function loadDB() {
   try {
     if (fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, "utf-8");
       db = JSON.parse(raw);
-      console.log(`[MEDIA_LIB] ✅ Veritabanı yüklendi: ${Object.keys(db.tracks).length} şarkı`);
+      console.log(`[MEDIA_LIB] Worker ${WORKER_ID}: ${Object.keys(db.tracks).length} şarkı yüklendi`);
     } else {
       console.log("[MEDIA_LIB] Yeni veritabanı oluşturuldu");
       saveDB();
@@ -41,6 +37,7 @@ function loadDB() {
 }
 
 function saveDB() {
+  if (!isPrimaryWorker) return;
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
     dirty = false;
@@ -49,28 +46,14 @@ function saveDB() {
   }
 }
 
-// Periyodik kayıt — SADECE Worker 0 yazar (race condition önlemi)
-// PM2 cluster'da 4 worker aynı dosyaya yazarsa veri bozulur
-// Çözüm: Sadece primary worker (0) diske yazar
-const WORKER_ID = parseInt(process.env.NODE_APP_INSTANCE || process.env.pm_id || "0");
-const isPrimaryWorker = WORKER_ID === 0;
-
-if (isPrimaryWorker) {
-  setInterval(() => {
-    if (dirty) saveDB();
-  }, SAVE_INTERVAL);
-}
-
-// Başlangıçta yükle
 loadDB();
 
-// ═══════════════════════════════════════
-//  CRUD İŞLEMLERİ
-// ═══════════════════════════════════════
+if (isPrimaryWorker) {
+  setInterval(() => { if (dirty) saveDB(); }, SAVE_INTERVAL);
+} else {
+  setInterval(() => { loadDB(); }, SYNC_INTERVAL);
+}
 
-/**
- * Şarkı kaydı ekle veya güncelle
- */
 function upsertTrack(videoId, data) {
   const existing = db.tracks[videoId] || {};
   db.tracks[videoId] = {
@@ -88,11 +71,10 @@ function upsertTrack(videoId, data) {
       m4a: data.m4aSize || existing.fileSize?.m4a || 0,
       mp3: data.mp3Size || existing.fileSize?.mp3 || 0,
       mp4: data.mp4Size || existing.fileSize?.mp4 || 0
-
     },
     status: data.status || existing.status || "processing",
     source: data.source || existing.source || "youtube",
-    category: data.category || existing.category || "streaming", // New field: listening, watching, downloading
+    category: data.category || existing.category || "streaming",
     processedAt: data.processedAt || existing.processedAt || null,
     lastAccessed: existing.lastAccessed || null,
     accessCount: existing.accessCount || 0,
@@ -102,13 +84,9 @@ function upsertTrack(videoId, data) {
   return db.tracks[videoId];
 }
 
-/**
- * Şarkıyı "ready" olarak işaretle (işlem tamamlandı)
- */
 function markReady(videoId, fileData) {
   const track = db.tracks[videoId];
   if (!track) return null;
-
   if (fileData.m4a) {
     track.files.m4a = fileData.m4a;
     try { track.fileSize.m4a = fs.statSync(fileData.m4a).size; } catch (e) { }
@@ -123,19 +101,14 @@ function markReady(videoId, fileData) {
   }
   if (fileData.duration) track.duration = fileData.duration;
   if (fileData.thumbnail) track.thumbnail = fileData.thumbnail;
-
   track.status = "ready";
   track.processedAt = new Date().toISOString();
   db.stats.totalProcessed++;
   dirty = true;
-
-  console.log(`[MEDIA_LIB] ✅ Şarkı hazır: ${videoId} - ${track.title}`);
+  console.log(`[MEDIA_LIB] Şarkı hazır: ${videoId} - ${track.title}`);
   return track;
 }
 
-/**
- * Şarkıyı "failed" olarak işaretle
- */
 function markFailed(videoId, errorMessage) {
   const track = db.tracks[videoId] || {};
   track.status = "failed";
@@ -146,9 +119,6 @@ function markFailed(videoId, errorMessage) {
   dirty = true;
 }
 
-/**
- * Şarkıya erişim kaydet (dinlenme sayacı)
- */
 function recordAccess(videoId) {
   const track = db.tracks[videoId];
   if (!track) return;
@@ -157,47 +127,29 @@ function recordAccess(videoId) {
   dirty = true;
 }
 
-/**
- * Şarkının dosyası diskten var mı kontrol et
- */
 function getReadyTrack(videoId, type = "m4a") {
   const track = db.tracks[videoId];
   if (!track || track.status !== "ready") return null;
-
   const filePath = track.files?.[type];
   if (!filePath) return null;
-
-  // Dosya gerçekten var mı kontrol et.
   if (!fs.existsSync(filePath)) {
-    // Dosya silinmiş, kaydı güncelle
     track.files[type] = null;
     track.status = "missing";
     dirty = true;
-    return null
+    return null;
   }
-
   return track;
 }
 
-/**
- * Şarkı işleniyor mu kontrol et (çift indirme önleme)
- */
 function isProcessing(videoId) {
   const track = db.tracks[videoId];
   return track && track.status === "processing";
 }
 
-/**
- * Tüm hazır şarkıların listesi
- */
 function getAllTracks(filter = {}) {
-  const tracks = Object.values(db.tracks);
-  let result = tracks;
-
+  let result = Object.values(db.tracks);
   if (filter.status) result = result.filter(t => t.status === filter.status);
   if (filter.minAccess) result = result.filter(t => t.accessCount >= filter.minAccess);
-
-  // Sıralama
   if (filter.sortBy === "accessCount") {
     result.sort((a, b) => (b.accessCount || 0) - (a.accessCount || 0));
   } else if (filter.sortBy === "lastAccessed") {
@@ -205,20 +157,15 @@ function getAllTracks(filter = {}) {
   } else {
     result.sort((a, b) => new Date(b.processedAt || 0) - new Date(a.processedAt || 0));
   }
-
   if (filter.limit) result = result.slice(0, filter.limit);
   return result;
 }
 
-/**
- * İstatistikler
- */
 function getStats() {
   const tracks = Object.values(db.tracks);
   const ready = tracks.filter(t => t.status === "ready");
   const totalM4aSize = ready.reduce((acc, t) => acc + (t.fileSize?.m4a || 0), 0);
   const totalMp3Size = ready.reduce((acc, t) => acc + (t.fileSize?.mp3 || 0), 0);
-
   return {
     totalTracks: tracks.length,
     readyTracks: ready.length,
@@ -228,46 +175,28 @@ function getStats() {
     totalProcessed: db.stats.totalProcessed,
     totalFailed: db.stats.totalFailed,
     topTracks: ready.sort((a, b) => (b.accessCount || 0) - (a.accessCount || 0)).slice(0, 10).map(t => ({
-      videoId: t.videoId,
-      title: t.title,
-      accessCount: t.accessCount
+      videoId: t.videoId, title: t.title, accessCount: t.accessCount
     }))
   };
 }
 
-/**
- * Eski/kullanılmayan şarkıları temizle
- * @param {number} maxAgeDays - Bu kadar gündür dinlenmemiş şarkıları sil
- * @param {number} maxDiskMB - Disk limiti (MB)
- */
-function cleanup(maxAgeDays = 365, maxDiskMB = 80000) { // 365 gün, 80GB — Contabo VPS (145GB disk)
+function cleanup(maxAgeDays = 365, maxDiskMB = 80000) {
   const now = Date.now();
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   let deletedCount = 0;
   let freedMB = 0;
-
   const tracks = Object.values(db.tracks)
     .filter(t => t.status === "ready")
-    .sort((a, b) => (a.accessCount || 0) - (b.accessCount || 0)); // En az dinleneni önce
-
+    .sort((a, b) => (a.accessCount || 0) - (b.accessCount || 0));
   for (const track of tracks) {
     const lastAccess = track.lastAccessed ? new Date(track.lastAccessed).getTime() : 0;
-    const age = now - lastAccess;
-
-    // Çok eski veya hiç dinlenmemiş
-    if (age > maxAgeMs || track.accessCount === 0) {
-      // Dosyaları sil
+    if ((now - lastAccess) > maxAgeMs || track.accessCount === 0) {
       for (const type of ["m4a", "mp3", "mp4"]) {
         const filePath = track.files?.[type];
         if (filePath && fs.existsSync(filePath)) {
-          const size = fs.statSync(filePath).size;
-          try {
-            fs.unlinkSync(filePath);
-            freedMB += size / 1024 / 1024;
-          } catch (e) { }
+          try { freedMB += fs.statSync(filePath).size / 1024 / 1024; fs.unlinkSync(filePath); } catch (e) { }
         }
       }
-      // Thumbnail sil
       if (track.thumbnail && fs.existsSync(track.thumbnail)) {
         try { fs.unlinkSync(track.thumbnail); } catch (e) { }
       }
@@ -275,69 +204,30 @@ function cleanup(maxAgeDays = 365, maxDiskMB = 80000) { // 365 gün, 80GB — Co
       deletedCount++;
     }
   }
-
-  if (deletedCount > 0) {
-    dirty = true;
-    saveDB();
-    console.log(`[MEDIA_LIB] 🗑️ Temizlik: ${deletedCount} şarkı silindi, ${freedMB.toFixed(1)} MB yer açıldı`);
-  }
+  if (deletedCount > 0) { dirty = true; saveDB(); }
   return { deletedCount, freedMB: freedMB.toFixed(1) };
 }
 
-/**
- * Tek bir şarkıyı ve dosyalarını sil
- */
 function removeTrack(videoId) {
   const track = db.tracks[videoId];
   if (!track) return false;
-
-  // Dosyaları sil
   for (const type of ["m4a", "mp3", "mp4"]) {
     const filePath = track.files?.[type];
-    if (filePath && fs.existsSync(filePath)) {
-      try { fs.unlinkSync(filePath); } catch (e) { }
-    }
+    if (filePath && fs.existsSync(filePath)) { try { fs.unlinkSync(filePath); } catch (e) { } }
   }
-  // Thumbnail sil
-  if (track.thumbnail && fs.existsSync(track.thumbnail)) {
-    try { fs.unlinkSync(track.thumbnail); } catch (e) { }
-  }
-
+  if (track.thumbnail && fs.existsSync(track.thumbnail)) { try { fs.unlinkSync(track.thumbnail); } catch (e) { } }
   delete db.tracks[videoId];
   dirty = true;
   saveDB();
   return true;
 }
 
-/**
- * Tüm kütüphaneyi boşalt
- */
 function clearAllTracks() {
-  const tracks = Object.values(db.tracks);
-  for (const t of tracks) {
-    removeTrack(t.videoId);
-  }
+  for (const t of Object.values(db.tracks)) removeTrack(t.videoId);
   db.stats = { totalProcessed: 0, totalFailed: 0 };
   dirty = true;
   saveDB();
   return true;
 }
 
-// ═══════════════════════════════════════
-//  EXPORTS
-// ═══════════════════════════════════════
-
-module.exports = {
-  upsertTrack,
-  markReady,
-  markFailed,
-  recordAccess,
-  getReadyTrack,
-  isProcessing,
-  getAllTracks,
-  getStats,
-  cleanup,
-  removeTrack,
-  clearAllTracks,
-  saveDB
-};
+module.exports = { upsertTrack, markReady, markFailed, recordAccess, getReadyTrack, isProcessing, getAllTracks, getStats, cleanup, removeTrack, clearAllTracks, saveDB };

@@ -3,7 +3,7 @@ const http   = require("http");
 const crypto = require("crypto");
 
 const BASE_URL   = "https://music.cevapla.tv";
-const APP_SECRET = "";
+const APP_SECRET = "RINGTONE_MASTER_V2_SECRET_2026";
 
 // Popüler şarkılar — büyük ihtimalle cache'de olacak (gerçekçi test)
 const TEST_VIDEO_IDS = [
@@ -221,16 +221,53 @@ async function scenarioHeavy() {
   await Promise.allSettled(batch);
 }
 
+// Senaryo 4: Extreme — 1000 eşzamanlı (yüzbinlerce kullanıcı simülasyonu)
+async function scenarioExtreme() {
+  const batch = [];
+  const queries = ["pop", "rock", "hip hop", "jazz", "r&b", "türkçe", "arabic", "latin", "kpop", "edm"];
+  const regions = ["TR", "US", "DE", "AZ", "RU", "FR", "BR", "IN", "JP", "GB"];
+
+  // 1000 eş zamanlı istek — gerçek dünyada 100K günlük kullanıcı demek
+  for (let i = 0; i < 1000; i++) {
+    const vid = TEST_VIDEO_IDS[i % TEST_VIDEO_IDS.length];
+
+    // %60 stream (en ağır)
+    if (i % 5 !== 0) {
+      batch.push(testStream(vid));
+      stats.total++;
+    }
+
+    // %20 arama
+    if (i % 5 === 0) {
+      batch.push(testSearch(queries[i % queries.length]));
+      stats.total++;
+    }
+
+    // %10 top50
+    if (i % 10 === 0) {
+      batch.push(testTop50(regions[i % regions.length]));
+      stats.total++;
+    }
+
+    // %10 health
+    if (i % 10 === 5) {
+      batch.push(testHealth());
+      stats.total++;
+    }
+  }
+  await Promise.allSettled(batch);
+}
+
 // ══════════════════════════════════════════
 //  ANA DÖNGÜ
 // ══════════════════════════════════════════
 
 const SCENARIO = process.argv[2] || "light";
 
-const scenarioMap = { light: scenarioLight, medium: scenarioMedium, heavy: scenarioHeavy };
+const scenarioMap = { light: scenarioLight, medium: scenarioMedium, heavy: scenarioHeavy, extreme: scenarioExtreme };
 const chosenScenario = scenarioMap[SCENARIO] || scenarioLight;
 
-const KULLANICI_SAYISI = { light: 10, medium: 50, heavy: 200 };
+const KULLANICI_SAYISI = { light: 10, medium: 50, heavy: 200, extreme: 1000 };
 
 console.log(`${C.bold}${C.cyan}`);
 console.log(`╔══════════════════════════════════════════╗`);
