@@ -20,10 +20,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 5000,
-        MEDIA_DIR: "/app/media",
-        APP_KEY: "RINGTONE_MASTER_V2_SECRET_2026",
-        BAZOCAM_PASS: "BEYZA",
-        ADMIN_PASS: "BEYZA"
+        MEDIA_DIR: "/app/media"
       }
     }
   ]
