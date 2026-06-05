@@ -1614,6 +1614,8 @@ app.post("/auth/token", async (req, res) => {
 });
 
 app.use(async (req, res, next) => {
+  // CORS preflight — OPTIONS isteklerini her zaman geçir
+  if (req.method === "OPTIONS") return next();
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
       (req.path === "/blocked-channels" && req.method === "GET") ||
