@@ -1501,6 +1501,9 @@ app.use(cors({
     const allowed = [
       "https://music.cevapla.tv",
       "https://cevapla.tv",
+      "https://music.cevapla.tr",
+      "http://localhost:3000",
+      "http://localhost:3001",
       undefined, // Android/mobile app
       null
     ];
