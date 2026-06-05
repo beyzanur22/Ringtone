@@ -691,7 +691,7 @@ async function getFreshStreamUrl(videoId, type) {
   // Eski cache'i temizle (403 almış URL'yi sil)
   try {
     if (redis) await redis.del(`stream:${type}:${videoId}`);
-    else memoryCache.delete(`stream:${type}:${videoId}`);
+    // memoryCache kaldırıldı — Redis zorunlu, sadece redis.del yeterli
   } catch (_) { }
 
   // 1) Youtubei ile dene
@@ -2539,7 +2539,6 @@ app.get("/stream", async (req, res) => {
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
         console.warn(`[STREAM_AUDIO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
 
         // Arka planda kalıcı indirmeyi başlat
         if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
@@ -2806,7 +2805,6 @@ app.get("/stream/video", async (req, res) => {
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
         console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
-        memoryCache.delete(cacheKey);
 
         // Arka planda indirme başlat
         if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
@@ -2935,7 +2933,7 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
         console.log(`[STARTUP] ${allKeys.length} eski cache kaydı temizlendi`);
       }
     }
-    memoryCache.clear();
+    // memoryCache kaldırıldı — Redis zorunlu, yukarıdaki redis.del yeterli
   } catch (e) { console.warn("[STARTUP] Cache temizleme hatası:", e.message); }
 
   if (isPrimaryWorker) await warmTop50();
