@@ -1,18 +1,3 @@
-/**
- * ============================================================
- *  RingtoneMaster — Profesyonel Yük Testi
- *  Çalıştır : node load_test.js
- *  Durdur   : Ctrl+C
- *
- *  Ne test eder?
- *  - Aynı anda kaç stream açılabiliyor
- *  - Cache hit / miss oranı
- *  - Hata oranı & timeout sayısı
- *  - Ortalama / P95 / P99 yanıt süresi
- *  - Sunucu kaç kullanıcıdan sonra zorlanıyor
- * ============================================================
- */
-
 const https  = require("https");
 const http   = require("http");
 const crypto = require("crypto");

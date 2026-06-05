@@ -1621,7 +1621,7 @@ app.use(async (req, res, next) => {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
     return next();
@@ -3878,4 +3878,91 @@ app.post("/cache-panel/action", express.json(), basicAuth, (req, res) => {
 app.get("/proxy-panel/health-check", basicAuth, async (req, res) => {
   await runHealthCheck();
   res.json({ ok: true, tested: proxyData.active.length });
+});
+
+/* =========================
+   POPUP / DUYURU SİSTEMİ
+========================= */
+const ANNOUNCEMENTS_FILE = path.join(__dirname, "announcements.json");
+
+function loadAnnouncements() {
+  try {
+    if (!fs.existsSync(ANNOUNCEMENTS_FILE)) fs.writeFileSync(ANNOUNCEMENTS_FILE, "[]");
+    return JSON.parse(fs.readFileSync(ANNOUNCEMENTS_FILE, "utf-8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveAnnouncements(data) {
+  fs.writeFileSync(ANNOUNCEMENTS_FILE, JSON.stringify(data, null, 2));
+}
+
+// Tüm duyuruları listele (admin)
+app.get("/announcements", (req, res) => {
+  res.json(loadAnnouncements());
+});
+
+// Aktif duyuruları getir (Android uygulaması için, ülke filtreli)
+app.get("/popup/active", (req, res) => {
+  const country = (req.query.country || "").toUpperCase();
+  const now = new Date();
+  const all = loadAnnouncements();
+  const active = all.filter(ann => {
+    const start = ann.startTime ? new Date(ann.startTime) : null;
+    const end = ann.endTime ? new Date(ann.endTime) : null;
+    if (start && now < start) return false;
+    if (end && now > end) return false;
+    if (ann.countries === "all") return true;
+    if (Array.isArray(ann.countries) && country) return ann.countries.includes(country);
+    return true;
+  });
+  res.json(active);
+});
+
+// Yeni duyuru oluştur (admin)
+app.post("/popup/create", express.json(), (req, res) => {
+  const { title, message, buttons, countries, startTime, endTime } = req.body;
+  if (!title || !message) return res.status(400).json({ error: "title ve message zorunlu" });
+  if (!Array.isArray(buttons) || buttons.length === 0) return res.status(400).json({ error: "en az bir buton gerekli" });
+
+  const all = loadAnnouncements();
+  const newAnn = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    title,
+    message,
+    buttons,
+    countries: countries || "all",
+    startTime: startTime || null,
+    endTime: endTime || null,
+    createdAt: new Date().toISOString(),
+    votes: {}
+  };
+  all.unshift(newAnn);
+  saveAnnouncements(all);
+  res.json({ id: newAnn.id, ok: true });
+});
+
+// Duyuruyu sil (admin)
+app.delete("/popup/:id", (req, res) => {
+  const all = loadAnnouncements();
+  const filtered = all.filter(a => a.id !== req.params.id);
+  if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
+  saveAnnouncements(filtered);
+  res.json({ ok: true });
+});
+
+// Oy gönder (Android uygulaması)
+app.post("/popup/vote", express.json(), (req, res) => {
+  const { announcementId, buttonValue } = req.body;
+  if (!announcementId || !buttonValue) return res.status(400).json({ error: "announcementId ve buttonValue zorunlu" });
+
+  const all = loadAnnouncements();
+  const ann = all.find(a => a.id === announcementId);
+  if (!ann) return res.status(404).json({ error: "Duyuru bulunamadı" });
+
+  if (!ann.votes) ann.votes = {};
+  ann.votes[buttonValue] = (ann.votes[buttonValue] || 0) + 1;
+  saveAnnouncements(all);
+  res.json({ ok: true, votes: ann.votes });
 });
