@@ -32,14 +32,19 @@ function loadDB() {
     }
   } catch (err) {
     console.error(`[MEDIA_LIB] DB yükleme hatası: ${err.message}`);
-    db = { tracks: {}, stats: { totalProcessed: 0, totalFailed: 0 } };
+    // Sadece hafıza tamamen boşsa sıfırla, aksi halde eski veriyi koru (Race Condition koruması)
+    if (Object.keys(db.tracks).length === 0) {
+      db = { tracks: {}, stats: { totalProcessed: 0, totalFailed: 0 } };
+    }
   }
 }
 
 function saveDB() {
   if (!isPrimaryWorker) return;
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    const tmpFile = DB_FILE + ".tmp";
+    fs.writeFileSync(tmpFile, JSON.stringify(db, null, 2));
+    fs.renameSync(tmpFile, DB_FILE); // Atomik (kesintisiz) yer değiştirme
     dirty = false;
   } catch (err) {
     console.error(`[MEDIA_LIB] DB kaydetme hatası: ${err.message}`);
