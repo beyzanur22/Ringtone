@@ -1622,6 +1622,8 @@ app.use(async (req, res, next) => {
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
       (req.path === "/blocked-channels" && req.method === "GET") ||
+      (req.path === "/popup/active" && req.method === "GET") ||
+      (req.path === "/popup/vote" && req.method === "POST") ||
       req.path.startsWith("/top50/test")) {
     return next();
   }
