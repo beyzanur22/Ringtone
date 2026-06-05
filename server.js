@@ -1636,7 +1636,7 @@ app.use(async (req, res, next) => {
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
   if (req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
-      req.path === "/admin" || req.path === "/converter") {
+      req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -3530,6 +3530,13 @@ app.get("/admin", basicAuth, (req, res) => {
         <p>Sistem sağlık durumu</p>
       </div>
     </a>
+    <a class="card" href="/admin/panel" style="border-color:#7c3aed">
+      <div class="icon" style="background:#2d1f4e">🎛️</div>
+      <div class="card-info">
+        <h3>React Panel</h3>
+        <p>Config, Popup & Kanal Yönetimi</p>
+      </div>
+    </a>
   </div>
 
   <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
@@ -3545,6 +3552,18 @@ app.get("/admin", basicAuth, (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// React Admin Panel — static dosyaları servis et
+const REACT_PANEL_DIR = path.join(__dirname, "admin_panel");
+app.use("/admin/panel", basicAuth, express.static(REACT_PANEL_DIR));
+app.get("/admin/panel/*", basicAuth, (req, res) => {
+  const indexPath = path.join(REACT_PANEL_DIR, "index.html");
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send("React panel build bulunamadı. admin_panel/ klasörüne build dosyalarını koyun.");
+  }
 });
 
 // ==========================================
