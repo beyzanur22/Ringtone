@@ -13,7 +13,11 @@
       "Bash(gh auth *)",
       "Bash(find \"C:\\\\Users\\\\beyza\\\\Desktop\\\\RingtoneMasterV2\" -type f \\\\\\( -name \"*.kt\" -o -name \"build.gradle*\" -o -name \"AndroidManifest.xml\" \\\\\\) 2>/dev/null | head -30)",
       "PowerShell(Get-ChildItem C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy | Where-Object { $_.Name -ne \"node_modules\" } | Select-Object Name, LastWriteTime)",
-      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\beyza\\\\Desktop\\\\RingtoneMasterV2\\\\app\\\\src\\\\main\" -Name \"AndroidManifest.xml\")"
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\beyza\\\\Desktop\\\\RingtoneMasterV2\\\\app\\\\src\\\\main\" -Name \"AndroidManifest.xml\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\beyza\\\\Desktop\\\\flutter_music_video_downloader-main\\\\app\\\\lib\\\\widgets\" -Recurse -Filter \"*.dart\")",
+      "Bash(Select-Object Name)",
+      "Bash(Sort-Object)",
+      "PowerShell(flutter --version)"
     ]
   }
 }

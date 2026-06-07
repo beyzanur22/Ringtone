@@ -436,10 +436,10 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 8,       // 8 paralel çözümleme (4 worker × 8 = 32 toplam — RAM koruması)
+  concurrency: 10,      // 10 paralel çözümleme (4 worker × 10 = 40 toplam)
   interval: 1000,
-  intervalCap: 6,       // 1 saniyede max 6 istek (YouTube ban eşiği altı)
-  timeout: 15000,       // 15 saniye sonra otomatik iptal (hızlı fail)
+  intervalCap: 8,       // 1 saniyede max 8 istek
+  timeout: 60000,       // 60 saniye — yt-dlp'nin bitmesine yeterli süre
   throwOnTimeout: true
 });
 // Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
@@ -928,9 +928,9 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 2;  // Worker başına 2 (4 worker = 8 toplam) — RAM koruması
-const MAX_YTDLP_QUEUE = 50;      // 50'den fazla beklemesin — bellek şişmesini önler
-const YTDLP_SLOT_TIMEOUT = 20000; // 30s → 20s: Takılı slot'lar daha hızlı serbest kalır
+const MAX_YTDLP_CONCURRENT = 4;  // Worker başına 4 (4 worker = 16 toplam)
+const MAX_YTDLP_QUEUE = 80;      // Daha uzun kuyruk kabul et
+const YTDLP_SLOT_TIMEOUT = 45000; // 45sn — yt-dlp'nin bitmesine yeterli süre
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
@@ -2618,8 +2618,13 @@ app.get("/stream", async (req, res) => {
     logError("STREAM", req.query.videoId, err.message);
     console.error("STREAM ERROR:", err.message);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: "Streaming failed",
+      // Kuyruk dolu/timeout → 503 ile "tekrar dene" sinyali
+      const isQueueError = err.message && (err.message.includes("timeout") || err.message.includes("queue full"));
+      const statusCode = isQueueError ? 503 : 500;
+      if (isQueueError) res.setHeader("Retry-After", "5");
+      res.status(statusCode).json({
+        error: isQueueError ? "Server busy, please retry" : "Streaming failed",
+        retryable: isQueueError,
         message: err.message
       });
     } else {
