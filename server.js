@@ -439,7 +439,7 @@ const queue = new PQueue({
   concurrency: 10,      // 10 paralel çözümleme (4 worker × 10 = 40 toplam)
   interval: 1000,
   intervalCap: 8,       // 1 saniyede max 8 istek
-  timeout: 60000,       // 60 saniye — yt-dlp'nin bitmesine yeterli süre
+  timeout: 120000,      // 120 saniye — kuyrukta beklesin, hata vermesin
   throwOnTimeout: true
 });
 // Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
@@ -929,8 +929,8 @@ const { execFile, spawn } = require("child_process");
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
 const MAX_YTDLP_CONCURRENT = 4;  // Worker başına 4 (4 worker = 16 toplam)
-const MAX_YTDLP_QUEUE = 80;      // Daha uzun kuyruk kabul et
-const YTDLP_SLOT_TIMEOUT = 45000; // 45sn — yt-dlp'nin bitmesine yeterli süre
+const MAX_YTDLP_QUEUE = 150;     // Büyük kuyruk — bekletsin, düşürmesin
+const YTDLP_SLOT_TIMEOUT = 90000; // 90sn — kuyrukta sabırla beklesin
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
@@ -2229,6 +2229,26 @@ app.get("/search", searchLimiter, async (req, res) => {
       await cacheSet(cacheKey, searchResult, SEARCH_CACHE_DURATION);
       res.setHeader("Cache-Control", "no-store");
       res.json(searchResult);
+
+      // ARAMA SONUÇLARINI ARKA PLANDA ISIT — kullanıcı tıkladığında cache'den gelsin
+      if (searchResult.data && Array.isArray(searchResult.data)) {
+        const itemsToWarm = searchResult.data.slice(0, 10); // İlk 10 sonucu ısıt
+        itemsToWarm.forEach((item, index) => {
+          const vid = item.id || (typeof item.id === "object" ? item.id.videoId : null);
+          if (!vid || !VIDEO_ID_REGEX.test(vid)) return;
+          const warmKey = `stream:audio:${vid}`;
+          setTimeout(async () => {
+            try {
+              const existing = await cacheGet(warmKey);
+              if (existing) return; // Zaten cache'de
+              const ua = getRandomUA();
+              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 0 }); // Düşük öncelik
+              await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
+              console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
+            } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
+          }, index * 5000); // 5sn arayla (YouTube'u boğmamak için)
+        });
+      }
     } else {
       throw new Error("Tüm arama kaynakları başarısız");
     }
@@ -2884,12 +2904,26 @@ app.get("/stream/video", async (req, res) => {
 // Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif 6 bölge
 // Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
 const WARM_REGIONS = [
-  "TR",  // 🇹🇷 Türkiye (ana hedef)
+  "TR",  // 🇹🇷 Türkiye
   "US",  // 🇺🇸 Amerika
   "DE",  // 🇩🇪 Almanya
   "BR",  // 🇧🇷 Brezilya
   "RU",  // 🇷🇺 Rusya
   "AZ",  // 🇦🇿 Azerbaycan
+  "GB",  // 🇬🇧 İngiltere
+  "FR",  // 🇫🇷 Fransa
+  "IN",  // 🇮🇳 Hindistan
+  "MX",  // 🇲🇽 Meksika
+  "JP",  // 🇯🇵 Japonya
+  "KR",  // 🇰🇷 Güney Kore
+  "SA",  // 🇸🇦 Suudi Arabistan
+  "EG",  // 🇪🇬 Mısır
+  "ID",  // 🇮🇩 Endonezya
+  "PK",  // 🇵🇰 Pakistan
+  "AR",  // 🇦🇷 Arjantin
+  "NL",  // 🇳🇱 Hollanda
+  "IT",  // 🇮🇹 İtalya
+  "ES",  // 🇪🇸 İspanya
 ];
 
 async function warmTop50() {
@@ -2909,8 +2943,8 @@ async function warmTop50() {
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
-      // İlk bölge (TR) için prewarm yap
-      if (region === WARM_REGIONS[0]) prewarmTop10(items);
+      // Tüm ülkelerin Top50'sini prewarm yap (şarkıları diske indir)
+      prewarmTop10(items);
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
