@@ -2088,6 +2088,9 @@ app.get("/top50", async (req, res) => {
   const region = country.toUpperCase();
   const cacheKey = `top50:${region}`;
 
+  // Otomatik ülke algılama — bu ülkeyi ısıtma listesine ekle
+  trackActiveRegion(region);
+
   try {
     // Redis cache kontrol (ülke bazlı)
     const cached = await cacheGet(cacheKey);
@@ -2903,31 +2906,25 @@ app.get("/stream/video", async (req, res) => {
 
 // Popüler ülkelerin Top50'sini ön-ısıtma — API quota tasarrufu için sadece en aktif 6 bölge
 // Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
-const WARM_REGIONS = [
-  "TR",  // 🇹🇷 Türkiye
-  "US",  // 🇺🇸 Amerika
-  "DE",  // 🇩🇪 Almanya
-  "BR",  // 🇧🇷 Brezilya
-  "RU",  // 🇷🇺 Rusya
-  "AZ",  // 🇦🇿 Azerbaycan
-  "GB",  // 🇬🇧 İngiltere
-  "FR",  // 🇫🇷 Fransa
-  "IN",  // 🇮🇳 Hindistan
-  "MX",  // 🇲🇽 Meksika
-  "JP",  // 🇯🇵 Japonya
-  "KR",  // 🇰🇷 Güney Kore
-  "SA",  // 🇸🇦 Suudi Arabistan
-  "EG",  // 🇪🇬 Mısır
-  "ID",  // 🇮🇩 Endonezya
-  "PK",  // 🇵🇰 Pakistan
-  "AR",  // 🇦🇷 Arjantin
-  "NL",  // 🇳🇱 Hollanda
-  "IT",  // 🇮🇹 İtalya
-  "ES",  // 🇪🇸 İspanya
-];
+// OTOMATİK ÜLKE ISITMA — sadece gerçekten kullanan ülkeleri ısıt (proxy tasarrufu)
+// Kullanıcı bir ülkeden istek atınca o ülke listeye eklenir
+const activeRegions = new Set(["TR", "US"]); // Başlangıçta sadece TR ve US
+const WARM_REGIONS = { get list() { return Array.from(activeRegions); } };
+
+// Yeni ülke algılama — /top50, /stream, /search isteklerinden
+function trackActiveRegion(country) {
+  if (!country || country === "UNKNOWN" || country.length !== 2) return;
+  const region = country.toUpperCase();
+  if (!activeRegions.has(region)) {
+    activeRegions.add(region);
+    console.log(`[AUTO_REGION] 🌍 Yeni ülke algılandı: ${region} — Top50 ısıtmaya eklendi (toplam: ${activeRegions.size})`);
+  }
+}
 
 async function warmTop50() {
-  for (const region of WARM_REGIONS) {
+  const regions = WARM_REGIONS.list;
+  console.log(`[WARMUP] ${regions.length} aktif ülke ısıtılacak: ${regions.join(", ")}`);
+  for (const region of regions) {
     try {
       const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
         params: {
@@ -2943,8 +2940,8 @@ async function warmTop50() {
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
-      // Tüm ülkelerin Top50'sini prewarm yap (şarkıları diske indir)
-      prewarmTop10(items);
+      // Bu ülkenin Top50'sini prewarm yap (şarkıları diske indir)
+      if (regions.length <= 5) prewarmTop10(items); // 5'ten fazla ülke varsa proxy korumak için sadece cache'le
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
