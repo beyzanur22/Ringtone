@@ -3053,7 +3053,7 @@ app.get("/stream/video", async (req, res) => {
 // Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
 // OTOMATİK ÜLKE ISITMA — sadece gerçekten kullanan ülkeleri ısıt (proxy tasarrufu)
 // Kullanıcı bir ülkeden istek atınca o ülke listeye eklenir
-const activeRegions = new Set(["TR", "US", "DE", "FR", "GB", "BR", "MX", "JP"]); // En popüler 8 ülke baştan ısıtılır
+const activeRegions = new Set(["TR"]); // Sadece TR baştan — diğer ülkeler kullanıcı gelince otomatik eklenir
 const WARM_REGIONS = { get list() { return Array.from(activeRegions); } };
 
 // Yeni ülke algılama — /top50, /stream, /search isteklerinden
