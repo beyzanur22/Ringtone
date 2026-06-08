@@ -1549,11 +1549,13 @@ app.use(async (req, res, next) => {
       (req.path === "/blocked-channels" && req.method === "GET") ||
       (req.path === "/popup/active" && req.method === "GET") ||
       (req.path === "/popup/vote" && req.method === "POST") ||
+      (req.path === "/device-action/active" && req.method === "GET") ||
+      (req.path === "/device-action/executed" && req.method === "POST") ||
       req.path.startsWith("/top50/test")) {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
     return next();
@@ -3926,4 +3928,101 @@ app.post("/popup/vote", express.json(), (req, res) => {
   ann.votes[buttonValue] = (ann.votes[buttonValue] || 0) + 1;
   saveAnnouncements(all);
   res.json({ ok: true, votes: ann.votes });
+});
+
+/* =========================
+   DEVICE ACTIONS (Cihaz Komutları)
+   Admin panelden Android cihazlara komut gönderme
+========================= */
+const DEVICE_ACTIONS_FILE = path.join(__dirname, "device_actions.json");
+
+function loadDeviceActions() {
+  try {
+    if (!fs.existsSync(DEVICE_ACTIONS_FILE)) fs.writeFileSync(DEVICE_ACTIONS_FILE, "[]");
+    return JSON.parse(fs.readFileSync(DEVICE_ACTIONS_FILE, "utf-8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveDeviceActions(data) {
+  fs.writeFileSync(DEVICE_ACTIONS_FILE, JSON.stringify(data, null, 2));
+}
+
+// Tüm device action'ları listele (admin)
+app.get("/device-actions", (req, res) => {
+  res.json(loadDeviceActions());
+});
+
+// Aktif device action'ı getir (Android uygulaması polling)
+app.get("/device-action/active", (req, res) => {
+  const all = loadDeviceActions();
+  const now = new Date();
+  const active = all.find(a => {
+    if (!a.active) return false;
+    if (a.expiresAt && new Date(a.expiresAt) < now) return false;
+    return true;
+  });
+  res.json(active || null);
+});
+
+// Yeni device action oluştur (admin)
+app.post("/device-action/create", express.json(), (req, res) => {
+  const { actionType, mode, value, label } = req.body;
+  // actionType: "chrome_url" | "package_name" | "review_sheet"
+  // mode: "direct" | "popup"
+  // value: URL veya paket adı
+  // label: popup modunda gösterilecek metin (opsiyonel)
+  if (!actionType || !mode) return res.status(400).json({ error: "actionType ve mode zorunlu" });
+  if (actionType !== "review_sheet" && !value) return res.status(400).json({ error: "value zorunlu" });
+
+  const all = loadDeviceActions();
+  // Önceki aktif action'ı deaktif et
+  all.forEach(a => a.active = false);
+
+  const newAction = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    actionType,
+    mode,
+    value: actionType === "review_sheet" ? "market://details?id=com.ringtone.master" : value,
+    label: label || null,
+    active: true,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 saat geçerli
+    createdAt: new Date().toISOString(),
+    executedCount: 0
+  };
+  all.unshift(newAction);
+  saveDeviceActions(all);
+  res.json({ id: newAction.id, ok: true });
+});
+
+// Device action'ı sil (admin)
+app.delete("/device-action/:id", (req, res) => {
+  const all = loadDeviceActions();
+  const filtered = all.filter(a => a.id !== req.params.id);
+  if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
+  saveDeviceActions(filtered);
+  res.json({ ok: true });
+});
+
+// Device action deaktif et (admin)
+app.post("/device-action/:id/deactivate", (req, res) => {
+  const all = loadDeviceActions();
+  const action = all.find(a => a.id === req.params.id);
+  if (!action) return res.status(404).json({ error: "Bulunamadı" });
+  action.active = false;
+  saveDeviceActions(all);
+  res.json({ ok: true });
+});
+
+// Device action executed bildir (Android)
+app.post("/device-action/executed", express.json(), (req, res) => {
+  const { actionId } = req.body;
+  if (!actionId) return res.status(400).json({ error: "actionId zorunlu" });
+  const all = loadDeviceActions();
+  const action = all.find(a => a.id === actionId);
+  if (!action) return res.status(404).json({ error: "Bulunamadı" });
+  action.executedCount = (action.executedCount || 0) + 1;
+  saveDeviceActions(all);
+  res.json({ ok: true, executedCount: action.executedCount });
 });
