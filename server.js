@@ -253,9 +253,8 @@ function loadRotationAssets() {
 }
 
 function getRandomCookie() {
-  // Cookie'ler devre dışı — android_vr client cookie'siz çalışıyor
-  // Bozuk cookie dosyaları gereksiz hata + gecikme yaratıyordu
-  return null;
+  if (cookiePool.length > 0) return cookiePool[Math.floor(Math.random() * cookiePool.length)];
+  return fs.existsSync(path.join(__dirname, "cookies.txt")) ? path.join(__dirname, "cookies.txt") : null;
 }
 
 function banProxy(ip) {
@@ -437,23 +436,18 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 15,      // 15 paralel çözümleme (4 worker × 15 = 60 toplam)
+  concurrency: 10,      // 10 paralel çözümleme (4 worker × 10 = 40 toplam)
   interval: 1000,
-  intervalCap: 12,      // 1 saniyede max 12 istek
+  intervalCap: 8,       // 1 saniyede max 8 istek
   timeout: 120000,      // 120 saniye — kuyrukta beklesin, hata vermesin
   throwOnTimeout: true
 });
-// Kuyruk izleme — yoğunluk uyarısı
+// Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
 setInterval(() => {
   if (queue.size > 50) {
     console.warn(`[QUEUE_WARNING] YouTube kuyruğu yoğun: ${queue.size} bekleyen, ${queue.pending} aktif`);
   }
 }, 30000);
-
-// AKILLI YÜK YÖNETİMİ: Kuyruk doluyken düşük öncelikli işleri (warm/pre-resolve) atla
-function isQueueBusy() {
-  return queue.size + queue.pending > 40; // 40+ iş varsa warm'ları atla
-}
 
 //  VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -934,9 +928,9 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 6;   // Worker başına 6 (4 worker = 24 toplam) — 10 sunucuyu eziyor
-const MAX_YTDLP_QUEUE = 200;     // Büyük kuyruk — bekletsin, düşürmesin
-const YTDLP_SLOT_TIMEOUT = 120000; // 120sn — kuyrukta sabırla beklesin
+const MAX_YTDLP_CONCURRENT = 4;  // Worker başına 4 (4 worker = 16 toplam)
+const MAX_YTDLP_QUEUE = 150;     // Büyük kuyruk — bekletsin, düşürmesin
+const YTDLP_SLOT_TIMEOUT = 90000; // 90sn — kuyrukta sabırla beklesin
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
@@ -2038,29 +2032,8 @@ app.delete("/blocked-channels/:id", async (req, res) => {
 });
 
 // ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
-// Google Translate (ücretsiz, API key gereksiz)
-async function translateText(text, targetLang) {
-  try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    // data[0] = [[çevrilmiş_metin, orijinal, ...], ...]
-    return data[0].map(s => s[0]).join("");
-  } catch (e) {
-    console.error("[Translate] Hata:", e.message);
-    return text; // Çeviri başarısızsa orijinal metni döndür
-  }
-}
-
-// Ülke kodu → dil kodu eşleşmesi
-const COUNTRY_TO_LANG = {
-  TR: "tr", US: "en", GB: "en", DE: "de", FR: "fr", IT: "it", ES: "es",
-  NL: "nl", BR: "pt", RU: "ru", JP: "ja", KR: "ko", IN: "hi", SA: "ar",
-  AE: "ar", AU: "en", CA: "en", MX: "es", AR: "es", PL: "pl", SE: "sv", AZ: "az"
-};
-
 app.post("/send-notification", async (req, res) => {
-  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt, targetCountry } = req.body;
+  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
@@ -2073,37 +2046,12 @@ app.post("/send-notification", async (req, res) => {
   }
 
   try {
-    // Ülke seçildiyse otomatik çeviri yap
-    let translatedTitle = title;
-    let translatedMessage = message;
-    let targetLang = null;
-
-    if (targetCountry && COUNTRY_TO_LANG[targetCountry]) {
-      targetLang = COUNTRY_TO_LANG[targetCountry];
-      // Zaten aynı dildeyse (TR→tr gibi) veya İngilizce ise çevirme
-      if (targetLang !== "en") {
-        console.log(`[Translate] ${targetCountry} → ${targetLang} diline çevriliyor...`);
-        [translatedTitle, translatedMessage] = await Promise.all([
-          translateText(title, targetLang),
-          translateText(message, targetLang)
-        ]);
-        console.log(`[Translate] Başlık: "${title}" → "${translatedTitle}"`);
-        console.log(`[Translate] Mesaj: "${message}" → "${translatedMessage}"`);
-      }
-    }
-
     const notifPayload = {
       app_id: appId,
-      headings: { en: translatedTitle },
-      contents: { en: translatedMessage },
+      headings: { en: title },
+      contents: { en: message },
       included_segments: ["All"]
     };
-
-    // Ülkeye özel gönderim — OneSignal filters API
-    if (targetCountry) {
-      delete notifPayload.included_segments;
-      notifPayload.filters = [{ field: "country", value: targetCountry }];
-    }
 
     // Görsel URL (büyük resim)
     if (imageUrl) notifPayload.big_picture = imageUrl;
@@ -2127,7 +2075,7 @@ app.post("/send-notification", async (req, res) => {
     if (data.errors && data.errors.length > 0) {
       return res.status(400).json({ success: false, details: data.errors[0] });
     }
-    return res.json({ success: true, data, translated: targetLang ? { lang: targetLang, title: translatedTitle, message: translatedMessage } : null });
+    return res.json({ success: true, data });
   } catch (error) {
     console.error("[OneSignal] Hata:", error.message);
     res.status(500).json({ success: false, details: error.message });
@@ -2289,39 +2237,21 @@ app.get("/search", searchLimiter, async (req, res) => {
 
       // ARAMA SONUÇLARINI ARKA PLANDA ISIT — kullanıcı tıkladığında cache'den gelsin
       if (searchResult.data && Array.isArray(searchResult.data)) {
-        const itemsToWarm = searchResult.data.slice(0, 20); // İlk 20 sonucu ısıt
+        const itemsToWarm = searchResult.data.slice(0, 10); // İlk 10 sonucu ısıt
         itemsToWarm.forEach((item, index) => {
           const vid = item.id || (typeof item.id === "object" ? item.id.videoId : null);
           if (!vid || !VIDEO_ID_REGEX.test(vid)) return;
           const warmKey = `stream:audio:${vid}`;
           setTimeout(async () => {
             try {
-              if (isQueueBusy()) return; // Kuyruk doluysa warm'ı atla — kullanıcı istekleri önce
               const existing = await cacheGet(warmKey);
               if (existing) return; // Zaten cache'de
               const ua = getRandomUA();
-              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 1 }); // Düşük öncelik
+              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 0 }); // Düşük öncelik
               await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
               console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
-              // KALICI KAYIT: Diske de indir — bir sonraki istekte yt-dlp'ye hiç gitmesin
-              if (!mediaLib.getReadyTrack(vid, "m4a") && !mediaLib.isProcessing(vid)) {
-                const title = item.snippet?.title || item.title || "Unknown";
-                const artist = item.snippet?.channelTitle || item.uploaderName || "Unknown";
-                mediaLib.upsertTrack(vid, { title, artist, category: "listening", status: "processing" });
-                const cookiePath = getRandomCookie();
-                const proxyUrl = getRandomProxy(vid);
-                ffmpegWorker.processAudio(vid, { title, artist }, { cookiePath, proxyUrl })
-                  .then(result => {
-                    if (result && result.m4a) {
-                      mediaLib.markReady(vid, { m4a: result.m4a, duration: result.duration });
-                      uploadToR2(`audio/${vid}.m4a`, result.m4a).catch(() => {});
-                      console.log(`[SEARCH_WARM_DISK] ✅ ${vid} kalıcı diske kaydedildi!`);
-                    }
-                  })
-                  .catch(() => { mediaLib.markFailed(vid, "search warm disk fail"); });
-              }
             } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
-          }, index * 300); // 300ms arayla — agresif ısıtma, kullanıcı tıklamadan hazır olsun
+          }, index * 5000); // 5sn arayla (YouTube'u boğmamak için)
         });
       }
     } else {
@@ -2465,79 +2395,6 @@ app.post("/cache-notify", express.json(), async (req, res) => {
   }
 });
 
-// =============================================
-// PRE-RESOLVE: Android liste gösterdiğinde arka planda URL'leri hazırla
-// Kullanıcı tıkladığında cache'ten anında döner
-// =============================================
-app.post("/pre-resolve", async (req, res) => {
-  const { videoIds } = req.body;
-  if (!videoIds || !Array.isArray(videoIds) || videoIds.length === 0) {
-    return res.status(400).json({ error: "videoIds array required" });
-  }
-
-  // Max 20 video — abuse koruması
-  const ids = videoIds.filter(id => isValidVideoId(id)).slice(0, 20);
-
-  // Hangileri zaten cache'te?
-  const results = {};
-  const toResolve = [];
-
-  for (const id of ids) {
-    const cacheKey = `stream:audio:${id}`;
-    const cached = await cacheGet(cacheKey);
-    if (cached && cached.url) {
-      results[id] = "cached";
-    } else {
-      toResolve.push(id);
-      results[id] = "queued";
-    }
-  }
-
-  // Hemen cevap dön — resolve arka planda çalışsın, kullanıcıyı bekletme
-  res.json({
-    total: ids.length,
-    alreadyCached: ids.length - toResolve.length,
-    queued: toResolve.length,
-    results
-  });
-
-  // Arka planda resolve et (kullanıcı tıklamadan önce hazır olsun)
-  toResolve.forEach((videoId, index) => {
-    setTimeout(() => {
-      if (isQueueBusy()) return; // Kuyruk doluysa pre-resolve'u atla
-      const cacheKey = `stream:audio:${videoId}`;
-      queue.add(async () => {
-        try {
-          const existing = await cacheGet(cacheKey);
-          if (existing) return;
-
-          const ua = getRandomUA();
-          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
-          await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
-          console.log(`[PRE-RESOLVE] ✅ ${videoId} hazır!`);
-          // KALICI KAYIT: Diske de indir
-          if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
-            mediaLib.upsertTrack(videoId, { title: "Unknown", artist: "Unknown", category: "listening", status: "processing" });
-            const cookiePath = getRandomCookie();
-            const proxyUrl = getRandomProxy(videoId);
-            ffmpegWorker.processAudio(videoId, { title: "Unknown", artist: "Unknown" }, { cookiePath, proxyUrl })
-              .then(result => {
-                if (result && result.m4a) {
-                  mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
-                  uploadToR2(`audio/${videoId}.m4a`, result.m4a).catch(() => {});
-                  console.log(`[PRE-RESOLVE_DISK] ✅ ${videoId} kalıcı diske kaydedildi!`);
-                }
-              })
-              .catch(() => { mediaLib.markFailed(videoId, "pre-resolve disk fail"); });
-          }
-        } catch (e) {
-          console.warn(`[PRE-RESOLVE] ⚠️ ${videoId} başarısız: ${e.message}`);
-        }
-      }, { priority: 1 }).catch(() => {}); // Düşük öncelik — aktif stream istekleri önce
-    }, index * 200); // 200ms arayla — hızlı pre-resolve
-  });
-});
-
 app.get("/stream", async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
@@ -2666,7 +2523,7 @@ app.get("/stream", async (req, res) => {
           const ongoingKey = `ongoing:${typeStr}:${videoId}`;
           ongoingResolutions.delete(ongoingKey);
         }
-      }, { priority: 10 }); // KULLANICI İSTEĞİ = EN YÜKSEK ÖNCELİK
+      });
 
       const ongoingKey = `ongoing:${typeStr}:${videoId}`;
       resolutionPromise._startedAt = Date.now();
@@ -2940,7 +2797,7 @@ app.get("/stream/video", async (req, res) => {
 
       streamUrl = await queue.add(async () => {
         return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      }, { priority: 10 }); // KULLANICI İSTEĞİ = EN YÜKSEK ÖNCELİK
+      });
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
 
@@ -3053,7 +2910,7 @@ app.get("/stream/video", async (req, res) => {
 // Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
 // OTOMATİK ÜLKE ISITMA — sadece gerçekten kullanan ülkeleri ısıt (proxy tasarrufu)
 // Kullanıcı bir ülkeden istek atınca o ülke listeye eklenir
-const activeRegions = new Set(["TR"]); // Sadece TR baştan — diğer ülkeler kullanıcı gelince otomatik eklenir
+const activeRegions = new Set(["TR", "US"]); // Başlangıçta sadece TR ve US
 const WARM_REGIONS = { get list() { return Array.from(activeRegions); } };
 
 // Yeni ülke algılama — /top50, /stream, /search isteklerinden
@@ -3086,7 +2943,7 @@ async function warmTop50() {
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
       // Bu ülkenin Top50'sini prewarm yap (şarkıları diske indir)
-      if (regions.length <= 10) prewarmTop10(items); // 10'dan fazla ülke varsa proxy korumak için sadece cache'le
+      if (regions.length <= 5) prewarmTop10(items); // 5'ten fazla ülke varsa proxy korumak için sadece cache'le
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
@@ -3412,7 +3269,7 @@ app.get("/download/mp4", async (req, res) => {
       const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
       const countryClient = getPlayerClientForCountry(country);
 
-      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient), { priority: 10 });
+      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
       await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
     }
 
@@ -4127,7 +3984,7 @@ app.post("/device-action/create", express.json(), (req, res) => {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     actionType,
     mode,
-    value: actionType === "review_sheet" ? "market://details?id=com.example.ringtonemasterv2" : value,
+    value: actionType === "review_sheet" ? "market://details?id=com.ringtone.master" : value,
     label: label || null,
     active: true,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 saat geçerli
