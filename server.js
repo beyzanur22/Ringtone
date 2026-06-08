@@ -2283,7 +2283,7 @@ app.get("/search", searchLimiter, async (req, res) => {
 
       // ARAMA SONUÇLARINI ARKA PLANDA ISIT — kullanıcı tıkladığında cache'den gelsin
       if (searchResult.data && Array.isArray(searchResult.data)) {
-        const itemsToWarm = searchResult.data.slice(0, 10); // İlk 10 sonucu ısıt
+        const itemsToWarm = searchResult.data.slice(0, 20); // İlk 20 sonucu ısıt
         itemsToWarm.forEach((item, index) => {
           const vid = item.id || (typeof item.id === "object" ? item.id.videoId : null);
           if (!vid || !VIDEO_ID_REGEX.test(vid)) return;
@@ -2297,7 +2297,7 @@ app.get("/search", searchLimiter, async (req, res) => {
               await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
               console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
             } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
-          }, index * 5000); // 5sn arayla (YouTube'u boğmamak için)
+          }, index * 2000); // 2sn arayla (hızlı ısıtma — kullanıcı tıklamadan hazır olsun)
         });
       }
     } else {
@@ -2439,6 +2439,64 @@ app.post("/cache-notify", express.json(), async (req, res) => {
   } catch (e) {
     console.warn(`[CACHE_NOTIFY] ❌ İndirme başarısız: ${videoId} — ${e.message}`);
   }
+});
+
+// =============================================
+// PRE-RESOLVE: Android liste gösterdiğinde arka planda URL'leri hazırla
+// Kullanıcı tıkladığında cache'ten anında döner
+// =============================================
+app.post("/pre-resolve", async (req, res) => {
+  const { videoIds } = req.body;
+  if (!videoIds || !Array.isArray(videoIds) || videoIds.length === 0) {
+    return res.status(400).json({ error: "videoIds array required" });
+  }
+
+  // Max 20 video — abuse koruması
+  const ids = videoIds.filter(id => isValidVideoId(id)).slice(0, 20);
+
+  // Hangileri zaten cache'te?
+  const results = {};
+  const toResolve = [];
+
+  for (const id of ids) {
+    const cacheKey = `stream:audio:${id}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached && cached.url) {
+      results[id] = "cached";
+    } else {
+      toResolve.push(id);
+      results[id] = "queued";
+    }
+  }
+
+  // Hemen cevap dön — resolve arka planda çalışsın, kullanıcıyı bekletme
+  res.json({
+    total: ids.length,
+    alreadyCached: ids.length - toResolve.length,
+    queued: toResolve.length,
+    results
+  });
+
+  // Arka planda resolve et (kullanıcı tıklamadan önce hazır olsun)
+  toResolve.forEach((videoId, index) => {
+    setTimeout(() => {
+      const cacheKey = `stream:audio:${videoId}`;
+      queue.add(async () => {
+        try {
+          // Tekrar kontrol — başka worker çözmüş olabilir
+          const existing = await cacheGet(cacheKey);
+          if (existing) return;
+
+          const ua = getRandomUA();
+          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
+          await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
+          console.log(`[PRE-RESOLVE] ✅ ${videoId} hazır!`);
+        } catch (e) {
+          console.warn(`[PRE-RESOLVE] ⚠️ ${videoId} başarısız: ${e.message}`);
+        }
+      }, { priority: 1 }).catch(() => {}); // Düşük öncelik — aktif stream istekleri önce
+    }, index * 1000); // 1sn arayla — YouTube'u boğma
+  });
 });
 
 app.get("/stream", async (req, res) => {
