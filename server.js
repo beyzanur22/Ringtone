@@ -436,18 +436,23 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 10,      // 10 paralel çözümleme (4 worker × 10 = 40 toplam)
+  concurrency: 25,      // 25 paralel çözümleme (4 worker × 25 = 100 toplam)
   interval: 1000,
-  intervalCap: 8,       // 1 saniyede max 8 istek
+  intervalCap: 15,      // 1 saniyede max 15 istek
   timeout: 120000,      // 120 saniye — kuyrukta beklesin, hata vermesin
   throwOnTimeout: true
 });
-// Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
+// Kuyruk izleme — yoğunluk uyarısı
 setInterval(() => {
   if (queue.size > 50) {
     console.warn(`[QUEUE_WARNING] YouTube kuyruğu yoğun: ${queue.size} bekleyen, ${queue.pending} aktif`);
   }
 }, 30000);
+
+// AKILLI YÜK YÖNETİMİ: Kuyruk doluyken düşük öncelikli işleri (warm/pre-resolve) atla
+function isQueueBusy() {
+  return queue.size + queue.pending > 40; // 40+ iş varsa warm'ları atla
+}
 
 //  VIDEO ID DOĞRULAMA (Path traversal ve injection koruması)
 const VIDEO_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
@@ -928,9 +933,9 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 4;  // Worker başına 4 (4 worker = 16 toplam)
-const MAX_YTDLP_QUEUE = 150;     // Büyük kuyruk — bekletsin, düşürmesin
-const YTDLP_SLOT_TIMEOUT = 90000; // 90sn — kuyrukta sabırla beklesin
+const MAX_YTDLP_CONCURRENT = 10;  // Worker başına 10 (4 worker = 40 toplam)
+const MAX_YTDLP_QUEUE = 300;     // Büyük kuyruk — bekletsin, düşürmesin
+const YTDLP_SLOT_TIMEOUT = 120000; // 120sn — kuyrukta sabırla beklesin
 const ytdlpWaitQueue = [];
 
 function acquireYtdlpSlot() {
@@ -2290,14 +2295,15 @@ app.get("/search", searchLimiter, async (req, res) => {
           const warmKey = `stream:audio:${vid}`;
           setTimeout(async () => {
             try {
+              if (isQueueBusy()) return; // Kuyruk doluysa warm'ı atla — kullanıcı istekleri önce
               const existing = await cacheGet(warmKey);
               if (existing) return; // Zaten cache'de
               const ua = getRandomUA();
-              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 0 }); // Düşük öncelik
+              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 1 }); // Düşük öncelik
               await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
               console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
             } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
-          }, index * 2000); // 2sn arayla (hızlı ısıtma — kullanıcı tıklamadan hazır olsun)
+          }, index * 300); // 300ms arayla — agresif ısıtma, kullanıcı tıklamadan hazır olsun
         });
       }
     } else {
@@ -2480,10 +2486,10 @@ app.post("/pre-resolve", async (req, res) => {
   // Arka planda resolve et (kullanıcı tıklamadan önce hazır olsun)
   toResolve.forEach((videoId, index) => {
     setTimeout(() => {
+      if (isQueueBusy()) return; // Kuyruk doluysa pre-resolve'u atla
       const cacheKey = `stream:audio:${videoId}`;
       queue.add(async () => {
         try {
-          // Tekrar kontrol — başka worker çözmüş olabilir
           const existing = await cacheGet(cacheKey);
           if (existing) return;
 
@@ -2495,7 +2501,7 @@ app.post("/pre-resolve", async (req, res) => {
           console.warn(`[PRE-RESOLVE] ⚠️ ${videoId} başarısız: ${e.message}`);
         }
       }, { priority: 1 }).catch(() => {}); // Düşük öncelik — aktif stream istekleri önce
-    }, index * 1000); // 1sn arayla — YouTube'u boğma
+    }, index * 200); // 200ms arayla — hızlı pre-resolve
   });
 });
 
@@ -2627,7 +2633,7 @@ app.get("/stream", async (req, res) => {
           const ongoingKey = `ongoing:${typeStr}:${videoId}`;
           ongoingResolutions.delete(ongoingKey);
         }
-      });
+      }, { priority: 10 }); // KULLANICI İSTEĞİ = EN YÜKSEK ÖNCELİK
 
       const ongoingKey = `ongoing:${typeStr}:${videoId}`;
       resolutionPromise._startedAt = Date.now();
@@ -2901,7 +2907,7 @@ app.get("/stream/video", async (req, res) => {
 
       streamUrl = await queue.add(async () => {
         return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
+      }, { priority: 10 }); // KULLANICI İSTEĞİ = EN YÜKSEK ÖNCELİK
       await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
     }
 
@@ -3014,7 +3020,7 @@ app.get("/stream/video", async (req, res) => {
 // Diğer bölgeler kullanıcı isteği geldiğinde lazy-load edilir ve cache'lenir
 // OTOMATİK ÜLKE ISITMA — sadece gerçekten kullanan ülkeleri ısıt (proxy tasarrufu)
 // Kullanıcı bir ülkeden istek atınca o ülke listeye eklenir
-const activeRegions = new Set(["TR", "US"]); // Başlangıçta sadece TR ve US
+const activeRegions = new Set(["TR", "US", "DE", "FR", "GB", "BR", "MX", "JP"]); // En popüler 8 ülke baştan ısıtılır
 const WARM_REGIONS = { get list() { return Array.from(activeRegions); } };
 
 // Yeni ülke algılama — /top50, /stream, /search isteklerinden
@@ -3047,7 +3053,7 @@ async function warmTop50() {
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
       // Bu ülkenin Top50'sini prewarm yap (şarkıları diske indir)
-      if (regions.length <= 5) prewarmTop10(items); // 5'ten fazla ülke varsa proxy korumak için sadece cache'le
+      if (regions.length <= 10) prewarmTop10(items); // 10'dan fazla ülke varsa proxy korumak için sadece cache'le
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
@@ -3373,7 +3379,7 @@ app.get("/download/mp4", async (req, res) => {
       const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
       const countryClient = getPlayerClientForCountry(country);
 
-      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
+      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient), { priority: 10 });
       await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
     }
 
