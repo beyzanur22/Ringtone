@@ -436,9 +436,9 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 25,      // 25 paralel çözümleme (4 worker × 25 = 100 toplam)
+  concurrency: 15,      // 15 paralel çözümleme (4 worker × 15 = 60 toplam)
   interval: 1000,
-  intervalCap: 15,      // 1 saniyede max 15 istek
+  intervalCap: 12,      // 1 saniyede max 12 istek
   timeout: 120000,      // 120 saniye — kuyrukta beklesin, hata vermesin
   throwOnTimeout: true
 });
@@ -933,8 +933,8 @@ const { execFile, spawn } = require("child_process");
 
 // yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
 let activeYtdlpCount = 0;
-const MAX_YTDLP_CONCURRENT = 10;  // Worker başına 10 (4 worker = 40 toplam)
-const MAX_YTDLP_QUEUE = 300;     // Büyük kuyruk — bekletsin, düşürmesin
+const MAX_YTDLP_CONCURRENT = 6;   // Worker başına 6 (4 worker = 24 toplam) — 10 sunucuyu eziyor
+const MAX_YTDLP_QUEUE = 200;     // Büyük kuyruk — bekletsin, düşürmesin
 const YTDLP_SLOT_TIMEOUT = 120000; // 120sn — kuyrukta sabırla beklesin
 const ytdlpWaitQueue = [];
 
@@ -2302,6 +2302,23 @@ app.get("/search", searchLimiter, async (req, res) => {
               const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 1 }); // Düşük öncelik
               await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
               console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
+              // KALICI KAYIT: Diske de indir — bir sonraki istekte yt-dlp'ye hiç gitmesin
+              if (!mediaLib.getReadyTrack(vid, "m4a") && !mediaLib.isProcessing(vid)) {
+                const title = item.snippet?.title || item.title || "Unknown";
+                const artist = item.snippet?.channelTitle || item.uploaderName || "Unknown";
+                mediaLib.upsertTrack(vid, { title, artist, category: "listening", status: "processing" });
+                const cookiePath = getRandomCookie();
+                const proxyUrl = getRandomProxy(vid);
+                ffmpegWorker.processAudio(vid, { title, artist }, { cookiePath, proxyUrl })
+                  .then(result => {
+                    if (result && result.m4a) {
+                      mediaLib.markReady(vid, { m4a: result.m4a, duration: result.duration });
+                      uploadToR2(`audio/${vid}.m4a`, result.m4a).catch(() => {});
+                      console.log(`[SEARCH_WARM_DISK] ✅ ${vid} kalıcı diske kaydedildi!`);
+                    }
+                  })
+                  .catch(() => { mediaLib.markFailed(vid, "search warm disk fail"); });
+              }
             } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
           }, index * 300); // 300ms arayla — agresif ısıtma, kullanıcı tıklamadan hazır olsun
         });
@@ -2497,6 +2514,21 @@ app.post("/pre-resolve", async (req, res) => {
           const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
           await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
           console.log(`[PRE-RESOLVE] ✅ ${videoId} hazır!`);
+          // KALICI KAYIT: Diske de indir
+          if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
+            mediaLib.upsertTrack(videoId, { title: "Unknown", artist: "Unknown", category: "listening", status: "processing" });
+            const cookiePath = getRandomCookie();
+            const proxyUrl = getRandomProxy(videoId);
+            ffmpegWorker.processAudio(videoId, { title: "Unknown", artist: "Unknown" }, { cookiePath, proxyUrl })
+              .then(result => {
+                if (result && result.m4a) {
+                  mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
+                  uploadToR2(`audio/${videoId}.m4a`, result.m4a).catch(() => {});
+                  console.log(`[PRE-RESOLVE_DISK] ✅ ${videoId} kalıcı diske kaydedildi!`);
+                }
+              })
+              .catch(() => { mediaLib.markFailed(videoId, "pre-resolve disk fail"); });
+          }
         } catch (e) {
           console.warn(`[PRE-RESOLVE] ⚠️ ${videoId} başarısız: ${e.message}`);
         }
