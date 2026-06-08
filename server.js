@@ -253,8 +253,9 @@ function loadRotationAssets() {
 }
 
 function getRandomCookie() {
-  if (cookiePool.length > 0) return cookiePool[Math.floor(Math.random() * cookiePool.length)];
-  return fs.existsSync(path.join(__dirname, "cookies.txt")) ? path.join(__dirname, "cookies.txt") : null;
+  // Cookie'ler devre dışı — android_vr client cookie'siz çalışıyor
+  // Bozuk cookie dosyaları gereksiz hata + gecikme yaratıyordu
+  return null;
 }
 
 function banProxy(ip) {
