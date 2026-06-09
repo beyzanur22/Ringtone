@@ -53,6 +53,30 @@ module.exports = {
         NODE_ENV: "production",
         WORKER_CONCURRENCY: 22  // Worker başına paralel iş sayısı (12×22=264 paralel)
       }
+    },
+
+    // ═══════════════════════════════════════════════════
+    // WEBHOOK DEPLOY — GitHub push → otomatik admin panel build
+    // ═══════════════════════════════════════════════════
+    {
+      name: "webhook",
+      script: "./webhook-deploy.js",
+      instances: 1,
+      exec_mode: "fork",
+      max_memory_restart: "100M",
+      watch: false,
+      autorestart: true,
+
+      error_file: "./logs/webhook-error.log",
+      out_file: "./logs/webhook-output.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      merge_logs: true,
+
+      env: {
+        NODE_ENV: "production",
+        WEBHOOK_PORT: 9000,
+        WEBHOOK_SECRET: "melodia-deploy-2026"
+      }
     }
   ]
 };
