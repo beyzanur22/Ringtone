@@ -35,9 +35,9 @@ module.exports = {
     {
       name: "resolver",
       script: "./resolve_worker.js",
-      instances: 12,
+      instances: 16,
       exec_mode: "fork",  // Her biri bağımsız process
-      max_memory_restart: "400M",
+      max_memory_restart: "350M",
       watch: false,
       autorestart: true,
       restart_delay: 5000,
@@ -51,7 +51,7 @@ module.exports = {
 
       env: {
         NODE_ENV: "production",
-        WORKER_CONCURRENCY: 22  // Worker başına paralel iş sayısı (12×22=264 paralel)
+        WORKER_CONCURRENCY: 25  // Worker başına paralel iş sayısı (16×25=400 paralel)
       }
     }
   ]

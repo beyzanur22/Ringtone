@@ -8,7 +8,7 @@
  */
 
 const BASE_URL = "https://music.cevapla.tv";
-const TOTAL_USERS = 400;
+const TOTAL_USERS = 600;
 const APP_SECRET = "RINGTONE_MASTER_V2_SECRET_2026";
 const crypto = require("crypto");
 
@@ -20,7 +20,17 @@ const SEARCH_QUERIES = [
   "post malone", "travis scott", "kendrick lamar", "juice wrld", "lil nas x",
   "sefo", "mabel matiz", "norm ender", "ceza", "sagopa kajmer",
   "duman", "mor ve ötesi", "teoman", "manga", "athena",
-  "ezhel", "ben fero", "lvbel c5", "uzi", "cakal"
+  "ezhel", "ben fero", "lvbel c5", "uzi", "cakal",
+  "linkin park", "metallica", "ac dc", "nirvana", "pink floyd",
+  "queen", "led zeppelin", "guns n roses", "red hot chili peppers", "arctic monkeys",
+  "tame impala", "radiohead", "oasis", "u2", "green day",
+  "sia", "lady gaga", "katy perry", "miley cyrus", "selena gomez",
+  "justin bieber", "charlie puth", "shawn mendes", "harry styles", "zayn",
+  "nicki minaj", "cardi b", "megan thee stallion", "doja cat", "sza",
+  "21 savage", "future", "young thug", "gunna", "lil baby",
+  "kanye west", "jay z", "nas", "50 cent", "snoop dogg",
+  "hadise", "ajda pekkan", "barış manço", "cem karaca", "erkin koray",
+  "mazhar fuat özkan", "yıldız tilbe", "ibrahim tatlıses", "ferdi tayfur", "orhan gencebay"
 ];
 
 function getAuthHeaders(path) {
