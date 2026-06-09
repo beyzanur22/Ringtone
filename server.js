@@ -2318,25 +2318,9 @@ app.get("/search", searchLimiter, async (req, res) => {
       res.setHeader("Cache-Control", "no-store");
       res.json(searchResult);
 
-      // ARAMA SONUÇLARINI ARKA PLANDA ISIT — kullanıcı tıkladığında cache'den gelsin
-      if (searchResult.data && Array.isArray(searchResult.data)) {
-        const itemsToWarm = searchResult.data.slice(0, 10); // İlk 10 sonucu ısıt
-        itemsToWarm.forEach((item, index) => {
-          const vid = item.id || (typeof item.id === "object" ? item.id.videoId : null);
-          if (!vid || !VIDEO_ID_REGEX.test(vid)) return;
-          const warmKey = `stream:audio:${vid}`;
-          setTimeout(async () => {
-            try {
-              const existing = await cacheGet(warmKey);
-              if (existing) return; // Zaten cache'de
-              const ua = getRandomUA();
-              const url = await queue.add(() => resolveStreamUrlWithFallback(vid, "audio", ua, "default"), { priority: 0 }); // Düşük öncelik
-              await cacheSet(warmKey, { url, ua }, STREAM_CACHE_DURATION);
-              console.log(`[SEARCH_WARM] ✅ ${vid} ısıtıldı`);
-            } catch (e) { /* Sessiz — ısıtma başarısız olursa kullanıcı normal akıştan alır */ }
-          }, index * 5000); // 5sn arayla (YouTube'u boğmamak için)
-        });
-      }
+      // SEARCH WARM DEVRE DIŞI — yt-dlp kapasitesini boşa harcamamak için
+      // Sadece kullanıcının SEÇTİĞİ şarkı çözümlenir (stream endpoint'inde)
+      // Bu sayede aynı sunucuyla 10x daha fazla kullanıcıya hizmet verilir
     } else {
       throw new Error("Tüm arama kaynakları başarısız");
     }
