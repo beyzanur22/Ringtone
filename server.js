@@ -109,6 +109,7 @@ const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 
 const PQueue = require("p-queue").default;
+const Bull = require("bull");
 const { Innertube, UniversalCache } = require("youtubei.js");
 
 // FFmpeg Worker & Media Library
@@ -867,6 +868,78 @@ async function cacheSet(key, data, ttlSeconds) {
   }
 }
 
+// ==================== BULL QUEUE — Dağıtık Worker Desteği ====================
+// Worker'lar ayrı process olarak çalışır (resolve_worker.js)
+// Bu queue'ya iş ekle → worker çözer → sonucu Redis'e yazar → biz okuruz
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const resolveQueue = new Bull("resolve-stream", REDIS_URL, {
+  defaultJobOptions: {
+    timeout: 45000,
+    removeOnComplete: 100,
+    removeOnFail: 50,
+    attempts: 2,
+    backoff: { type: "fixed", delay: 2000 }
+  }
+});
+
+// Worker yoksa veya Bull hata verirse fallback olarak eski sistemi kullan
+let bullWorkerAvailable = false;
+let bullCheckInterval;
+
+async function checkBullWorkers() {
+  try {
+    const workers = await resolveQueue.getWorkers();
+    const wasAvailable = bullWorkerAvailable;
+    bullWorkerAvailable = workers && workers.length > 0;
+    if (bullWorkerAvailable && !wasAvailable) {
+      console.log(`[BULL] ✅ ${workers.length} worker bağlandı! Dağıtık mod aktif.`);
+    } else if (!bullWorkerAvailable && wasAvailable) {
+      console.log(`[BULL] ⚠️ Worker bağlantısı kesildi. Fallback: lokal mod.`);
+    }
+  } catch (e) {
+    bullWorkerAvailable = false;
+  }
+}
+// Her 10 saniyede worker durumunu kontrol et
+bullCheckInterval = setInterval(checkBullWorkers, 10000);
+setTimeout(checkBullWorkers, 3000); // 3sn sonra ilk kontrol
+
+/**
+ * Bull Queue üzerinden URL çözümleme
+ * Worker varsa → Bull'a gönder, sonucu bekle
+ * Worker yoksa → null döner (caller eski sistemi kullanır)
+ */
+async function resolveViaBull(videoId, type, priority = 0) {
+  if (!bullWorkerAvailable) return null;
+
+  try {
+    // Önce Redis cache kontrol (job göndermeden)
+    const cacheKey = `stream:${type}:${videoId}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const data = JSON.parse(cached);
+      if (data && data.url) return data.url;
+    }
+
+    // Bull'a iş gönder
+    const job = await resolveQueue.add(
+      { videoId, type, priority },
+      { priority: priority === 1 ? 1 : (priority === 0 ? 5 : 10), timeout: 45000 }
+    );
+
+    // Sonucu bekle (max 40sn)
+    const result = await job.finished();
+    if (result && result.url) {
+      console.log(`[BULL] ✅ ${videoId} çözüldü (${result.source}, ${result.time}ms)`);
+      return result.url;
+    }
+    return null;
+  } catch (e) {
+    console.warn(`[BULL] ❌ Job başarısız: ${videoId} — ${e.message}`);
+    return null; // Fallback: eski sistem
+  }
+}
+
 // Bots & Jitter
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -1370,11 +1443,21 @@ async function tryInvidiousFallback(videoId, type) {
 }
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
-  // SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
-  // Piped/Invidious/Cobalt şu an dünya genelinde ölü (YouTube tarafından engelleniyor)
-  // Gereksiz hata logları ve gecikme yaratıyorlardı → DEVRE DIŞI BIRAKILDI
-  // İleride düzelirlerse tekrar eklenebilir
+  // ═══ DAĞITIK WORKER DESTEĞİ ═══
+  // Bull worker varsa → işi worker'a gönder (yatay ölçekleme)
+  // Worker yoksa → eski lokal sistem devam eder
+  if (bullWorkerAvailable) {
+    try {
+      const bullResult = await resolveViaBull(videoId, type, 1);
+      if (bullResult) return bullResult;
+      // Bull başarısız → fallback: lokal çözümleme
+      console.log(`[BULL_FALLBACK] ${videoId} worker'da çözülemedi, lokal deneniyor...`);
+    } catch (e) {
+      console.warn(`[BULL_FALLBACK] ${videoId} Bull hatası: ${e.message}`);
+    }
+  }
 
+  // SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
   const allPromises = [];
 
   // KATMAN 1: yt-dlp (ANA KAYNAK — proxy + cookies ile çalışır)

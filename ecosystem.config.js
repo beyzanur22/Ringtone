@@ -22,6 +22,37 @@ module.exports = {
         PORT: 5000,
         MEDIA_DIR: "/app/media"
       }
+    },
+
+    // ═══════════════════════════════════════════════════
+    // yt-dlp RESOLVE WORKER'LARI
+    // Her worker 6 paralel yt-dlp çalıştırır
+    // 4 worker × 6 = 24 eşzamanlı çözümleme (tek sunucu)
+    //
+    // Başka sunucuya eklemek için:
+    //   REDIS_URL=redis://ana-sunucu:6379 pm2 start resolve_worker.js -i 4
+    // ═══════════════════════════════════════════════════
+    {
+      name: "resolver",
+      script: "./resolve_worker.js",
+      instances: 4,
+      exec_mode: "fork",  // Her biri bağımsız process
+      max_memory_restart: "1000M",
+      watch: false,
+      autorestart: true,
+      restart_delay: 5000,
+      max_restarts: 10,
+      min_uptime: "10s",
+
+      error_file: "./logs/resolver-error.log",
+      out_file: "./logs/resolver-output.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      merge_logs: true,
+
+      env: {
+        NODE_ENV: "production",
+        WORKER_CONCURRENCY: 6  // Worker başına paralel iş sayısı
+      }
     }
   ]
 };
