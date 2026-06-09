@@ -2219,7 +2219,7 @@ app.get("/top50", async (req, res) => {
 
     await cacheSet(cacheKey, items, CACHE_DURATION);
 
-    // Ön-ısıtma (Prewarm) — Kendi sunucumuzda aktif! YouTube isteklerini minimuma indirir.
+    // Top50 prewarm — popüler şarkılar cache'te hazır olsun
     prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
@@ -3009,8 +3009,8 @@ async function warmTop50() {
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
-      // Bu ülkenin Top50'sini prewarm yap (şarkıları diske indir)
-      if (regions.length <= 5) prewarmTop10(items); // 5'ten fazla ülke varsa proxy korumak için sadece cache'le
+      // Top50 prewarm — popüler şarkılar cache'te hazır olsun
+      if (regions.length <= 5) prewarmTop10(items);
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
