@@ -437,10 +437,8 @@ if (isPrimaryWorker) {
 // intervalCap: 8/1s → saniyede max 8 istek (YouTube ban eşiğinin altında)
 // timeout: 30s → takılan bir resolve tüm kuyruğu bloke etmesin
 const queue = new PQueue({
-  concurrency: 10,      // 10 paralel çözümleme (4 worker × 10 = 40 toplam)
-  interval: 1000,
-  intervalCap: 8,       // 1 saniyede max 8 istek
-  timeout: 120000,      // 120 saniye — kuyrukta beklesin, hata vermesin
+  concurrency: 50,      // 50 paralel çözümleme — Bull Queue zaten 264 paralel yönetiyor
+  timeout: 120000,      // 120 saniye timeout
   throwOnTimeout: true
 });
 // Kuyruk izleme — yoğunluk uyarısı (eşik artırıldı)
@@ -2597,8 +2595,8 @@ app.get("/stream", async (req, res) => {
       ongoingResolutions.set(ongoingKey, resolutionPromise);
       streamUrl = await resolutionPromise;
 
-      // Stream URL'leri 5 saat cache'le
-      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+      // Stream URL'leri 5 saat cache'le (arka planda — kullanıcıyı bekletme)
+      cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION).catch(() => {});
       console.log("AUDIO CACHE SAVE:", videoId);
     }
 
