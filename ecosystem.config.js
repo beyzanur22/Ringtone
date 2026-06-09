@@ -51,7 +51,7 @@ module.exports = {
 
       env: {
         NODE_ENV: "production",
-        WORKER_CONCURRENCY: 6  // Worker başına paralel iş sayısı
+        WORKER_CONCURRENCY: 10  // Worker başına paralel iş sayısı (4×10=40 paralel)
       }
     }
   ]
