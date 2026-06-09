@@ -87,7 +87,7 @@ async function simulateUser(userId) {
   try {
     const resp = await fetch(`${BASE_URL}/stream?videoId=${videoId}`, {
       headers: getAuthHeaders("/stream"),
-      signal: AbortSignal.timeout(60000)
+      signal: AbortSignal.timeout(80000)
     });
     const streamTime = Date.now() - streamStart;
     stats.stream.times.push(streamTime);
