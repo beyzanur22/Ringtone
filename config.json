@@ -12,5 +12,10 @@
     "showEveryNth": 1,
     "delaySeconds": 0,
     "rules": []
+  },
+  "bannerAd": {
+    "enabled": true,
+    "showEveryNth": 3,
+    "rules": []
   }
 }
