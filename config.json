@@ -18,5 +18,9 @@
     "showEveryNth": 3,
     "rules": []
   },
-  "adFreeCountries": []
+  "adFreeCountries": [],
+  "bottomBannerAd": {
+    "enabled": false,
+    "rules": []
+  }
 }
