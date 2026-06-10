@@ -1923,13 +1923,13 @@ function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
   if (!blockedGroups.length) return items;
   return items.filter(item => {
-    // Hem YouTube formatı (snippet) hem de düz format (Bazocam vb.) desteği
     const snippet = item.snippet || item;
     const channelTitle = (snippet.channelTitle || snippet.uploaderName || "").toLowerCase();
     const videoTitle = (snippet.title || "").toLowerCase();
-    
+    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || "";
+    const channelId = snippet.channelId || "";
+
     const isBlocked = blockedGroups.some(group => {
-      // Ülke kontrolü
       const ruleCountries = group.countries || "all";
       if (ruleCountries !== "all") {
         const countriesArray = Array.isArray(ruleCountries) ? ruleCountries : ruleCountries.split(",");
@@ -1938,17 +1938,21 @@ function filterBlockedChannels(items, country = "all") {
 
       if (!group.channels || !Array.isArray(group.channels)) return false;
       const type = group.type || "channel";
-      
+
       return group.channels.some(blockedValue => {
-        const val = blockedValue.toLowerCase();
+        const val = blockedValue.trim();
         if (type === "keyword") {
-          return videoTitle.includes(val);
+          return videoTitle.includes(val.toLowerCase());
+        } else if (type === "channelId") {
+          return channelId === val;
+        } else if (type === "videoId") {
+          return videoId === val;
         } else {
-          return channelTitle.includes(val);
+          return channelTitle.includes(val.toLowerCase());
         }
       });
     });
-    
+
     return !isBlocked;
   });
 }
