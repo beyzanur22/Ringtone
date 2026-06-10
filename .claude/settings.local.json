@@ -17,7 +17,14 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\beyza\\\\Desktop\\\\flutter_music_video_downloader-main\\\\app\\\\lib\\\\widgets\" -Recurse -Filter \"*.dart\")",
       "Bash(Select-Object Name)",
       "Bash(Sort-Object)",
-      "PowerShell(flutter --version)"
+      "PowerShell(flutter --version)",
+      "Bash(ls /mnt/c/Users/beyza/Desktop/ 2>/dev/null | grep -i newpipe || echo \"no newpipe dirs found\")",
+      "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-dev remote -v)",
+      "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-fix remote -v)",
+      "Read(//c/Users/beyza/Desktop/**)",
+      "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-upstream log --oneline -5)",
+      "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-fork log --oneline -5)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }
