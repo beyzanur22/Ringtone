@@ -17,5 +17,6 @@
     "enabled": true,
     "showEveryNth": 3,
     "rules": []
-  }
+  },
+  "adFreeCountries": []
 }
