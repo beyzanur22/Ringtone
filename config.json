@@ -8,9 +8,9 @@
     "enabled": true,
     "type": "url",
     "url": "https://google.com",
-    "admobEnabled": false,
     "admobUnitId": "",
     "showEveryNth": 1,
-    "delaySeconds": 0
+    "delaySeconds": 0,
+    "rules": []
   }
 }
