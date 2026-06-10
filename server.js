@@ -1926,8 +1926,9 @@ function filterBlockedChannels(items, country = "all") {
     const snippet = item.snippet || item;
     const channelTitle = (snippet.channelTitle || snippet.uploaderName || "").toLowerCase();
     const videoTitle = (snippet.title || "").toLowerCase();
-    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || "";
-    const channelId = snippet.channelId || "";
+    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || item.url?.split("v=")[1] || "";
+    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || "";
+    const channelId = snippet.channelId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
 
     const isBlocked = blockedGroups.some(group => {
       const ruleCountries = group.countries || "all";
