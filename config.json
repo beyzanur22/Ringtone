@@ -3,5 +3,14 @@
     "enabled": true,
     "mode": "youtube"
   },
-  "countries": {}
+  "countries": {},
+  "downloadAd": {
+    "enabled": false,
+    "type": "url",
+    "url": "",
+    "admobEnabled": false,
+    "admobUnitId": "",
+    "showEveryNth": 1,
+    "delaySeconds": 0
+  }
 }
