@@ -5,9 +5,9 @@
   },
   "countries": {},
   "downloadAd": {
-    "enabled": false,
+    "enabled": true,
     "type": "url",
-    "url": "",
+    "url": "https://google.com",
     "admobEnabled": false,
     "admobUnitId": "",
     "showEveryNth": 1,
