@@ -2239,16 +2239,30 @@ app.get("/top50/test/:region", async (req, res) => {
   const region = (req.params.region || "US").toUpperCase();
   const cacheKey = `top50:${region}`;
   const cached = await cacheGet(cacheKey);
-  const titles = cached
-    ? cached.slice(0, 10).map((item, i) => `${i+1}. ${item.snippet?.title || "?"}`)
-    : null;
-  res.json({
-    region,
-    cacheKey,
-    hasCachedData: !!cached,
-    totalCached: cached ? cached.length : 0,
-    first10: titles || "Cache boş — henüz bu ülke için istek gelmemiş"
-  });
+
+  if (cached) {
+    const titles = cached.slice(0, 10).map((item, i) => `${i+1}. ${item.snippet?.title || "?"}`);
+    return res.json({ region, source: "cache", totalCached: cached.length, first10: titles });
+  }
+
+  // Cache boşsa YouTube API'den çek ama cache'leme
+  try {
+    const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+      params: {
+        part: "snippet,contentDetails,statistics",
+        chart: "mostPopular",
+        regionCode: region,
+        maxResults: 50,
+        videoCategoryId: 10,
+        key: YOUTUBE_API_KEY
+      }
+    });
+    const items = response.data.items || [];
+    const titles = items.slice(0, 10).map((item, i) => `${i+1}. ${item.snippet?.title || "?"}`);
+    res.json({ region, source: "youtube_live", totalFetched: items.length, first10: titles });
+  } catch (e) {
+    res.json({ region, source: "error", message: e.message });
+  }
 });
 
 // SEARCH
