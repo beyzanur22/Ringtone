@@ -1649,7 +1649,8 @@ app.use(async (req, res, next) => {
   if (req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
-      req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache")) {
+      req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
+      req.path === "/admin/youtube") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -2065,6 +2066,72 @@ app.post("/admin/smart-cache", basicAuth, async (req, res) => {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
     _cachedConfig = null;
     res.json({ success: true, smartCache: config.apiProviders.smartCache });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ========== ADMIN: YouTube & Top50 Yönetim Endpoint'leri ==========
+
+let warmupIntervalMs = 50 * 60 * 1000; // varsayılan 50dk
+let warmupTimer = null;
+let youtubeApiCallCount = 0; // sunucu başladığından beri yapılan API çağrı sayısı
+
+// YouTube API çağrılarını say
+function trackYoutubeApiCall() { youtubeApiCallCount++; }
+
+app.get("/admin/youtube", basicAuth, async (req, res) => {
+  try {
+    const regions = Array.from(activeRegions);
+    const cachedRegions = [];
+    for (const r of regions) {
+      const cached = await cacheGet(`top50:${r}`);
+      cachedRegions.push({ region: r, cached: !!cached, trackCount: cached ? cached.length : 0 });
+    }
+    res.json({
+      youtubeApiKey: YOUTUBE_API_KEY ? `${YOUTUBE_API_KEY.substring(0, 8)}...${YOUTUBE_API_KEY.slice(-4)}` : "YOK",
+      youtubeApiKeyFull: YOUTUBE_API_KEY || "",
+      status: youtubeApiStatus,
+      quotaExceeded: stats.youtubeApiQuotaExceeded,
+      apiCallCount: youtubeApiCallCount,
+      activeRegions: cachedRegions,
+      warmupIntervalMin: Math.round(warmupIntervalMs / 60000),
+      cacheDurationMin: Math.round(CACHE_DURATION / 60),
+      searchCacheDurationMin: Math.round(SEARCH_CACHE_DURATION / 60)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/youtube", basicAuth, async (req, res) => {
+  try {
+    const { warmupInterval, addRegion, removeRegion, forceWarmup } = req.body;
+
+    if (warmupInterval && warmupInterval >= 10 && warmupInterval <= 1440) {
+      warmupIntervalMs = warmupInterval * 60 * 1000;
+      if (warmupTimer) clearInterval(warmupTimer);
+      warmupTimer = setInterval(warmTop50, warmupIntervalMs);
+      console.log(`[ADMIN] Warmup aralığı değiştirildi: ${warmupInterval} dakika`);
+    }
+
+    if (addRegion && addRegion.length === 2) {
+      activeRegions.add(addRegion.toUpperCase());
+      console.log(`[ADMIN] Ülke eklendi: ${addRegion.toUpperCase()}`);
+    }
+
+    if (removeRegion && removeRegion.length === 2) {
+      activeRegions.delete(removeRegion.toUpperCase());
+      await redis.del(`top50:${removeRegion.toUpperCase()}`);
+      console.log(`[ADMIN] Ülke kaldırıldı: ${removeRegion.toUpperCase()}`);
+    }
+
+    if (forceWarmup) {
+      warmTop50();
+      console.log(`[ADMIN] Top50 manuel ısıtma başlatıldı`);
+    }
+
+    res.json({ success: true, activeRegions: Array.from(activeRegions), warmupIntervalMin: Math.round(warmupIntervalMs / 60000) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -3155,23 +3222,7 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // ★ BİRİNCİL: API Provider (mp4download.php)
-    try {
-      const quality = parseInt(req.query.q) || 720;
-      console.log(`[STREAM_VIDEO] API Provider ile video stream: ${videoId} (${quality}p)`);
-      const apiResult = await apiStreamMp4(videoId, quality);
-
-      res.setHeader("Content-Type", "video/mp4");
-      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
-      res.setHeader("Accept-Ranges", "bytes");
-      setDrmHeaders(res);
-      safePipe(apiResult.stream, res);
-      return;
-    } catch (apiErr) {
-      console.warn(`[STREAM_VIDEO] API Provider başarısız: ${apiErr.message}. YouTube fallback...`);
-    }
-
-    // ★ FALLBACK: Eski YouTube CDN çözümleme
+    // ★ YouTube CDN çözümleme (MP4 API devre dışı — timeout sorunu)
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -3328,6 +3379,7 @@ async function warmTop50() {
           key: YOUTUBE_API_KEY
         }
       });
+      trackYoutubeApiCall();
       const items = filterBlockedChannels(response.data.items);
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
@@ -3342,8 +3394,8 @@ async function warmTop50() {
   }
 }
 
-// Her 50 dakikada bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sadece primary worker)
-if (isPrimaryWorker) setInterval(warmTop50, 50 * 60 * 1000);
+// Her warmupIntervalMs'de bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sadece primary worker)
+if (isPrimaryWorker) warmupTimer = setInterval(warmTop50, warmupIntervalMs);
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, "0.0.0.0", async () => {
@@ -3622,23 +3674,7 @@ app.get("/download/mp4", async (req, res) => {
       }
     } catch (e) { }
 
-    // ★ BİRİNCİL: API Provider (mp4download.php)
-    try {
-      const quality = parseInt(req.query.q) || 720;
-      console.log(`[DOWNLOAD_MP4] API Provider ile indiriliyor: ${videoId} (${quality}p)`);
-      const apiResult = await apiStreamMp4(videoId, quality);
-
-      res.setHeader("Content-Type", "video/mp4");
-      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
-
-      safePipe(apiResult.stream, res);
-      return;
-    } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4] API Provider başarısız: ${apiErr.message}. YouTube fallback...`);
-    }
-
-    // ★ FALLBACK: Eski YouTube CDN çözümleme
+    // ★ YouTube CDN çözümleme (MP4 API devre dışı — timeout sorunu)
     const cacheKey = `stream:video:${videoId}`;
     const cached = await cacheGet(cacheKey);
     let streamUrl, ua;
