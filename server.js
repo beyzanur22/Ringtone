@@ -19,6 +19,10 @@ if (!ADMIN_PASS) {
   process.exit(1);
 }
 const basicAuth = (req, res, next) => {
+  // X-App-Key ile React admin panel erişimi
+  if (req.headers["x-app-key"] === APP_SECRET) {
+    return next();
+  }
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
