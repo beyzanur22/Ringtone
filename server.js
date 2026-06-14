@@ -1648,7 +1648,8 @@ app.use(async (req, res, next) => {
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
   if (req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
-      req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter") {
+      req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
+      req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache")) {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
