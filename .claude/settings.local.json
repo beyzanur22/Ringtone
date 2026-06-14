@@ -44,7 +44,9 @@
       "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\BitirmeProjePAT \\(1\\) \\(2\\).docx\")",
       "PowerShell(pandoc \"C:\\\\Users\\\\beyza\\\\Downloads\\\\BitirmeProjePAT \\(1\\) \\(2\\).docx\" -t markdown --wrap=none 2>&1)",
       "PowerShell($skillDir = \"C:\\\\Users\\\\beyza\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\f9813cb5-ea0d-47ce-9dbf-503a94aba6d7\\\\e8fd8e5f-6bae-4c30-9be5-70f9088dcaab\\\\skills\\\\docx\"; python \"$skillDir\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\tez_unpacked\\\\\")",
-      "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\")"
+      "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\")",
+      "Bash(git update-index *)",
+      "Bash(findstr /i \"temp_compare\")"
     ]
   }
 }
