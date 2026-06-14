@@ -12,3 +12,6 @@ media_db.json
 # Cookie dosyaları HARİÇ tüm .txt'leri ignore et
 *.txt
 !yt_cookies/*.txt
+temp_compare/
+temp_compare2/
+CUsersbeyzaDesktopringtone-backend-deploytemp_compare/

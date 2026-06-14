@@ -1843,9 +1843,246 @@ if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
     global: { enabled: true, mode: "youtube" },
     countries: {},
-    mp3Provider: { bazocam: true, backend: true }
+    mp3Provider: { bazocam: true, backend: true },
+    apiProviders: {
+      providers: [
+        { id: "gamma", name: "gamma.gammacloud.net (yt2mp3.ai)", enabled: true, priority: 1 },
+        { id: "cnv", name: "cnv.cx (y2mate)", enabled: true, priority: 2, dailyLimit: 200 },
+        { id: "youtubemp3", name: "youtubemp3.ltd", enabled: true, priority: 3 }
+      ],
+      apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
+      baseUrl: "https://bazocam.net",
+      smartCache: { enabled: true, minRequests: 3 }
+    }
   }, null, 2));
 }
+
+/* =========================
+   API PROVIDER SİSTEMİ — bazocam.net üzerinden 3. parti API yönetimi
+   gamma (yt2mp3.ai), cnv (y2mate), youtubemp3.ltd
+========================= */
+
+function getApiProviderConfig() {
+  const config = getCachedConfig();
+  return config.apiProviders || {
+    providers: [
+      { id: "gamma", name: "gamma.gammacloud.net", enabled: true, priority: 1 },
+      { id: "cnv", name: "cnv.cx (y2mate)", enabled: true, priority: 2, dailyLimit: 200 },
+      { id: "youtubemp3", name: "youtubemp3.ltd", enabled: true, priority: 3 }
+    ],
+    apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
+    baseUrl: "https://bazocam.net",
+    smartCache: { enabled: true, minRequests: 3 }
+  };
+}
+
+// Akıllı Cache: İstek sayacı — sadece N+ istek gelen şarkılar cache'lenir
+async function incrementRequestCount(videoId) {
+  try {
+    const key = `req_count:${videoId}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 86400); // 24 saat TTL
+    return count;
+  } catch { return 1; }
+}
+
+async function shouldCache(videoId) {
+  const providerConfig = getApiProviderConfig();
+  const minReq = providerConfig.smartCache?.minRequests || 3;
+  if (!providerConfig.smartCache?.enabled) return true;
+  try {
+    const count = parseInt(await redis.get(`req_count:${videoId}`) || "0");
+    return count >= minReq;
+  } catch { return false; }
+}
+
+// bazocam.net API çağrıları — yeni endpoint'ler
+async function apiStreamMp3(videoId, bitrate = 320) {
+  const cfg = getApiProviderConfig();
+  const url = `${cfg.baseUrl}/mp3download.php?id=${videoId}&key=${cfg.apiKey}&b=${bitrate}`;
+  console.log(`[API_PROVIDER] MP3 stream isteniyor: ${videoId} (${bitrate}kbps)`);
+
+  const response = await axiosClient({
+    method: "GET",
+    url,
+    responseType: "stream",
+    timeout: 120000,
+    validateStatus: (status) => status === 200,
+    headers: { "User-Agent": getRandomUA() }
+  });
+
+  const contentType = response.headers["content-type"] || "";
+  if (contentType.includes("text/html")) {
+    throw new Error("API HTML döndürdü — MP3 dosyası bekleniyor");
+  }
+
+  const cacheHeader = response.headers["x-cache"] || "";
+  console.log(`[API_PROVIDER] MP3 yanıt: ${videoId} | cache=${cacheHeader} | size=${response.headers["content-length"] || "?"}`);
+
+  return {
+    stream: response.data,
+    contentType: response.headers["content-type"],
+    contentLength: response.headers["content-length"],
+    cacheHit: cacheHeader === "HIT"
+  };
+}
+
+async function apiStreamMp4(videoId, quality = 720) {
+  const cfg = getApiProviderConfig();
+  const url = `${cfg.baseUrl}/mp4download.php?id=${videoId}&key=${cfg.apiKey}&q=${quality}`;
+  console.log(`[API_PROVIDER] MP4 stream isteniyor: ${videoId} (${quality}p)`);
+
+  const response = await axiosClient({
+    method: "GET",
+    url,
+    responseType: "stream",
+    timeout: 120000,
+    validateStatus: (status) => status === 200,
+    headers: { "User-Agent": getRandomUA() }
+  });
+
+  const contentType = response.headers["content-type"] || "";
+  if (contentType.includes("text/html")) {
+    throw new Error("API HTML döndürdü — MP4 dosyası bekleniyor");
+  }
+
+  return {
+    stream: response.data,
+    contentType: response.headers["content-type"],
+    contentLength: response.headers["content-length"]
+  };
+}
+
+async function apiSearch(query) {
+  const cfg = getApiProviderConfig();
+  const url = `${cfg.baseUrl}/searchapi.php?search=${encodeURIComponent(query)}&key=${cfg.apiKey}`;
+  console.log(`[API_PROVIDER] Arama: "${query}"`);
+
+  const response = await axiosClient.get(url, { timeout: 10000 });
+  return response.data;
+}
+
+async function apiAutocomplete(query) {
+  const cfg = getApiProviderConfig();
+  const url = `${cfg.baseUrl}/ototamamlamaapi.php?search=${encodeURIComponent(query)}&key=${cfg.apiKey}`;
+
+  const response = await axiosClient.get(url, { timeout: 5000 });
+  return response.data;
+}
+
+// API Provider sağlık kontrolü
+async function checkProviderHealth() {
+  const cfg = getApiProviderConfig();
+  const results = [];
+  for (const provider of (cfg.providers || [])) {
+    try {
+      const testUrl = `${cfg.baseUrl}/mp3download.php?id=test&key=${cfg.apiKey}&b=128`;
+      const resp = await axiosClient.get(testUrl, { timeout: 8000, validateStatus: () => true });
+      results.push({
+        ...provider,
+        status: resp.status < 500 ? "online" : "offline",
+        httpStatus: resp.status,
+        checkedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      results.push({
+        ...provider,
+        status: "offline",
+        error: err.message,
+        checkedAt: new Date().toISOString()
+      });
+    }
+  }
+  return results;
+}
+
+// ========== ADMIN: API Provider Yönetim Endpoint'leri ==========
+
+// API Provider ayarlarını getir
+app.get("/admin/api-providers", basicAuth, async (req, res) => {
+  try {
+    const cfg = getApiProviderConfig();
+    const health = await checkProviderHealth();
+    res.json({ ...cfg, providerHealth: health });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Provider ayarlarını güncelle
+app.post("/admin/api-providers", basicAuth, async (req, res) => {
+  try {
+    const config = getCachedConfig();
+    config.apiProviders = { ...getApiProviderConfig(), ...req.body };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _cachedConfig = null;
+    res.json({ success: true, apiProviders: config.apiProviders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API Provider sağlık kontrolü
+app.get("/admin/api-health", basicAuth, async (req, res) => {
+  try {
+    const health = await checkProviderHealth();
+    res.json({ providers: health, proxyCount: 20, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Akıllı Cache ayarları
+app.get("/admin/smart-cache", basicAuth, async (req, res) => {
+  try {
+    const cfg = getApiProviderConfig();
+    const cacheStats = {
+      smartCache: cfg.smartCache || { enabled: true, minRequests: 3 },
+      diskUsage: "N/A",
+      r2Usage: "N/A"
+    };
+    try {
+      const { execSync } = require("child_process");
+      const du = execSync(`du -sh ${CACHE_DIR} 2>/dev/null || echo "0"`).toString().trim();
+      cacheStats.diskUsage = du.split("\t")[0] || du;
+    } catch {}
+    res.json(cacheStats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/admin/smart-cache", basicAuth, async (req, res) => {
+  try {
+    const config = getCachedConfig();
+    if (!config.apiProviders) config.apiProviders = getApiProviderConfig();
+    config.apiProviders.smartCache = { ...config.apiProviders.smartCache, ...req.body };
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _cachedConfig = null;
+    res.json({ success: true, smartCache: config.apiProviders.smartCache });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Autocomplete endpoint (yeni)
+app.get("/autocomplete", async (req, res) => {
+  try {
+    const query = req.query.q?.trim();
+    if (!query) return res.status(400).json({ error: "Query required" });
+
+    const cacheKey = `autocomplete:${query}`;
+    const cached = await cacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    const results = await apiAutocomplete(query);
+    await cacheSet(cacheKey, results, 3600);
+    res.json(results);
+  } catch (err) {
+    console.error("[AUTOCOMPLETE]", err.message);
+    res.status(500).json({ error: "Autocomplete failed" });
+  }
+});
 
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify([]));
@@ -2278,17 +2515,27 @@ app.get("/search", searchLimiter, async (req, res) => {
     const cached = await cacheGet(cacheKey);
     if (cached) return res.json(cached);
 
-    // ADIM 1: Bazocam API
+    // ADIM 1: Yeni API Provider (searchapi.php)
     let searchResult = null;
     try {
-      console.log(`[SEARCH] Bazocam API kullanılıyor: "${query}"`);
-      const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=${BAZOCAM_PASS}&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
-
-      const bazocamData = response.data || [];
-      const filteredData = filterBlockedChannels(bazocamData, country);
+      console.log(`[SEARCH] API Provider kullanılıyor: "${query}"`);
+      const apiData = await apiSearch(query);
+      const results = apiData.results || apiData.data || apiData || [];
+      const filteredData = filterBlockedChannels(Array.isArray(results) ? results : [], country);
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
-      logError("SEARCH_BAZOCAM_FAIL", null, `Bazocam arama başarısız: ${apiError.message}`);
+      logError("SEARCH_API_FAIL", null, `API Provider arama başarısız: ${apiError.message}`);
+
+      // Eski bazocam search.php fallback
+      try {
+        console.log(`[SEARCH] Eski Bazocam API fallback: "${query}"`);
+        const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=${BAZOCAM_PASS}&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
+        const bazocamData = response.data || [];
+        const filteredData = filterBlockedChannels(bazocamData, country);
+        searchResult = { data: filteredData, nextPageToken: null };
+      } catch (fallbackErr) {
+        logError("SEARCH_BAZOCAM_FAIL", null, `Bazocam fallback başarısız: ${fallbackErr.message}`);
+      }
     }
 
     // ADIM 2: Bazocam başarısız → YouTube Data API fallback
@@ -2582,8 +2829,47 @@ app.get("/stream", async (req, res) => {
         safePipe(r2Data.stream, res);
         return;
       }
-    } catch (r2Err) { /* R2 yoksa YouTube'a devam */ }
+    } catch (r2Err) { /* R2 yoksa devam */ }
 
+    // Akıllı cache: istek sayacını artır
+    await incrementRequestCount(videoId);
+
+    // ★ YENİ BİRİNCİL YOL: API Provider (bazocam mp3download.php)
+    // Cache katmanlarında bulunamadıysa, API'den direkt MP3 stream et
+    try {
+      console.log(`[STREAM] API Provider ile stream deneniyor: ${videoId}`);
+      const apiResult = await apiStreamMp3(videoId, 320);
+
+      res.setHeader("Content-Type", apiResult.contentType || "audio/mpeg");
+      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
+      res.setHeader("Accept-Ranges", "bytes");
+      setDrmHeaders(res);
+
+      safePipe(apiResult.stream, res);
+
+      // Akıllı cache: 3+ istek gelen şarkıyı arka planda diske kaydet
+      if (await shouldCache(videoId)) {
+        const cacheFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
+        if (!fs.existsSync(cacheFile)) {
+          try {
+            const cacheResult = await apiStreamMp3(videoId, 320);
+            const writeStream = fs.createWriteStream(cacheFile);
+            cacheResult.stream.pipe(writeStream);
+            writeStream.on("finish", () => {
+              console.log(`[SMART_CACHE] Diske kaydedildi: ${videoId}`);
+              const r2Key = `audio/${videoId}.mp3`;
+              uploadToR2(r2Key, cacheFile).catch(() => {});
+            });
+            writeStream.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} });
+          } catch {}
+        }
+      }
+      return;
+    } catch (apiErr) {
+      console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}. YouTube fallback deneniyor...`);
+    }
+
+    // ★ FALLBACK: Eski YouTube CDN çözümleme (yt-dlp / Innertube)
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
     const countryClient = getPlayerClientForCountry(country);
 
@@ -2598,7 +2884,6 @@ app.get("/stream", async (req, res) => {
     } else {
       ua = getRandomUA();
 
-      // ÇAKIŞMA ÖNLEYİCİ: Bu videoyu çözme işlemini bir Promise olarak başlat
       const resolutionPromise = queue.add(async () => {
         try {
           const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
@@ -2865,7 +3150,23 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // KATMAN 2: YouTube'dan çöz
+    // ★ BİRİNCİL: API Provider (mp4download.php)
+    try {
+      const quality = parseInt(req.query.q) || 720;
+      console.log(`[STREAM_VIDEO] API Provider ile video stream: ${videoId} (${quality}p)`);
+      const apiResult = await apiStreamMp4(videoId, quality);
+
+      res.setHeader("Content-Type", "video/mp4");
+      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
+      res.setHeader("Accept-Ranges", "bytes");
+      setDrmHeaders(res);
+      safePipe(apiResult.stream, res);
+      return;
+    } catch (apiErr) {
+      console.warn(`[STREAM_VIDEO] API Provider başarısız: ${apiErr.message}. YouTube fallback...`);
+    }
+
+    // ★ FALLBACK: Eski YouTube CDN çözümleme
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -3193,7 +3494,7 @@ async function pollConversionStatus(statusUrl, downloadUrl, maxWaitMs = 120000) 
   throw new Error(`Bazocam dönüştürme zaman aşımı (${maxWaitMs / 1000} saniye)`);
 }
 
-// MP3 İndirme — Bazocam converter.php API Entegrasyonu
+// MP3 İndirme — Yeni API Provider sistemi (mp3download.php)
 app.get("/download/mp3", async (req, res) => {
   try {
     const { videoId, kbps } = req.query;
@@ -3202,75 +3503,53 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
-    // Kalite seçimi: 128, 192 veya 320 kbps
-    const quality = ["128", "192", "320"].includes(kbps) ? kbps : "128";
+    const quality = ["128", "192", "320"].includes(kbps) ? kbps : "320";
 
-    // Config'den provider ayarlarını oku
-    const config = getCachedConfig();
-    const mp3Config = config.mp3Provider || { bazocam: true, backend: true };
-    const bazocamEnabled = mp3Config.bazocam !== false;
-    const backendEnabled = mp3Config.backend !== false;
+    // ★ BİRİNCİL: Yeni API Provider (mp3download.php)
+    try {
+      console.log(`[DOWNLOAD_MP3] API Provider ile indiriliyor: ${videoId} (${quality}kbps)`);
+      const apiResult = await apiStreamMp3(videoId, parseInt(quality));
 
-    console.log(`[DOWNLOAD_MP3] Provider ayarları — Bazocam: ${bazocamEnabled}, Backend: ${backendEnabled}`);
+      const safeTitle = (req.query.title || `audio_${videoId}`)
+        .replace(/[^\w\s\-\.]/g, "").trim().substring(0, 100) || `audio_${videoId}`;
 
-    // BAZOCAM ile dene (açıksa)
-    if (bazocamEnabled) {
-      try {
-        const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
-        console.log(`[DOWNLOAD_MP3] Bazocam API çağrılıyor: ${videoId} (${quality}kbps)`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+      res.setHeader("Content-Type", apiResult.contentType || "audio/mpeg");
+      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
 
-        const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
-        const data = apiResponse.data;
-
-        console.log(`[DOWNLOAD_MP3] Bazocam yanıt: status=${data.status} | job=${data.job_id || "?"}`);
-
-        if (data.status === "cached" && (data.download || data.download_url)) {
-          console.log(`[DOWNLOAD_MP3] Bazocam CACHE HIT: ${videoId}`);
-          return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
-        }
-
-        if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
-          console.log(`[DOWNLOAD_MP3] Bazocam dönüştürüyor: ${videoId} (job: ${data.job_id || "?"})`);
-          const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
-          console.log(`[DOWNLOAD_MP3] Dönüştürme tamamlandı, MP3 aktarılıyor: ${videoId}`);
-          return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
-        }
-
-        throw new Error(`Bazocam beklenmeyen yanıt: ${JSON.stringify(data).substring(0, 200)}`);
-
-      } catch (apiErr) {
-        console.warn(`[DOWNLOAD_MP3] BAZOCAM BAŞARISIZ (${apiErr.message}).`);
-
-        // Bazocam başarısız — backend açıksa yedek olarak devam et
-        if (backendEnabled) {
-          console.log(`[DOWNLOAD_MP3] Backend yedek sisteme geçiliyor...`);
-          if (!res.headersSent) {
-            res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-            await ytdlpStream(videoId, "audio", req, res);
-          }
-          return;
-        }
-
-        // İkisi de çalışmadı
-        if (!res.headersSent) {
-          return res.status(500).json({ error: "Bazocam failed and backend fallback is disabled" });
-        }
-      }
+      safePipe(apiResult.stream, res);
+      return;
+    } catch (apiErr) {
+      console.warn(`[DOWNLOAD_MP3] API Provider başarısız: ${apiErr.message}`);
     }
-    // Sadece backend açıksa (bazocam kapalı)
-    else if (backendEnabled) {
-      console.log(`[DOWNLOAD_MP3] Bazocam kapalı, backend ile indiriliyor: ${videoId}`);
-      if (!res.headersSent) {
-        res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-        await ytdlpStream(videoId, "audio", req, res);
+
+    // ★ İKİNCİL FALLBACK: Eski Bazocam converter.php
+    try {
+      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
+      console.log(`[DOWNLOAD_MP3] Eski Bazocam converter fallback: ${videoId}`);
+
+      const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
+      const data = apiResponse.data;
+
+      if (data.status === "cached" && (data.download || data.download_url)) {
+        return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
       }
+
+      if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
+        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
+        return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
+      }
+
+      throw new Error(`Converter beklenmeyen yanıt`);
+    } catch (convErr) {
+      console.warn(`[DOWNLOAD_MP3] Converter fallback başarısız: ${convErr.message}`);
     }
-    // İkisi de kapalı
-    else {
-      console.warn(`[DOWNLOAD_MP3] Her iki provider da kapalı!`);
-      if (!res.headersSent) {
-        return res.status(503).json({ error: "MP3 download is currently disabled" });
-      }
+
+    // ★ SON ÇARE: yt-dlp
+    console.log(`[DOWNLOAD_MP3] Son çare yt-dlp: ${videoId}`);
+    if (!res.headersSent) {
+      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
+      await ytdlpStream(videoId, "audio", req, res);
     }
 
   } catch (err) {
@@ -3338,7 +3617,23 @@ app.get("/download/mp4", async (req, res) => {
       }
     } catch (e) { }
 
-    // KATMAN 2: URL CACHE
+    // ★ BİRİNCİL: API Provider (mp4download.php)
+    try {
+      const quality = parseInt(req.query.q) || 720;
+      console.log(`[DOWNLOAD_MP4] API Provider ile indiriliyor: ${videoId} (${quality}p)`);
+      const apiResult = await apiStreamMp4(videoId, quality);
+
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+      if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
+
+      safePipe(apiResult.stream, res);
+      return;
+    } catch (apiErr) {
+      console.warn(`[DOWNLOAD_MP4] API Provider başarısız: ${apiErr.message}. YouTube fallback...`);
+    }
+
+    // ★ FALLBACK: Eski YouTube CDN çözümleme
     const cacheKey = `stream:video:${videoId}`;
     const cached = await cacheGet(cacheKey);
     let streamUrl, ua;
@@ -3361,8 +3656,7 @@ app.get("/download/mp4", async (req, res) => {
       return res.status(500).json({ error: "Video URL çözümlenemedi" });
     }
 
-    // 3. Stream'i direkt Android'e aktar
-    console.log(`[DOWNLOAD_MP4] Stream aktarılıyor: ${videoId}`);
+    console.log(`[DOWNLOAD_MP4] YouTube CDN stream aktarılıyor: ${videoId}`);
     const response = await axiosClient({
       method: "GET",
       url: streamUrl.toString().trim(),
@@ -3378,24 +3672,6 @@ app.get("/download/mp4", async (req, res) => {
     if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
 
     safePipe(response.data, res);
-
-    // ARKA PLANDA - FFmpeg ile videoyu kalıcı kaydet
-    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
-      const metadata = { title: req.query.title || "Unknown", artist: req.query.uploader || "Unknown" };
-      mediaLib.upsertTrack(videoId, { ...metadata, category: "watching", status: "processing" });
-      const cookiePath = getRandomCookie();
-      const proxyUrl = getRandomProxy(videoId);
-      ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
-        .then(result => {
-          mediaLib.markReady(videoId, result);
-          ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
-            if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
-          }).catch(() => { });
-        })
-        .catch(err => {
-          mediaLib.markFailed(videoId, err.message);
-        });
-    }
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);

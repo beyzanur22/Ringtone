@@ -24,7 +24,27 @@
       "Read(//c/Users/beyza/Desktop/**)",
       "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-upstream log --oneline -5)",
       "Bash(git -C /c/Users/beyza/Desktop/NewPipeExtractor-fork log --oneline -5)",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "PowerShell($base = \"C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy\\\\temp_compare2\"; git diff --no-index \"$base\\\\fork\\\\extractor\\\\src\\\\main\\\\java\\\\org\\\\schabi\\\\newpipe\\\\extractor\\\\services\\\\youtube\\\\InnertubeClientRequestInfo.java\" \"$base\\\\official\\\\extractor\\\\src\\\\main\\\\java\\\\org\\\\schabi\\\\newpipe\\\\extractor\\\\services\\\\youtube\\\\InnertubeClientRequestInfo.java\" 2>&1 | Select-Object -First 60)",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "PowerShell(function Encode-String\\($s\\) { $key = 0x5E; $result = @\\(\\); foreach \\($c in $s.ToCharArray\\(\\)\\) { $result += \"0x{0:X2}\" -f \\([int]$c -bxor $key\\) }; \"new int[]{\" + \\($result -join \",\"\\) + \"}\" }; Encode-String \"VISIONOS\"; Encode-String \"101\"; Encode-String \"1.02\"; Encode-String \"RealityDevice14,1\"; Encode-String \"visionOS\"; Encode-String \"com.google.visionos.youtube/\"; Encode-String \"&c=VISIONOS\"; Encode-String \"25.6.0.23O471\"; Encode-String \"Could not get the VISIONOS streaming URL response\")",
+      "PowerShell(Copy-Item \"C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy\\\\temp_compare2\\\\official\\\\extractor\\\\src\\\\main\\\\java\\\\org\\\\schabi\\\\newpipe\\\\extractor\\\\services\\\\youtube\\\\extractors\\\\YoutubePlaylistExtractor.java\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy\\\\temp_compare2\\\\fork\\\\extractor\\\\src\\\\main\\\\java\\\\org\\\\schabi\\\\newpipe\\\\extractor\\\\services\\\\youtube\\\\extractors\\\\YoutubePlaylistExtractor.java\" -Force)",
+      "Read(//c/Kullanıcılar/beyza/AndroidStudioProjects/**)",
+      "Read(//c/Users/beyza/AndroidStudioProjects/focus_ai/**)",
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\beyza\\\\AndroidStudioProjects\\\\focus_ai\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(flutter analyze *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter run *)",
+      "Bash(flutter --version)",
+      "Bash(git push *)",
+      "Read(//c/Users/beyza/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/f9813cb5-ea0d-47ce-9dbf-503a94aba6d7/e8fd8e5f-6bae-4c30-9be5-70f9088dcaab/skills/docx/**)",
+      "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\BitirmeProjePAT \\(1\\) \\(2\\).docx\")",
+      "PowerShell(pandoc \"C:\\\\Users\\\\beyza\\\\Downloads\\\\BitirmeProjePAT \\(1\\) \\(2\\).docx\" -t markdown --wrap=none 2>&1)",
+      "PowerShell($skillDir = \"C:\\\\Users\\\\beyza\\\\AppData\\\\Roaming\\\\Claude\\\\local-agent-mode-sessions\\\\skills-plugin\\\\f9813cb5-ea0d-47ce-9dbf-503a94aba6d7\\\\e8fd8e5f-6bae-4c30-9be5-70f9088dcaab\\\\skills\\\\docx\"; python \"$skillDir\\\\scripts\\\\office\\\\unpack.py\" \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\tez_unpacked\\\\\")",
+      "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\")"
     ]
   }
 }
