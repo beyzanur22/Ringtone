@@ -1650,7 +1650,7 @@ app.use(async (req, res, next) => {
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
-      req.path === "/admin/youtube") {
+      req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -2132,6 +2132,27 @@ app.post("/admin/youtube", basicAuth, async (req, res) => {
     }
 
     res.json({ success: true, activeRegions: Array.from(activeRegions), warmupIntervalMin: Math.round(warmupIntervalMs / 60000) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== AUTO RINGTONE ADMIN =====
+app.get("/admin/auto-ringtone", basicAuth, (req, res) => {
+  const config = getCachedConfig();
+  const ar = config.autoRingtone || { enabled: false };
+  res.json(ar);
+});
+
+app.post("/admin/auto-ringtone", basicAuth, (req, res) => {
+  try {
+    const config = getCachedConfig();
+    if (!config.autoRingtone) config.autoRingtone = { enabled: false };
+    if (req.body.enabled !== undefined) config.autoRingtone.enabled = !!req.body.enabled;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _cachedConfig = null;
+    console.log(`[ADMIN] Auto-ringtone ${config.autoRingtone.enabled ? "açıldı" : "kapatıldı"}`);
+    res.json({ success: true, autoRingtone: config.autoRingtone });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
