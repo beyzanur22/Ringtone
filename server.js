@@ -4481,7 +4481,7 @@ app.get("/popup/active", (req, res) => {
 
 // Yeni duyuru oluştur (admin)
 app.post("/popup/create", express.json(), (req, res) => {
-  const { title, message, buttons, countries, startTime, endTime } = req.body;
+  const { title, message, buttons, countries, startTime, endTime, minLaunches } = req.body;
   if (!title || !message) return res.status(400).json({ error: "title ve message zorunlu" });
   if (!Array.isArray(buttons) || buttons.length === 0) return res.status(400).json({ error: "en az bir buton gerekli" });
 
@@ -4494,6 +4494,7 @@ app.post("/popup/create", express.json(), (req, res) => {
     countries: countries || "all",
     startTime: startTime || null,
     endTime: endTime || null,
+    minLaunches: Number(minLaunches) || 0,
     createdAt: new Date().toISOString(),
     votes: {}
   };
