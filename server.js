@@ -3252,16 +3252,18 @@ app.get("/stream/video", async (req, res) => {
         res.setHeader("Content-Type", "video/mp4");
         if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
         res.setHeader("Accept-Ranges", "bytes");
-        safePipe(apiResult.stream, res);
 
-        // Arka planda disk cache'e kaydet
-        if (!fs.existsSync(path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`))) {
-          const cachePath = path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`);
-          try {
-            const cacheApiResult = await apiStreamMp4(videoId, 720);
-            const writer = fs.createWriteStream(cachePath);
-            cacheApiResult.stream.pipe(writer);
-            writer.on("finish", () => {
+        // Aynı stream'i hem response'a hem diske yaz (tek API çağrısı)
+        const cachePath = path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`);
+        const shouldCache = !fs.existsSync(cachePath);
+        if (shouldCache) {
+          const { PassThrough } = require("stream");
+          const teeStream = new PassThrough();
+          const diskStream = new PassThrough();
+          const writer = fs.createWriteStream(cachePath);
+          diskStream.pipe(writer);
+          writer.on("finish", () => {
+            try {
               const size = fs.statSync(cachePath).size;
               if (size > 100 * 1024) {
                 console.log(`[VIDEO_API_CACHE] Video disk cache'e kaydedildi: ${videoId} (${(size / 1024 / 1024).toFixed(2)} MB)`);
@@ -3269,10 +3271,24 @@ app.get("/stream/video", async (req, res) => {
               } else {
                 fs.unlinkSync(cachePath);
               }
-            });
-          } catch (bgErr) {
-            console.warn(`[VIDEO_API_CACHE] Arka plan cache hatası: ${bgErr.message}`);
-          }
+            } catch (e) {}
+          });
+          writer.on("error", () => { try { fs.unlinkSync(cachePath); } catch (e) {} });
+          apiResult.stream.on("data", (chunk) => {
+            teeStream.write(chunk);
+            diskStream.write(chunk);
+          });
+          apiResult.stream.on("end", () => {
+            teeStream.end();
+            diskStream.end();
+          });
+          apiResult.stream.on("error", (err) => {
+            teeStream.destroy(err);
+            diskStream.destroy(err);
+          });
+          safePipe(teeStream, res);
+        } else {
+          safePipe(apiResult.stream, res);
         }
         return;
       }
