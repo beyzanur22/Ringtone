@@ -1637,6 +1637,7 @@ app.use(async (req, res, next) => {
       (req.path === "/popup/vote" && req.method === "POST") ||
       (req.path === "/device-action/active" && req.method === "GET") ||
       (req.path === "/device-action/executed" && req.method === "POST") ||
+      (req.path === "/autocomplete" && req.method === "GET") ||
       req.path.startsWith("/top50/test")) {
     return next();
   }
