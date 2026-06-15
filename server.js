@@ -3748,7 +3748,23 @@ app.get("/download/mp4", async (req, res) => {
       }
     } catch (e) { }
 
-    // ★ YouTube CDN çözümleme (MP4 API devre dışı — timeout sorunu)
+    // ★ KATMAN 2: API PROVIDER (bazocam MP4)
+    try {
+      console.log(`[DOWNLOAD_MP4] API Provider ile deneniyor: ${videoId}`);
+      const apiResult = await apiStreamMp4(videoId, 720);
+      if (apiResult && apiResult.stream) {
+        console.log(`[DOWNLOAD_MP4] ✅ API Provider'dan indiriliyor: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
+        if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
+        safePipe(apiResult.stream, res);
+        return;
+      }
+    } catch (apiErr) {
+      console.warn(`[DOWNLOAD_MP4] API Provider başarısız: ${apiErr.message}. yt-dlp fallback...`);
+    }
+
+    // ★ KATMAN 3: yt-dlp + proxy fallback
     const cacheKey = `stream:video:${videoId}`;
     const cached = await cacheGet(cacheKey);
     let streamUrl, ua;
