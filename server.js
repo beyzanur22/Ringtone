@@ -3243,7 +3243,44 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // ★ YouTube CDN çözümleme (MP4 API devre dışı — timeout sorunu)
+    // ★ KATMAN 2: API PROVIDER (bazocam MP4) — proxy/yt-dlp'ye gerek kalmadan video stream
+    try {
+      console.log(`[VIDEO_API] API Provider ile video stream deneniyor: ${videoId}`);
+      const apiResult = await apiStreamMp4(videoId, 720);
+      if (apiResult && apiResult.stream) {
+        console.log(`[VIDEO_API_HIT] ✅ Video API Provider'dan sunuluyor: ${videoId}`);
+        res.setHeader("Content-Type", "video/mp4");
+        if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
+        res.setHeader("Accept-Ranges", "bytes");
+        safePipe(apiResult.stream, res);
+
+        // Arka planda disk cache'e kaydet
+        if (!fs.existsSync(path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`))) {
+          const cachePath = path.join(VIDEO_CACHE_DIR, `video_${videoId}.mp4`);
+          try {
+            const cacheApiResult = await apiStreamMp4(videoId, 720);
+            const writer = fs.createWriteStream(cachePath);
+            cacheApiResult.stream.pipe(writer);
+            writer.on("finish", () => {
+              const size = fs.statSync(cachePath).size;
+              if (size > 100 * 1024) {
+                console.log(`[VIDEO_API_CACHE] Video disk cache'e kaydedildi: ${videoId} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+                uploadToR2(`video/${videoId}.mp4`, cachePath).catch(() => {});
+              } else {
+                fs.unlinkSync(cachePath);
+              }
+            });
+          } catch (bgErr) {
+            console.warn(`[VIDEO_API_CACHE] Arka plan cache hatası: ${bgErr.message}`);
+          }
+        }
+        return;
+      }
+    } catch (apiErr) {
+      console.warn(`[VIDEO_API] API Provider başarısız: ${videoId} — ${apiErr.message}. yt-dlp fallback deneniyor...`);
+    }
+
+    // ★ KATMAN 3: yt-dlp + proxy fallback (API başarısız olursa)
     const cacheKey = `stream:video:${videoId}`;
     const cachedData = await cacheGet(cacheKey);
     let streamUrl;
@@ -3287,7 +3324,6 @@ app.get("/stream/video", async (req, res) => {
         ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
       });
     } catch (fetchErr) {
-      // Proxy hatası tespiti
       if (fetchErr.response && (fetchErr.response.status === 402 || fetchErr.response.status === 407)) {
         console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BİTİYOR VEYA REDDEDİLDİ! Status: ${fetchErr.response.status}`);
       } else if (fetchErr.code && (fetchErr.code === 'ECONNRESET' || fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND')) {
@@ -3298,7 +3334,6 @@ app.get("/stream/video", async (req, res) => {
         console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
 
-        // Arka planda indirme başlat
         if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
           const cookiePath = getRandomCookie();
           const proxyUrl = getRandomProxy(videoId);
