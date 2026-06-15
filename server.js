@@ -109,6 +109,7 @@ const YT_DLP_PATH = process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
 const rateLimit = require("express-rate-limit");
 const Redis = require("ioredis");
 
@@ -3267,6 +3268,7 @@ app.get("/stream/video", async (req, res) => {
               const size = fs.statSync(cachePath).size;
               if (size > 100 * 1024) {
                 console.log(`[VIDEO_API_CACHE] Video disk cache'e kaydedildi: ${videoId} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+                mediaLib.upsertTrack(videoId, { mp4: cachePath, status: "ready", category: "watching", mp4Size: size });
                 uploadToR2(`video/${videoId}.mp4`, cachePath).catch(() => {});
               } else {
                 fs.unlinkSync(cachePath);
@@ -4244,6 +4246,68 @@ app.get("/cache-panel", basicAuth, (req, res) => {
 
   let tempCount = 0;
   try { if (fs.existsSync(CACHE_DIR)) tempCount = fs.readdirSync(CACHE_DIR).length; } catch (e) { }
+
+  // Sunucu durum bilgileri
+  let diskTotal = "?", diskUsed = "?", diskFree = "?", diskPercent = 0;
+  let ramTotal = "?", ramUsed = "?", ramFree = "?", ramPercent = 0;
+  let redisUsed = "?", redisKeys = "?";
+  let audioCacheSize = "?", videoCacheSize = "?", audioCacheCount = 0, videoCacheCount = 0;
+
+  try {
+    const dfOut = require("child_process").execSync("df -h / | tail -1").toString().trim();
+    const dfParts = dfOut.split(/\s+/);
+    diskTotal = dfParts[1]; diskUsed = dfParts[2]; diskFree = dfParts[3]; diskPercent = parseInt(dfParts[4]) || 0;
+  } catch (e) {}
+
+  try {
+    const memTotal = os.totalmem();
+    const memFree = os.freemem();
+    const memUsed = memTotal - memFree;
+    ramTotal = (memTotal / 1024 / 1024 / 1024).toFixed(1) + " GB";
+    ramUsed = (memUsed / 1024 / 1024 / 1024).toFixed(1) + " GB";
+    ramFree = (memFree / 1024 / 1024 / 1024).toFixed(1) + " GB";
+    ramPercent = Math.round((memUsed / memTotal) * 100);
+  } catch (e) {}
+
+  try {
+    if (redis) {
+      const info = require("child_process").execSync("redis-cli info memory 2>/dev/null | grep used_memory_human").toString().trim();
+      redisUsed = info.split(":")[1] || "?";
+      const keysInfo = require("child_process").execSync("redis-cli dbsize 2>/dev/null").toString().trim();
+      redisKeys = keysInfo.split(":")[1]?.trim() || "?";
+    }
+  } catch (e) {}
+
+  try {
+    const audioOut = require("child_process").execSync(`du -sh ${CACHE_DIR} 2>/dev/null | cut -f1`).toString().trim();
+    audioCacheSize = audioOut || "0";
+    audioCacheCount = fs.readdirSync(CACHE_DIR).filter(f => f.endsWith(".mp3") || f.endsWith(".m4a")).length;
+  } catch (e) {}
+
+  try {
+    const videoOut = require("child_process").execSync(`du -sh ${VIDEO_CACHE_DIR} 2>/dev/null | cut -f1`).toString().trim();
+    videoCacheSize = videoOut || "0";
+    videoCacheCount = fs.readdirSync(VIDEO_CACHE_DIR).filter(f => f.endsWith(".mp4")).length;
+  } catch (e) {}
+
+  const diskColor = diskPercent > 85 ? "red" : diskPercent > 65 ? "yellow" : "green";
+  const ramColor = ramPercent > 85 ? "red" : ramPercent > 65 ? "yellow" : "green";
+  html = html.replace("%%DISK_COLOR%%", diskColor);
+  html = html.replace("%%RAM_COLOR%%", ramColor);
+  html = html.replace("%%DISK_TOTAL%%", diskTotal);
+  html = html.replace("%%DISK_USED%%", diskUsed);
+  html = html.replace("%%DISK_FREE%%", diskFree);
+  html = html.replace("%%DISK_PERCENT%%", diskPercent);
+  html = html.replace("%%RAM_TOTAL%%", ramTotal);
+  html = html.replace("%%RAM_USED%%", ramUsed);
+  html = html.replace("%%RAM_FREE%%", ramFree);
+  html = html.replace("%%RAM_PERCENT%%", ramPercent);
+  html = html.replace("%%REDIS_USED%%", redisUsed);
+  html = html.replace("%%REDIS_KEYS%%", redisKeys);
+  html = html.replace("%%AUDIO_CACHE_SIZE%%", audioCacheSize);
+  html = html.replace("%%AUDIO_CACHE_COUNT%%", audioCacheCount);
+  html = html.replace("%%VIDEO_CACHE_SIZE%%", videoCacheSize);
+  html = html.replace("%%VIDEO_CACHE_COUNT%%", videoCacheCount);
 
   html = html.replace("%%TOTAL_CACHE%%", stats.readyTracks);
   html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
