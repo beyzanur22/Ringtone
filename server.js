@@ -3473,6 +3473,53 @@ async function warmTop50() {
 // Her warmupIntervalMs'de bir arkaplanda güncelleyerek anlık gecikmelerin önüne geç (sadece primary worker)
 if (isPrimaryWorker) warmupTimer = setInterval(warmTop50, warmupIntervalMs);
 
+/* =========================
+   FEEDBACK (Rating Funnel)
+========================= */
+const FEEDBACK_FILE = path.join(__dirname, "feedbacks.json");
+
+function loadFeedbacks() {
+  try {
+    if (!fs.existsSync(FEEDBACK_FILE)) fs.writeFileSync(FEEDBACK_FILE, "[]");
+    return JSON.parse(fs.readFileSync(FEEDBACK_FILE, "utf-8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveFeedbacks(data) {
+  fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(data, null, 2));
+}
+
+app.post("/feedback", express.json(), (req, res) => {
+  const { rating, text, deviceId, country } = req.body;
+  if (!rating) return res.status(400).json({ error: "rating zorunlu" });
+
+  const all = loadFeedbacks();
+  all.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    rating: Number(rating),
+    text: text || "",
+    deviceId: deviceId || "",
+    country: country || "",
+    createdAt: new Date().toISOString()
+  });
+  saveFeedbacks(all);
+  res.json({ ok: true });
+});
+
+app.get("/feedbacks", (req, res) => {
+  res.json(loadFeedbacks());
+});
+
+app.delete("/feedback/:id", (req, res) => {
+  const all = loadFeedbacks();
+  const filtered = all.filter(f => f.id !== req.params.id);
+  if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
+  saveFeedbacks(filtered);
+  res.json({ ok: true });
+});
+
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
