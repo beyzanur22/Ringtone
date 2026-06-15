@@ -4274,7 +4274,8 @@ app.get("/cache-panel", basicAuth, (req, res) => {
       const info = require("child_process").execSync("redis-cli info memory 2>/dev/null | grep used_memory_human").toString().trim();
       redisUsed = info.split(":")[1] || "?";
       const keysInfo = require("child_process").execSync("redis-cli dbsize 2>/dev/null").toString().trim();
-      redisKeys = keysInfo.split(":")[1]?.trim() || "?";
+      const keysMatch = keysInfo.match(/(\d+)/);
+      redisKeys = keysMatch ? keysMatch[1] : "?";
     }
   } catch (e) {}
 
