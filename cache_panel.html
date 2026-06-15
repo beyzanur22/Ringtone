@@ -58,6 +58,15 @@ tr:hover td{background:#fcfcfc}
 .request-fill{height:100%;background:var(--accent);border-radius:3px}
 .req-count{font-weight:700;font-size:13px}
 
+/* Dual Tables */
+.dual-tables{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+.section-header{padding:15px 20px;font-size:16px;font-weight:700;border-bottom:1px solid var(--border)}
+.audio-header{background:#f0f9ff;color:#1e40af}
+.video-header{background:#fef2f2;color:#991b1b}
+.table-scroll{max-height:600px;overflow-y:auto}
+.cache-table{width:100%;border-collapse:collapse}
+.cache-table th{position:sticky;top:0;z-index:1}
+
 /* Server Status */
 .server-section{margin-bottom:30px}
 .server-title{font-size:18px;font-weight:700;margin-bottom:15px;color:var(--text)}
@@ -81,6 +90,7 @@ tr:hover td{background:#fcfcfc}
 @media(max-width:992px){
   .stats-grid{grid-template-columns:repeat(2,1fr)}
   .server-grid{grid-template-columns:1fr}
+  .dual-tables{grid-template-columns:1fr}
   .filters-bar{flex-direction:column;align-items:stretch}
 }
 </style>
@@ -168,75 +178,88 @@ tr:hover td{background:#fcfcfc}
       <span class="search-icon">🔍</span>
       <input type="text" class="search-input" id="searchInput" placeholder="Şarkı adı veya video ID ara..." onkeyup="filterTable()">
     </div>
-    <select id="qualityFilter" onchange="filterTable()">
-      <option value="">Tüm Kaliteler</option>
-      <option value="128">128 kbps</option>
-      <option value="192">192 kbps</option>
-      <option value="MP4">MP4</option>
-    </select>
     <select id="sortFilter" onchange="sortTable()">
       <option value="newest">En Yeni</option>
       <option value="requests">En Çok İstenen</option>
       <option value="size">En Büyük</option>
     </select>
-    <button class="btn btn-filter">Filtrele</button>
   </div>
 
-  <!-- Table -->
-  <div class="section">
-    <table id="cacheTable">
-      <thead>
-        <tr>
-          <th width="50">#</th>
-          <th>Şarkı</th>
-          <th>Tür</th>
-          <th>Kalite</th>
-          <th>İstek</th>
-          <th>Boyut</th>
-          <th>Cache Tarihi</th>
-          <th width="80">İşlem</th>
-        </tr>
-      </thead>
-      <tbody>
-        %%CACHE_LIST%%
-      </tbody>
-    </table>
-    %%CACHE_EMPTY%%
+  <!-- İki Tablo Yan Yana -->
+  <div class="dual-tables">
+
+    <!-- SOL: Dinleme (Audio) -->
+    <div class="section">
+      <div class="section-header audio-header">🎧 Dinleme Cache (MP3)</div>
+      <div class="table-scroll">
+      <table class="cache-table" id="audioTable">
+        <thead>
+          <tr>
+            <th width="40">#</th>
+            <th>Şarkı</th>
+            <th>Kalite</th>
+            <th>İstek</th>
+            <th>Boyut</th>
+            <th>Tarih</th>
+            <th width="60">İşlem</th>
+          </tr>
+        </thead>
+        <tbody>
+          %%AUDIO_LIST%%
+        </tbody>
+      </table>
+      %%AUDIO_EMPTY%%
+      </div>
+    </div>
+
+    <!-- SAĞ: İzleme (Video) -->
+    <div class="section">
+      <div class="section-header video-header">📺 İzleme Cache (MP4)</div>
+      <div class="table-scroll">
+      <table class="cache-table" id="videoTable">
+        <thead>
+          <tr>
+            <th width="40">#</th>
+            <th>Şarkı</th>
+            <th>Kalite</th>
+            <th>İstek</th>
+            <th>Boyut</th>
+            <th>Tarih</th>
+            <th width="60">İşlem</th>
+          </tr>
+        </thead>
+        <tbody>
+          %%VIDEO_LIST%%
+        </tbody>
+      </table>
+      %%VIDEO_EMPTY%%
+      </div>
+    </div>
+
   </div>
 </div>
 
 <script>
 function filterTable() {
   const search = document.getElementById('searchInput').value.toLowerCase();
-  const quality = document.getElementById('qualityFilter').value;
-  const rows = document.querySelectorAll('#cacheTable tbody tr');
-  
-  rows.forEach(row => {
-    const text = row.textContent.toLowerCase();
-    const rowQuality = row.querySelector('.badge-quality').textContent;
-    const matchesSearch = text.includes(search);
-    const matchesQuality = quality === "" || rowQuality.includes(quality);
-    
-    row.style.display = (matchesSearch && matchesQuality) ? "" : "none";
+  document.querySelectorAll('.cache-table tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(search) ? "" : "none";
   });
 }
 
 function sortTable() {
   const sortBy = document.getElementById('sortFilter').value;
-  const tbody = document.querySelector('#cacheTable tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-  
-  rows.sort((a, b) => {
-    if (sortBy === 'requests') {
-      return parseInt(b.dataset.requests) - parseInt(a.dataset.requests);
-    } else if (sortBy === 'size') {
-      return parseFloat(b.dataset.size) - parseFloat(a.dataset.size);
-    } else {
+  ['audioTable','videoTable'].forEach(id => {
+    const tbody = document.querySelector('#' + id + ' tbody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+      if (sortBy === 'requests') return parseInt(b.dataset.requests) - parseInt(a.dataset.requests);
+      if (sortBy === 'size') return parseFloat(b.dataset.size) - parseFloat(a.dataset.size);
       return new Date(b.dataset.date) - new Date(a.dataset.date);
-    }
+    });
+    rows.forEach(row => tbody.appendChild(row));
   });
-  
-  rows.forEach(row => tbody.appendChild(row));
 }
 
 async function deleteItem(videoId) {

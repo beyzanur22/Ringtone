@@ -4323,47 +4323,33 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%TEMP_FILES%%", tempCount);
   html = html.replace(/%%ADMIN_PASS%%/g, "");
 
-  const listHtml = tracks.map((t, idx) => {
+  function buildRowHtml(t, idx) {
     const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);
     const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
     const date = t.processedAt ? new Date(t.processedAt).toLocaleString("tr-TR") : "—";
     const quality = t.files.mp4 ? "MP4" : t.files.mp3 ? "192 kbps" : "128 kbps";
-    
-    // Tür etiketi (Eski kayıtlar için otomatik tespit ekledik)
-    let categoryHtml = "";
-    const effectiveCategory = t.category || (t.files.mp4 ? "watching" : "listening");
-
-    if (effectiveCategory === "listening") categoryHtml = '<span class="badge blue">🎧 Dinleme</span>';
-    else if (effectiveCategory === "watching") categoryHtml = '<span class="badge red">📺 İzleme</span>';
-    else categoryHtml = '<span class="badge gray">📦 Cache</span>';
-
-    // İstek barı (maksimum 10 üzerinden oranla)
     const reqPct = Math.min(100, (t.accessCount || 0) * 10);
-
     return `<tr data-requests="${t.accessCount || 0}" data-size="${sizeMB}" data-date="${t.processedAt || ''}">
       <td>${idx + 1}</td>
-      <td>
-        <div class="track-info">
-          <span class="track-title">${t.title}</span>
-          <span class="track-id">${t.videoId}</span>
-        </div>
-      </td>
-      <td>${categoryHtml}</td>
+      <td><div class="track-info"><span class="track-title">${t.title}</span><span class="track-id">${t.videoId}</span></div></td>
       <td><span class="badge-quality">${quality}</span></td>
-      <td>
-        <div class="request-bar"><div class="request-fill" style="width:${reqPct}%"></div></div>
-        <span class="req-count">${t.accessCount || 0}</span>
-      </td>
+      <td><div class="request-bar"><div class="request-fill" style="width:${reqPct}%"></div></div><span class="req-count">${t.accessCount || 0}</span></td>
       <td>${sizeMB} MB</td>
       <td>${date}</td>
-      <td>
-        <button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${t.videoId}')">Sil</button>
-      </td>
+      <td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${t.videoId}')">Sil</button></td>
     </tr>`;
-  }).join("");
+  }
 
-  html = html.replace("%%CACHE_LIST%%", listHtml);
-  html = html.replace("%%CACHE_EMPTY%%", tracks.length === 0 ? '<div style="padding:40px;text-align:center;color:#8e8e8e">Henüz cachelenmiş şarkı yok.</div>' : "");
+  const audioTracks = tracks.filter(t => (t.category || (t.files.mp4 ? "watching" : "listening")) === "listening");
+  const videoTracks = tracks.filter(t => (t.category || (t.files.mp4 ? "watching" : "listening")) === "watching");
+
+  const audioListHtml = audioTracks.map((t, i) => buildRowHtml(t, i)).join("");
+  const videoListHtml = videoTracks.map((t, i) => buildRowHtml(t, i)).join("");
+
+  html = html.replace("%%AUDIO_LIST%%", audioListHtml);
+  html = html.replace("%%VIDEO_LIST%%", videoListHtml);
+  html = html.replace("%%AUDIO_EMPTY%%", audioTracks.length === 0 ? '<div style="padding:30px;text-align:center;color:#8e8e8e">Henüz dinleme cache\'i yok.</div>' : "");
+  html = html.replace("%%VIDEO_EMPTY%%", videoTracks.length === 0 ? '<div style="padding:30px;text-align:center;color:#8e8e8e">Henüz izleme cache\'i yok.</div>' : "");
 
   res.send(html);
 });
