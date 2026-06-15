@@ -4311,7 +4311,14 @@ app.get("/cache-panel", basicAuth, (req, res) => {
 
   html = html.replace("%%TOTAL_CACHE%%", stats.readyTracks);
   html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
-  html = html.replace("%%CACHE_SIZE%%", stats.totalDiskMB);
+  // Gerçek disk boyutunu hesapla (mediaLib yerine)
+  let realCacheMB = stats.totalDiskMB;
+  try {
+    const audioBytes = require("child_process").execSync(`du -sb ${CACHE_DIR} 2>/dev/null | cut -f1`).toString().trim();
+    const videoBytes = require("child_process").execSync(`du -sb ${VIDEO_CACHE_DIR} 2>/dev/null | cut -f1`).toString().trim();
+    realCacheMB = ((parseInt(audioBytes || 0) + parseInt(videoBytes || 0)) / 1024 / 1024).toFixed(1);
+  } catch (e) {}
+  html = html.replace("%%CACHE_SIZE%%", realCacheMB);
   html = html.replace("%%TEMP_FILES%%", tempCount);
   html = html.replace(/%%ADMIN_PASS%%/g, "");
 
