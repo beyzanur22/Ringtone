@@ -2396,6 +2396,7 @@ app.get("/admin/media-stats", basicAuth, (req, res) => {
 app.get("/config", (req, res) => {
   const config = { ...getCachedConfig() };
   config.watch_base = "https://www.youtube.com/watch?v=";
+  if (!config.autocompleteSource) config.autocompleteSource = "google";
   res.json(config);
 });
 
