@@ -1636,6 +1636,7 @@ app.use(async (req, res, next) => {
       (req.path === "/blocked-channels" && req.method === "GET") ||
       (req.path === "/popup/active" && req.method === "GET") ||
       (req.path === "/popup/vote" && req.method === "POST") ||
+      (req.path === "/feedback" && req.method === "POST") ||
       (req.path === "/device-action/active" && req.method === "GET") ||
       (req.path === "/device-action/executed" && req.method === "POST") ||
       (req.path === "/autocomplete" && req.method === "GET") ||
