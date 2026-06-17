@@ -2298,55 +2298,53 @@ function filterBlockedChannels(items, country = "all") {
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
   const topItems = items.slice(0, 50); // Kendi sunucumuz — Top50'i ısıt
-  console.log(`[PREWARM] ${topItems.length} şarkı ön-ısıtma başlatılıyor...`);
+  console.log(`[PREWARM] ${topItems.length} şarkı ön-ısıtma başlatılıyor (API Provider)...`);
 
   topItems.forEach((item, index) => {
     const videoId = typeof item.id === "object" ? item.id.videoId : item.id;
     if (!videoId) return;
 
-    const cacheKey = `stream:audio:${videoId}`;
-    // Eğer cache'te yoksa, arka planda yavaş yavaş bulup ekle
-    cacheGet(cacheKey).then(cachedData => {
-      if (!cachedData) {
-        // Küçük gecikmelerle kuyruğa ekle (YouTube'u boğmamak için)
-        setTimeout(() => {
-          queue.add(async () => {
-            try {
-              const ua = getRandomUA();
-              const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, "web");
-              await cacheSet(cacheKey, { url, ua }, STREAM_CACHE_DURATION);
-              console.log(`[PREWARM_SUCCESS] ${videoId} stream URL hazırlandı!`);
+    // Zaten diskte/cache'te varsa atla
+    const cacheFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
+    if (fs.existsSync(cacheFile) || mediaLib.getReadyTrack(videoId, "mp3") || mediaLib.isProcessing(videoId)) {
+      return;
+    }
 
-              // KALICI KAYIT: FFmpeg ile media/ dizinine kaydet (disk cache)
-              // Zaten varsa atla
-              if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
-                const title = item.snippet?.title || "Unknown";
-                const artist = item.snippet?.channelTitle || "Unknown";
-                mediaLib.upsertTrack(videoId, { title, artist, category: "listening", status: "processing" });
+    // Küçük gecikmelerle kuyruğa ekle (API'yi boğmamak için)
+    setTimeout(() => {
+      queue.add(async () => {
+        const title = item.snippet?.title || "Unknown";
+        const artist = item.snippet?.channelTitle || "Unknown";
+        try {
+          mediaLib.upsertTrack(videoId, { title, artist, category: "listening", status: "processing" });
 
-                const cookiePath = getRandomCookie();
-                const proxyUrl = getRandomProxy(videoId);
-                ffmpegWorker.processAudio(videoId, { title, artist }, { cookiePath, proxyUrl })
-                  .then(result => {
-                    if (result && result.m4a) {
-                      mediaLib.markReady(videoId, { m4a: result.m4a, duration: result.duration });
-                      // R2'ye yedek olarak yükle
-                      uploadToR2(`audio/${videoId}.m4a`, result.m4a).catch(() => {});
-                      console.log(`[PREWARM_DISK] ✅ ${videoId} kalıcı olarak diske kaydedildi!`);
-                    }
-                  })
-                  .catch(err => {
-                    console.warn(`[PREWARM_DISK] ⚠️ ${videoId} disk kaydı başarısız: ${err.message}`);
-                    mediaLib.markFailed(videoId, err.message);
-                  });
-              }
-            } catch (err) {
-              console.warn(`[PREWARM] ⚠️ ${videoId} başarısız: ${err.message}`);
-            }
-          }).catch(() => { });
-        }, index * 3000); // Her bir arasına 3 saniye koy (kendi sunucumuz, bot tespiti azalt)
-      }
-    });
+          // ★ API Provider (bazocam) ile MP3 çek — yt-dlp YOK
+          const apiResult = await apiStreamMp3(videoId, 320);
+          const writeStream = fs.createWriteStream(cacheFile);
+          await new Promise((resolve, reject) => {
+            apiResult.stream.pipe(writeStream);
+            writeStream.on("finish", resolve);
+            writeStream.on("error", reject);
+            apiResult.stream.on("error", reject);
+          });
+
+          // Boyut kontrolü — bozuk/boş dosyayı reddet
+          const size = fs.statSync(cacheFile).size;
+          if (size < 20 * 1024) {
+            try { fs.unlinkSync(cacheFile); } catch {}
+            throw new Error(`Dosya çok küçük (${size} byte)`);
+          }
+
+          mediaLib.markReady(videoId, { mp3: cacheFile });
+          uploadToR2(`audio/${videoId}.mp3`, cacheFile).catch(() => {});
+          console.log(`[PREWARM_SUCCESS] ✅ ${videoId} API'den diske kaydedildi (${(size / 1024 / 1024).toFixed(2)} MB)`);
+        } catch (err) {
+          try { if (fs.existsSync(cacheFile)) fs.unlinkSync(cacheFile); } catch {}
+          mediaLib.markFailed(videoId, err.message);
+          console.warn(`[PREWARM] ⚠️ ${videoId} başarısız: ${err.message}`);
+        }
+      }).catch(() => { });
+    }, index * 3000); // Her bir arasına 3 saniye koy
   });
 }
 
@@ -2923,6 +2921,8 @@ app.get("/stream", async (req, res) => {
     const localFile = path.join(targetCacheDir, `${typeStr}_${videoId}.${extStr}`);
     // Eski format uyumluluğu: FFmpeg "videoId.m4a", downloadToCache "audio_videoId.m4a" kaydediyor
     const altFile = path.join(targetCacheDir, `${videoId}.${extStr}`);
+    // API Provider + smart cache + prewarm "audio_videoId.mp3" formatında kaydeder
+    const mp3File = typeStr === "audio" ? path.join(targetCacheDir, `audio_${videoId}.mp3`) : null;
 
     //  KATMAN -1: FFMPEG MEDIA LIBRARY (En hızlı — kendi diskimiz)
     const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
@@ -2944,7 +2944,7 @@ app.get("/stream", async (req, res) => {
 
     // KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
     // İki format kontrol: "audio_videoId.m4a" (downloadToCache) ve "videoId.m4a" (FFmpeg)
-    const diskFile = fs.existsSync(localFile) ? localFile : (fs.existsSync(altFile) ? altFile : null);
+    const diskFile = fs.existsSync(localFile) ? localFile : (fs.existsSync(altFile) ? altFile : (mp3File && fs.existsSync(mp3File) ? mp3File : null));
     if (diskFile) {
       const stats = fs.statSync(diskFile);
       const minSize = typeStr === "video" ? 100 * 1024 : 20 * 1024;
@@ -2953,14 +2953,16 @@ app.get("/stream", async (req, res) => {
         fs.unlinkSync(diskFile);
       } else {
         console.log(`[DISK_CACHE_HIT]  Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        const isMp3 = diskFile.endsWith(".mp3");
         if (req.path.includes("download")) {
-          res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${extStr}`);
+          res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${isMp3 ? "mp3" : extStr}`);
         }
-        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/m4a");
+        res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : (isMp3 ? "audio/mpeg" : "audio/m4a"));
         res.setHeader("Content-Length", stats.size);
         res.setHeader("Accept-Ranges", "bytes");
-        // Arka planda R2'ye yükle
-        uploadToR2(r2Key, diskFile).catch(() => { });
+        // Arka planda R2'ye yedekle (doğru uzantıyla)
+        const actualR2Key = isMp3 ? `audio/${videoId}.mp3` : r2Key;
+        uploadToR2(actualR2Key, diskFile).catch(() => { });
         return res.sendFile(diskFile, (err) => {
           if (err && err.status === 416) return res.status(416).end();
           if (err && !res.headersSent) res.status(500).end();
