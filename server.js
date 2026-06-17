@@ -1534,6 +1534,7 @@ function getProxyAxiosConfig(extraConfig = {}, videoId = null) {
 
 const app = express();
 app.set("trust proxy", 1);
+app.disable("x-powered-by");
 
 app.use(cors({
   origin: function(origin, callback) {
@@ -2253,10 +2254,6 @@ function getBlockedChannels() {
 
 function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
-  console.log(`[BLOCK_DEBUG] Engel grubu sayısı: ${blockedGroups.length}, Item sayısı: ${items.length}`);
-  if (blockedGroups.length > 0) {
-    blockedGroups.forEach(g => console.log(`[BLOCK_DEBUG] Grup: type=${g.type}, channels=${JSON.stringify(g.channels)}`));
-  }
   if (!blockedGroups.length) return items;
   return items.filter(item => {
     const snippet = item.snippet || item;
@@ -2285,11 +2282,9 @@ function filterBlockedChannels(items, country = "all") {
           matched = channelId === val;
         } else if (type === "videoId") {
           matched = videoId === val;
-          if (!matched) console.log(`[BLOCK_DEBUG] videoId karşılaştırma: "${videoId}" vs "${val}" → eşleşmedi`);
         } else {
           matched = channelTitle.includes(val.toLowerCase());
         }
-        if (matched) console.log(`[BLOCK_DEBUG] ENGELLENDİ: type=${type}, val=${val}, videoId=${videoId}, channelTitle=${channelTitle}`);
         return matched;
       });
     });
@@ -2635,8 +2630,6 @@ app.get("/search", searchLimiter, async (req, res) => {
       const apiData = await apiSearch(query);
       const results = apiData.results || apiData.data || apiData || [];
       if (Array.isArray(results) && results.length > 0) {
-        console.log("[SEARCH_DEBUG] İlk sonuç field'ları:", JSON.stringify(Object.keys(results[0])));
-        console.log("[SEARCH_DEBUG] İlk sonuç:", JSON.stringify(results[0]).substring(0, 500));
       }
       const filteredData = filterBlockedChannels(Array.isArray(results) ? results : [], country);
       searchResult = { data: filteredData, nextPageToken: null };
