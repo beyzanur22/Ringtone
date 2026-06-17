@@ -1907,6 +1907,67 @@ async function shouldCache(videoId) {
 }
 
 // bazocam.net API çağrıları — yeni endpoint'ler
+//
+// ÖNEMLİ: bazocam başarısız olduğunda HTTP 200 + content-type "audio/mpeg" ile
+// "Not Found" (9 byte) gibi BOŞ yanıt dönebiliyor. Bunu gerçek dosya sanıp
+// diske/R2'ye kaydetmek sonsuz "kaydet→bozuk→sil→tekrar" döngüsüne yol açar.
+// Bu yüzden stream'in ilk byte'larını kontrol edip gerçek medya mı diye doğruluyoruz.
+//   - MP3 gerçek dosya: "ID3" etiketi (49 44 33) veya frame sync (0xFF 0xEx) ile başlar
+//   - MP4 gerçek dosya: 4-8. byte'larda "ftyp" kutusu bulunur
+function validateMediaStream(srcStream, kind) {
+  return new Promise((resolve, reject) => {
+    const { PassThrough } = require("stream");
+    let head = Buffer.alloc(0);
+    let done = false;
+
+    const cleanup = () => {
+      srcStream.removeListener("data", onData);
+      srcStream.removeListener("end", onEnd);
+      srcStream.removeListener("error", onErr);
+    };
+    const fail = (msg) => {
+      if (done) return;
+      done = true;
+      cleanup();
+      try { srcStream.destroy(); } catch {}
+      reject(new Error(msg));
+    };
+    const ok = () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      const out = new PassThrough();
+      out.write(head);          // doğrulama için tükettiğimiz baş kısmı geri yaz
+      srcStream.pipe(out);      // gerisi normal aksın
+      resolve(out);
+    };
+    const check = () => {
+      if (kind === "audio") {
+        if (head.slice(0, 3).toString("latin1") === "ID3") return ok();
+        if (head.length >= 2 && head[0] === 0xFF && (head[1] & 0xE0) === 0xE0) return ok();
+      } else {
+        if (head.length >= 8 && head.slice(4, 8).toString("latin1") === "ftyp") return ok();
+      }
+      // Geçerli imza yok; karar vermek için yeterli byte geldiyse reddet
+      if (head.length >= 12) {
+        const preview = head.slice(0, 16).toString("latin1").replace(/[^ -~]/g, ".");
+        return fail(`Geçersiz medya yanıtı (${kind}): "${preview}"`);
+      }
+    };
+    const onData = (chunk) => { head = Buffer.concat([head, chunk]); check(); };
+    const onEnd = () => {
+      check();
+      const preview = head.toString("latin1").slice(0, 40);
+      fail(`API yanıtı çok küçük/bozuk (${head.length} byte): "${preview}"`);
+    };
+    const onErr = (e) => fail(e.message);
+
+    srcStream.on("data", onData);
+    srcStream.on("end", onEnd);
+    srcStream.on("error", onErr);
+  });
+}
+
 async function apiStreamMp3(videoId, bitrate = 320) {
   const cfg = getApiProviderConfig();
   const url = `${cfg.baseUrl}/mp3download.php?id=${videoId}&key=${cfg.apiKey}&b=${bitrate}`;
@@ -1922,15 +1983,18 @@ async function apiStreamMp3(videoId, bitrate = 320) {
   });
 
   const contentType = response.headers["content-type"] || "";
-  if (contentType.includes("text/html")) {
-    throw new Error("API HTML döndürdü — MP3 dosyası bekleniyor");
+  if (contentType.includes("text/html") || contentType.includes("json")) {
+    try { response.data.destroy(); } catch {}
+    throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
   }
 
   const cacheHeader = response.headers["x-cache"] || "";
-  console.log(`[API_PROVIDER] MP3 yanıt: ${videoId} | cache=${cacheHeader} | size=${response.headers["content-length"] || "?"}`);
+  // İlk byte'ları doğrula — "Not Found" gibi boş yanıtları gerçek MP3 sanma
+  const validStream = await validateMediaStream(response.data, "audio");
+  console.log(`[API_PROVIDER] MP3 yanıt OK: ${videoId} | cache=${cacheHeader}`);
 
   return {
-    stream: response.data,
+    stream: validStream,
     contentType: response.headers["content-type"],
     contentLength: response.headers["content-length"],
     cacheHit: cacheHeader === "HIT"
@@ -1952,12 +2016,16 @@ async function apiStreamMp4(videoId, quality = 720) {
   });
 
   const contentType = response.headers["content-type"] || "";
-  if (contentType.includes("text/html")) {
-    throw new Error("API HTML döndürdü — MP4 dosyası bekleniyor");
+  if (contentType.includes("text/html") || contentType.includes("json")) {
+    try { response.data.destroy(); } catch {}
+    throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
   }
 
+  // İlk byte'ları doğrula — boş/hatalı yanıtları gerçek video sanma
+  const validStream = await validateMediaStream(response.data, "video");
+
   return {
-    stream: response.data,
+    stream: validStream,
     contentType: response.headers["content-type"],
     contentLength: response.headers["content-length"]
   };
@@ -2297,7 +2365,10 @@ function filterBlockedChannels(items, country = "all") {
 // Kendi sunucumuzda Top25'e çıkarıldı + FFmpeg ile kalıcı disk kaydı eklendi
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
-  const topItems = items.slice(0, 50); // Kendi sunucumuz — Top50'i ısıt
+  // Bazocam API'yi boğmamak için sadece en popüler 15'i ön-ısıt (geri kalanı ilk
+  // dinlemede çözülüp cache'lenir). Çok agresif prewarm bazocam'ın alt servislerini
+  // tüketip "Not Found / Tüm API'ler başarısız" hatalarına yol açıyordu.
+  const topItems = items.slice(0, 15);
   console.log(`[PREWARM] ${topItems.length} şarkı ön-ısıtma başlatılıyor (API Provider)...`);
 
   topItems.forEach((item, index) => {
@@ -2344,7 +2415,7 @@ function prewarmTop10(items) {
           console.warn(`[PREWARM] ⚠️ ${videoId} başarısız: ${err.message}`);
         }
       }).catch(() => { });
-    }, index * 3000); // Her bir arasına 3 saniye koy
+    }, index * 5000); // Her bir arasına 5 saniye koy — bazocam'ı yormamak için
   });
 }
 
@@ -2996,24 +3067,33 @@ app.get("/stream", async (req, res) => {
       res.setHeader("Accept-Ranges", "bytes");
       setDrmHeaders(res);
 
-      safePipe(apiResult.stream, res);
-
-      // Akıllı cache: 3+ istek gelen şarkıyı arka planda diske kaydet
-      if (await shouldCache(videoId)) {
-        const cacheFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
-        if (!fs.existsSync(cacheFile)) {
+      // Akıllı cache: 3+ istek gelen şarkıyı TEK API çağrısıyla hem kullanıcıya
+      // hem diske yaz (çift bazocam isteği yok — bazocam'ı yormamak için)
+      const cacheFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
+      if ((await shouldCache(videoId)) && !fs.existsSync(cacheFile)) {
+        const { PassThrough } = require("stream");
+        const userStream = new PassThrough();
+        const diskStream = new PassThrough();
+        const writer = fs.createWriteStream(cacheFile);
+        diskStream.pipe(writer);
+        writer.on("finish", () => {
           try {
-            const cacheResult = await apiStreamMp3(videoId, 320);
-            const writeStream = fs.createWriteStream(cacheFile);
-            cacheResult.stream.pipe(writeStream);
-            writeStream.on("finish", () => {
-              console.log(`[SMART_CACHE] Diske kaydedildi: ${videoId}`);
-              const r2Key = `audio/${videoId}.mp3`;
-              uploadToR2(r2Key, cacheFile).catch(() => {});
-            });
-            writeStream.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} });
-          } catch {}
-        }
+            const size = fs.statSync(cacheFile).size;
+            if (size > 20 * 1024) {
+              console.log(`[SMART_CACHE] Diske kaydedildi: ${videoId} (${(size / 1024 / 1024).toFixed(2)} MB)`);
+              uploadToR2(`audio/${videoId}.mp3`, cacheFile).catch(() => {});
+            } else {
+              fs.unlinkSync(cacheFile); // bozuk/küçük dosyayı R2'ye atma
+            }
+          } catch (e) {}
+        });
+        writer.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} });
+        apiResult.stream.on("data", (chunk) => { userStream.write(chunk); diskStream.write(chunk); });
+        apiResult.stream.on("end", () => { userStream.end(); diskStream.end(); });
+        apiResult.stream.on("error", (err) => { userStream.destroy(err); diskStream.destroy(err); });
+        safePipe(userStream, res);
+      } else {
+        safePipe(apiResult.stream, res);
       }
       return;
     } catch (apiErr) {
