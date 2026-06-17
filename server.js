@@ -2455,8 +2455,27 @@ app.delete("/blocked-channels/:id", async (req, res) => {
 });
 
 // ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
+const COUNTRY_TO_LANG = {
+  TR: "tr", US: "en", GB: "en", DE: "de", FR: "fr", IT: "it", ES: "es",
+  NL: "nl", BR: "pt", RU: "ru", JP: "ja", KR: "ko", IN: "hi", SA: "ar",
+  AE: "ar", AU: "en", CA: "en", MX: "es", AR: "es", PL: "pl", SE: "sv", AZ: "az"
+};
+
+async function translateText(text, targetLang) {
+  if (!text || targetLang === "tr") return text;
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=tr&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    return data[0].map(s => s[0]).join("");
+  } catch (e) {
+    console.error("[Translate] Hata:", e.message);
+    return text;
+  }
+}
+
 app.post("/send-notification", basicAuth, async (req, res) => {
-  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt } = req.body;
+  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt, targetCountry } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
@@ -2469,18 +2488,32 @@ app.post("/send-notification", basicAuth, async (req, res) => {
   }
 
   try {
+    const targetLang = targetCountry && targetCountry !== "all" ? (COUNTRY_TO_LANG[targetCountry] || "en") : null;
+    let translatedTitle = title;
+    let translatedMessage = message;
+
+    if (targetLang && targetLang !== "tr") {
+      translatedTitle = await translateText(title, targetLang);
+      translatedMessage = await translateText(message, targetLang);
+      console.log(`[Translate] ${targetCountry}(${targetLang}): "${title}" → "${translatedTitle}"`);
+    }
+
     const notifPayload = {
       app_id: appId,
-      headings: { en: title },
-      contents: { en: message },
+      headings: { en: translatedTitle, tr: title },
+      contents: { en: translatedMessage, tr: message },
       included_segments: ["All"]
     };
 
-    // Görsel URL (büyük resim)
+    if (targetCountry && targetCountry !== "all") {
+      delete notifPayload.included_segments;
+      notifPayload.filters = [
+        { field: "country", value: targetCountry }
+      ];
+    }
+
     if (imageUrl) notifPayload.big_picture = imageUrl;
-    // Tıklanınca açılacak URL
     if (actionUrl) notifPayload.url = actionUrl;
-    // Zamanlanmış gönderim (ISO 8601 formatı)
     if (sendAt) notifPayload.send_after = sendAt;
 
     const response = await fetch("https://onesignal.com/api/v1/notifications", {
@@ -2498,7 +2531,12 @@ app.post("/send-notification", basicAuth, async (req, res) => {
     if (data.errors && data.errors.length > 0) {
       return res.status(400).json({ success: false, details: data.errors[0] });
     }
-    return res.json({ success: true, data });
+
+    const result = { success: true, data };
+    if (targetLang && targetLang !== "tr") {
+      result.translated = { lang: targetLang, title: translatedTitle, message: translatedMessage };
+    }
+    return res.json(result);
   } catch (error) {
     console.error("[OneSignal] Hata:", error.message);
     res.status(500).json({ success: false, details: error.message });
