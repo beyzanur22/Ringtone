@@ -1834,7 +1834,7 @@ function getCachedConfig() {
 function getCachedBlockedChannels() {
   if (_cachedBlockedChannels !== null) return _cachedBlockedChannels;
   try {
-    const BLOCKED_FILE_PATH = path.join(__dirname, "blocked_channels.json");
+    const BLOCKED_FILE_PATH = path.join(__dirname, "blockedChannels.json");
     if (!fs.existsSync(BLOCKED_FILE_PATH)) return [];
     _cachedBlockedChannels = JSON.parse(fs.readFileSync(BLOCKED_FILE_PATH, "utf-8"));
   } catch (e) { _cachedBlockedChannels = []; }
@@ -2245,7 +2245,7 @@ const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
 const STREAM_CACHE_DURATION = 5.5 * 60 * 60; // 5.5 saat (YouTube URL max 6 saat, cache'i son ana kadar kullan)
 const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
-const BLOCKED_FILE = path.join(__dirname, "blocked_channels.json");
+const BLOCKED_FILE = path.join(__dirname, "blockedChannels.json");
 
 function getBlockedChannels() {
   return getCachedBlockedChannels();
@@ -2451,7 +2451,7 @@ app.delete("/blocked-channels/:id", async (req, res) => {
 });
 
 // ONESIGNAL BİLDİRİM GÖNDERME (fetch — exec/curl kaldırıldı, güvenli)
-app.post("/send-notification", async (req, res) => {
+app.post("/send-notification", basicAuth, async (req, res) => {
   const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
