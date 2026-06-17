@@ -2256,11 +2256,11 @@ function filterBlockedChannels(items, country = "all") {
   if (!blockedGroups.length) return items;
   return items.filter(item => {
     const snippet = item.snippet || item;
-    const channelTitle = (snippet.channelTitle || snippet.uploaderName || "").toLowerCase();
+    const channelTitle = (snippet.channelTitle || snippet.uploaderName || snippet.channel || "").toLowerCase();
     const videoTitle = (snippet.title || "").toLowerCase();
-    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || item.url?.split("v=")[1] || "";
-    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || "";
-    const channelId = snippet.channelId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
+    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || item.videoId || snippet.videoId || item.url?.split("v=")[1] || "";
+    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || snippet.channelUrl || "";
+    const channelId = snippet.channelId || item.channelId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
 
     const isBlocked = blockedGroups.some(group => {
       const ruleCountries = group.countries || "all";
@@ -2436,6 +2436,7 @@ app.post("/blocked-channels", async (req, res) => {
     }
 
     await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
+    _cachedBlockedChannels = null;
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
@@ -2446,6 +2447,7 @@ app.delete("/blocked-channels/:id", async (req, res) => {
     let blocked = JSON.parse(await fs.promises.readFile(BLOCKED_FILE, "utf-8") || "[]");
     blocked = blocked.filter(ch => ch.id !== req.params.id);
     await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
+    _cachedBlockedChannels = null;
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
