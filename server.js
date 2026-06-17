@@ -2256,11 +2256,11 @@ function filterBlockedChannels(items, country = "all") {
   if (!blockedGroups.length) return items;
   return items.filter(item => {
     const snippet = item.snippet || item;
-    const channelTitle = (snippet.channelTitle || snippet.uploaderName || snippet.channel || "").toLowerCase();
-    const videoTitle = (snippet.title || "").toLowerCase();
-    const videoId = (typeof item.id === "object" ? item.id?.videoId : item.id) || item.videoId || snippet.videoId || item.url?.split("v=")[1] || "";
-    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || snippet.channelUrl || "";
-    const channelId = snippet.channelId || item.channelId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
+    const channelTitle = (snippet.channelTitle || snippet.uploaderName || item.uploader || snippet.channel || "").toLowerCase();
+    const videoTitle = (snippet.title || item.title || "").toLowerCase();
+    const videoId = (typeof item.id === "object" ? item.id?.videoId : null) || item.videoId || snippet.videoId || item.id || item.url?.split("v=")[1] || "";
+    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || snippet.channelUrl || item.uploaderUrl || "";
+    const channelId = snippet.channelId || item.channelId || item.uploaderId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
 
     const isBlocked = blockedGroups.some(group => {
       const ruleCountries = group.countries || "all";
