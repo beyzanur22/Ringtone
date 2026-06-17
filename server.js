@@ -2253,6 +2253,10 @@ function getBlockedChannels() {
 
 function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
+  console.log(`[BLOCK_DEBUG] Engel grubu sayısı: ${blockedGroups.length}, Item sayısı: ${items.length}`);
+  if (blockedGroups.length > 0) {
+    blockedGroups.forEach(g => console.log(`[BLOCK_DEBUG] Grup: type=${g.type}, channels=${JSON.stringify(g.channels)}`));
+  }
   if (!blockedGroups.length) return items;
   return items.filter(item => {
     const snippet = item.snippet || item;
@@ -2274,15 +2278,19 @@ function filterBlockedChannels(items, country = "all") {
 
       return group.channels.some(blockedValue => {
         const val = blockedValue.trim();
+        let matched = false;
         if (type === "keyword") {
-          return videoTitle.includes(val.toLowerCase());
+          matched = videoTitle.includes(val.toLowerCase());
         } else if (type === "channelId") {
-          return channelId === val;
+          matched = channelId === val;
         } else if (type === "videoId") {
-          return videoId === val;
+          matched = videoId === val;
+          if (!matched) console.log(`[BLOCK_DEBUG] videoId karşılaştırma: "${videoId}" vs "${val}" → eşleşmedi`);
         } else {
-          return channelTitle.includes(val.toLowerCase());
+          matched = channelTitle.includes(val.toLowerCase());
         }
+        if (matched) console.log(`[BLOCK_DEBUG] ENGELLENDİ: type=${type}, val=${val}, videoId=${videoId}, channelTitle=${channelTitle}`);
+        return matched;
       });
     });
 
