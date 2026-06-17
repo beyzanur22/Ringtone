@@ -2298,7 +2298,6 @@ function filterBlockedChannels(items, country = "all") {
   });
 }
 
-// ARKA PLANDA ÖN-BELLEKLEME (Spotify gibi anında açılması için)
 // Kendi sunucumuzda Top25'e çıkarıldı + FFmpeg ile kalıcı disk kaydı eklendi
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
