@@ -1644,7 +1644,7 @@ app.use(async (req, res, next) => {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
     return next();
