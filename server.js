@@ -2518,7 +2518,8 @@ app.get("/top50", async (req, res) => {
     // Redis cache kontrol (ülke bazlı)
     const cached = await cacheGet(cacheKey);
     if (cached) {
-      return res.json({ source: "cache", region, data: cached });
+      const filtered = Array.isArray(cached) ? filterBlockedChannels(cached, country) : cached;
+      return res.json({ source: "cache", region, data: filtered });
     }
 
     let items;
@@ -2609,9 +2610,16 @@ app.get("/search", searchLimiter, async (req, res) => {
 
     const cacheKey = `search_bazocam:${query}`;
 
-    // Redis cache kontrol
+    // Redis cache kontrol — engelleme sonrası da filtrelenmeli
     const cached = await cacheGet(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) {
+      const cachedData = cached.data || cached;
+      if (Array.isArray(cachedData)) {
+        const filtered = filterBlockedChannels(cachedData, country);
+        return res.json({ ...cached, data: filtered });
+      }
+      return res.json(cached);
+    }
 
     // ADIM 1: Yeni API Provider (searchapi.php)
     let searchResult = null;
@@ -2619,6 +2627,10 @@ app.get("/search", searchLimiter, async (req, res) => {
       console.log(`[SEARCH] API Provider kullanılıyor: "${query}"`);
       const apiData = await apiSearch(query);
       const results = apiData.results || apiData.data || apiData || [];
+      if (Array.isArray(results) && results.length > 0) {
+        console.log("[SEARCH_DEBUG] İlk sonuç field'ları:", JSON.stringify(Object.keys(results[0])));
+        console.log("[SEARCH_DEBUG] İlk sonuç:", JSON.stringify(results[0]).substring(0, 500));
+      }
       const filteredData = filterBlockedChannels(Array.isArray(results) ? results : [], country);
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
