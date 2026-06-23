@@ -3655,6 +3655,263 @@ app.delete("/feedback/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
+app.get("/loadtest", basicAuth, (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Load Test</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0d0d0d;color:#e0e0e0;min-height:100vh;padding:24px}
+h1{color:#fff;font-size:22px;margin-bottom:20px}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px}
+input[type=number]{background:#1a1a1a;border:1px solid #333;color:#fff;padding:8px 12px;border-radius:6px;width:90px;font-size:14px}
+label{font-size:13px;color:#aaa}
+button{padding:10px 24px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s}
+#btnStart{background:#4caf50;color:#fff}
+#btnStart:hover{background:#43a047}
+#btnStart:disabled{background:#333;color:#666;cursor:not-allowed}
+.summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:20px}
+.card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:14px}
+.card .val{font-size:22px;font-weight:700;color:#fff}
+.card .lbl{font-size:11px;color:#888;margin-top:4px}
+.card.ok .val{color:#4caf50}
+.card.fail .val{color:#f44336}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px}
+th{background:#1a1a1a;color:#aaa;font-weight:600;padding:8px 10px;text-align:left;border-bottom:1px solid #2a2a2a}
+td{padding:7px 10px;border-bottom:1px solid #1e1e1e}
+tr:hover td{background:#161616}
+.bar{height:6px;background:#4caf50;border-radius:3px;margin-top:4px}
+.bar.fail{background:#f44336}
+#log{background:#111;border:1px solid #222;border-radius:8px;padding:12px;height:240px;overflow-y:auto;font-size:12px;font-family:monospace;color:#ccc}
+.log-ok{color:#4caf50}
+.log-fail{color:#f44336}
+.log-info{color:#888}
+progress{width:100%;height:6px;margin-bottom:16px;accent-color:#4caf50}
+</style>
+</head>
+<body>
+<h1>🚀 Load Test</h1>
+<div class="controls">
+  <div><label>Kullanıcı sayısı</label><br><input type="number" id="users" value="20" min="1" max="200"></div>
+  <div style="padding-top:18px"><button id="btnStart" onclick="startTest()">Başlat</button></div>
+</div>
+<progress id="prog" value="0" max="100"></progress>
+<div class="summary">
+  <div class="card"><div class="val" id="sTotal">—</div><div class="lbl">Toplam istek</div></div>
+  <div class="card ok"><div class="val" id="sOk">—</div><div class="lbl">Başarılı</div></div>
+  <div class="card fail"><div class="val" id="sFail">—</div><div class="lbl">Başarısız</div></div>
+  <div class="card"><div class="val" id="sRate">—</div><div class="lbl">Başarı oranı</div></div>
+  <div class="card"><div class="val" id="sAvg">—</div><div class="lbl">Ort gecikme</div></div>
+  <div class="card"><div class="val" id="sP90">—</div><div class="lbl">P90 gecikme</div></div>
+  <div class="card"><div class="val" id="sMax">—</div><div class="lbl">Max gecikme</div></div>
+  <div class="card"><div class="val" id="sTime">—</div><div class="lbl">Toplam süre</div></div>
+</div>
+<table id="tbl">
+<thead><tr><th>Endpoint</th><th>OK</th><th>FAIL</th><th>Ort(ms)</th><th>P90(ms)</th><th>Başarı</th></tr></thead>
+<tbody id="tbody"></tbody>
+</table>
+<div id="log"></div>
+
+<script>
+const BASE = "";
+const APP_SECRET = "RINGTONE_MASTER_V2_SECRET_2026";
+
+const VIDEO_IDS = [
+  "dQw4w9WgXcQ","kJQP7kiw5Fk","9bZkp7q19f0","OPf0YbXqDm0","hT_nvWreIhg",
+  "YQHsXMglC9A","JGwWNGJdvx8","fRh_vgS2dFE","RgKAFK5djSk","CevxZvSJLk8",
+  "M7lc1UVf-VE","WA4iX5D9Z9c","60ItHLz5WEA","nfWlot6h_JM","4NRXx6pxIVE",
+  "tVj0ZTS4WF4","e-ORhEE9VVg","n8X9_MgEdCg","ZbZSe6N_BXs","lp-EBohGJDA",
+];
+const SEARCH_TERMS = ["eminem","taylor swift","dua lipa","weeknd","billie eilish","ed sheeran","türkçe pop","rap","slow şarkılar","2024 hits"];
+const USER_TYPES = [
+  {type:"listener",w:30},{type:"searcher",w:20},{type:"mp3_dl",w:15},
+  {type:"mp4_dl",w:10},{type:"video_watch",w:15},{type:"mixed",w:10}
+];
+
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function pickType(){
+  const tot=USER_TYPES.reduce((s,t)=>s+t.w,0);
+  let r=Math.random()*tot;
+  for(const t of USER_TYPES){r-=t.w;if(r<=0)return t.type;}
+  return "listener";
+}
+
+async function hmacSign(path){
+  const ts = Date.now().toString();
+  const payload = ts + ":" + path;
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(APP_SECRET), {name:"HMAC",hash:"SHA-256"}, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  return {"X-Timestamp":ts,"X-Signature":b64,"X-Country":"TR"};
+}
+
+const epStats = {};
+const allLatencies = [];
+let done = 0, totalReqs = 0;
+
+function getEp(path){
+  if(path.startsWith("/stream/video")) return "stream/video";
+  if(path.startsWith("/stream")) return "stream/audio";
+  if(path.startsWith("/download/mp3")) return "download/mp3";
+  if(path.startsWith("/download/mp4")) return "download/mp4";
+  if(path.startsWith("/search")) return "search";
+  if(path.startsWith("/autocomplete")) return "autocomplete";
+  if(path.startsWith("/top50")) return "top50";
+  return path;
+}
+
+async function doReq(path){
+  const ep = getEp(path);
+  if(!epStats[ep]) epStats[ep]={ok:0,fail:0,lat:[]};
+  const headers = await hmacSign(path.split("?")[0]);
+  const t0 = performance.now();
+  try{
+    const r = await fetch(BASE+path, {headers, signal:AbortSignal.timeout(20000)});
+    const ms = Math.round(performance.now()-t0);
+    allLatencies.push(ms);
+    epStats[ep].lat.push(ms);
+    if(r.ok||r.status===302||r.status===301){
+      epStats[ep].ok++;
+      log(\`<span class="log-ok">✅ \${ep} \${r.status} \${ms}ms</span>\`);
+    } else {
+      epStats[ep].fail++;
+      log(\`<span class="log-fail">❌ \${ep} \${r.status} \${ms}ms</span>\`);
+    }
+  } catch(e){
+    const ms=Math.round(performance.now()-t0);
+    allLatencies.push(ms);
+    epStats[ep].lat.push(ms);
+    epStats[ep].fail++;
+    log(\`<span class="log-fail">❌ \${ep} ERR \${ms}ms \${e.message}</span>\`);
+  }
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+async function simulateUser(id){
+  const type = pickType();
+  await sleep(Math.random()*1500);
+  const vid = pick(VIDEO_IDS);
+  const q = encodeURIComponent(pick(SEARCH_TERMS));
+
+  if(type==="listener"){
+    await doReq(\`/stream?videoId=\${pick(VIDEO_IDS)}&type=audio\`);
+    await sleep(300); await doReq(\`/stream?videoId=\${pick(VIDEO_IDS)}&type=audio\`);
+    await sleep(300); await doReq(\`/stream?videoId=\${pick(VIDEO_IDS)}&type=audio\`);
+  } else if(type==="searcher"){
+    await doReq(\`/autocomplete?q=\${q}\`);
+    await sleep(200); await doReq(\`/search?q=\${q}\`);
+    await sleep(300); await doReq(\`/stream?videoId=\${vid}&type=audio\`);
+    await sleep(300); await doReq(\`/search?q=\${encodeURIComponent(pick(SEARCH_TERMS))}\`);
+    await sleep(300); await doReq(\`/stream?videoId=\${pick(VIDEO_IDS)}&type=audio\`);
+  } else if(type==="mp3_dl"){
+    await doReq(\`/search?q=\${q}\`);
+    await sleep(400); await doReq(\`/download/mp3?videoId=\${vid}\`);
+    await sleep(500); await doReq(\`/download/mp3?videoId=\${pick(VIDEO_IDS)}\`);
+  } else if(type==="mp4_dl"){
+    await doReq(\`/search?q=\${q}\`);
+    await sleep(400); await doReq(\`/download/mp4?videoId=\${vid}\`);
+  } else if(type==="video_watch"){
+    await doReq(\`/search?q=\${q}\`);
+    await sleep(400); await doReq(\`/stream/video?videoId=\${vid}\`);
+    await sleep(500); await doReq(\`/stream/video?videoId=\${pick(VIDEO_IDS)}\`);
+  } else {
+    await doReq(\`/top50\`);
+    await sleep(200); await doReq(\`/search?q=\${q}\`);
+    await sleep(300); await doReq(\`/stream?videoId=\${vid}&type=audio\`);
+    await sleep(300); await doReq(\`/download/mp3?videoId=\${vid}\`);
+    await sleep(400); await doReq(\`/stream/video?videoId=\${pick(VIDEO_IDS)}\`);
+    await sleep(200); await doReq(\`/autocomplete?q=\${q}\`);
+  }
+
+  done++;
+  document.getElementById("prog").value = Math.round((done/totalUsers)*100);
+  updateSummary();
+  updateTable();
+}
+
+let totalUsers = 0;
+
+function pct(arr,p){
+  if(!arr.length)return 0;
+  const s=[...arr].sort((a,b)=>a-b);
+  return s[Math.max(0,Math.ceil(p/100*s.length)-1)];
+}
+function avg(arr){ return arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.length):0; }
+
+function updateSummary(){
+  const ok=Object.values(epStats).reduce((s,e)=>s+e.ok,0);
+  const fail=Object.values(epStats).reduce((s,e)=>s+e.fail,0);
+  const tot=ok+fail;
+  document.getElementById("sTotal").textContent=tot;
+  document.getElementById("sOk").textContent=ok;
+  document.getElementById("sFail").textContent=fail;
+  document.getElementById("sRate").textContent=tot?Math.round(ok/tot*100)+"%":"—";
+  document.getElementById("sAvg").textContent=allLatencies.length?avg(allLatencies)+"ms":"—";
+  document.getElementById("sP90").textContent=allLatencies.length?pct(allLatencies,90)+"ms":"—";
+  document.getElementById("sMax").textContent=allLatencies.length?Math.max(...allLatencies)+"ms":"—";
+}
+
+function updateTable(){
+  const tbody=document.getElementById("tbody");
+  tbody.innerHTML="";
+  for(const [ep,s] of Object.entries(epStats)){
+    const tot=s.ok+s.fail;
+    const rate=tot?Math.round(s.ok/tot*100):0;
+    tbody.innerHTML+=\`<tr>
+      <td>\${ep}</td>
+      <td style="color:#4caf50">\${s.ok}</td>
+      <td style="color:#f44336">\${s.fail}</td>
+      <td>\${avg(s.lat)}ms</td>
+      <td>\${pct(s.lat,90)}ms</td>
+      <td><div style="font-size:12px">\${rate}%</div><div class="bar \${rate<50?"fail":""}" style="width:\${rate}%"></div></td>
+    </tr>\`;
+  }
+}
+
+function log(msg){
+  const el=document.getElementById("log");
+  el.innerHTML+=msg+"<br>";
+  el.scrollTop=el.scrollHeight;
+}
+
+let running=false;
+let t0global;
+
+async function startTest(){
+  if(running)return;
+  running=true;
+  const btn=document.getElementById("btnStart");
+  btn.disabled=true;
+  btn.textContent="Çalışıyor...";
+  Object.keys(epStats).forEach(k=>delete epStats[k]);
+  allLatencies.length=0;
+  done=0;
+  document.getElementById("log").innerHTML="";
+  document.getElementById("prog").value=0;
+  totalUsers=parseInt(document.getElementById("users").value)||20;
+  t0global=performance.now();
+
+  log(\`<span class="log-info">🚀 Test başlıyor — \${totalUsers} kullanıcı</span>\`);
+
+  await Promise.all(Array.from({length:totalUsers},(_,i)=>simulateUser(i+1)));
+
+  const elapsed=((performance.now()-t0global)/1000).toFixed(1);
+  document.getElementById("sTime").textContent=elapsed+"s";
+  log(\`<span class="log-info">✅ Test tamamlandı — \${elapsed}s</span>\`);
+  btn.disabled=false;
+  btn.textContent="Tekrar Başlat";
+  running=false;
+}
+</script>
+</body>
+</html>`);
+});
+
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, "0.0.0.0", async () => {
   console.log(`Backend running on port ${PORT}`);
