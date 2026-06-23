@@ -1972,64 +1972,82 @@ function validateMediaStream(srcStream, kind) {
 async function apiStreamMp3(videoId, bitrate = 320) {
   const cfg = getApiProviderConfig();
   const url = `${cfg.baseUrl}/mp3download.php?id=${videoId}&key=${cfg.apiKey}&b=${bitrate}`;
-  console.log(`[API_PROVIDER] MP3 stream isteniyor: ${videoId} (${bitrate}kbps)`);
+  const MAX_ATTEMPTS = 3;
 
-  const response = await axiosClient({
-    method: "GET",
-    url,
-    responseType: "stream",
-    timeout: 120000,
-    validateStatus: (status) => status === 200,
-    headers: { "User-Agent": getRandomUA() }
-  });
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      console.log(`[API_PROVIDER] MP3 stream isteniyor: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${MAX_ATTEMPTS}`);
 
-  const contentType = response.headers["content-type"] || "";
-  if (contentType.includes("text/html") || contentType.includes("json")) {
-    try { response.data.destroy(); } catch {}
-    throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
+      const response = await axiosClient({
+        method: "GET",
+        url,
+        responseType: "stream",
+        timeout: 120000,
+        validateStatus: (status) => status === 200,
+        headers: { "User-Agent": getRandomUA() }
+      });
+
+      const contentType = response.headers["content-type"] || "";
+      if (contentType.includes("text/html") || contentType.includes("json")) {
+        try { response.data.destroy(); } catch {}
+        throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
+      }
+
+      const cacheHeader = response.headers["x-cache"] || "";
+      const validStream = await validateMediaStream(response.data, "audio");
+      console.log(`[API_PROVIDER] MP3 yanıt OK: ${videoId} | cache=${cacheHeader}`);
+
+      return {
+        stream: validStream,
+        contentType: response.headers["content-type"],
+        contentLength: response.headers["content-length"],
+        cacheHit: cacheHeader === "HIT"
+      };
+    } catch (err) {
+      console.warn(`[API_PROVIDER] MP3 deneme ${attempt}/${MAX_ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500 * attempt));
+      else throw err;
+    }
   }
-
-  const cacheHeader = response.headers["x-cache"] || "";
-  // İlk byte'ları doğrula — "Not Found" gibi boş yanıtları gerçek MP3 sanma
-  const validStream = await validateMediaStream(response.data, "audio");
-  console.log(`[API_PROVIDER] MP3 yanıt OK: ${videoId} | cache=${cacheHeader}`);
-
-  return {
-    stream: validStream,
-    contentType: response.headers["content-type"],
-    contentLength: response.headers["content-length"],
-    cacheHit: cacheHeader === "HIT"
-  };
 }
 
 async function apiStreamMp4(videoId, quality = 720) {
   const cfg = getApiProviderConfig();
   const url = `${cfg.baseUrl}/mp4download.php?id=${videoId}&key=${cfg.apiKey}&q=${quality}`;
-  console.log(`[API_PROVIDER] MP4 stream isteniyor: ${videoId} (${quality}p)`);
+  const MAX_ATTEMPTS = 3;
 
-  const response = await axiosClient({
-    method: "GET",
-    url,
-    responseType: "stream",
-    timeout: 120000,
-    validateStatus: (status) => status === 200,
-    headers: { "User-Agent": getRandomUA() }
-  });
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      console.log(`[API_PROVIDER] MP4 stream isteniyor: ${videoId} (${quality}p) — deneme ${attempt}/${MAX_ATTEMPTS}`);
 
-  const contentType = response.headers["content-type"] || "";
-  if (contentType.includes("text/html") || contentType.includes("json")) {
-    try { response.data.destroy(); } catch {}
-    throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
+      const response = await axiosClient({
+        method: "GET",
+        url,
+        responseType: "stream",
+        timeout: 120000,
+        validateStatus: (status) => status === 200,
+        headers: { "User-Agent": getRandomUA() }
+      });
+
+      const contentType = response.headers["content-type"] || "";
+      if (contentType.includes("text/html") || contentType.includes("json")) {
+        try { response.data.destroy(); } catch {}
+        throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
+      }
+
+      const validStream = await validateMediaStream(response.data, "video");
+
+      return {
+        stream: validStream,
+        contentType: response.headers["content-type"],
+        contentLength: response.headers["content-length"]
+      };
+    } catch (err) {
+      console.warn(`[API_PROVIDER] MP4 deneme ${attempt}/${MAX_ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500 * attempt));
+      else throw err;
+    }
   }
-
-  // İlk byte'ları doğrula — boş/hatalı yanıtları gerçek video sanma
-  const validStream = await validateMediaStream(response.data, "video");
-
-  return {
-    stream: validStream,
-    contentType: response.headers["content-type"],
-    contentLength: response.headers["content-length"]
-  };
 }
 
 async function apiSearch(query) {
@@ -3163,33 +3181,9 @@ app.get("/stream", async (req, res) => {
       }
 
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
-        console.warn(`[STREAM_AUDIO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
+        console.warn(`[STREAM_AUDIO] ${fetchErr.response.status} — CDN hatası, video geçici olarak kullanılamıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
-
-        // Arka planda kalıcı indirmeyi başlat
-        if (!mediaLib.getReadyTrack(videoId, "m4a") && !mediaLib.isProcessing(videoId)) {
-          const metadata = { 
-            title: req.query.title || "Unknown", 
-            artist: req.query.uploader || "Unknown" 
-          };
-          const category = typeStr === "video" ? "watching" : "listening";
-
-          mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
-          const cookiePath = getRandomCookie();
-          const proxyUrl = getRandomProxy(videoId);
-          ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl })
-            .then(result => {
-              mediaLib.markReady(videoId, result);
-              ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
-                if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
-              }).catch(() => { });
-            }).catch(err => {
-              mediaLib.markFailed(videoId, err.message);
-            });
-        }
-
-        // Kullanıcıyı bekletmemek için direkt stream et ve fonksiyonu bitir
-        await ytdlpStream(videoId, "audio", req, res);
+        if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
         return;
       } else {
         throw fetchErr;
@@ -3487,25 +3481,9 @@ app.get("/stream/video", async (req, res) => {
       }
 
       if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
-        console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — Proxy/CDN hatası. Direkt yt-dlp stream kullanılıyor: ${videoId}`);
+        console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — CDN hatası, video geçici olarak kullanılamıyor: ${videoId}`);
         if (redis) await redis.del(cacheKey);
-
-        if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId + "_video")) {
-          const cookiePath = getRandomCookie();
-          const proxyUrl = getRandomProxy(videoId);
-          ffmpegWorker.processVideo(videoId, {}, { cookiePath, proxyUrl })
-            .then(result => {
-              mediaLib.upsertTrack(videoId, { mp4: result.mp4, status: "ready" });
-              if (result.mp4) {
-                try { mediaLib.upsertTrack(videoId, { mp4Size: fs.statSync(result.mp4).size }); } catch (e) { }
-              }
-            })
-            .catch(err => {
-              console.warn(`[FFMPEG_VIDEO_BG] *** Video işleme başarısız: ${videoId}: ${err.message}`);
-            });
-        }
-
-        await ytdlpStream(videoId, "video", req, res);
+        if (!res.headersSent) res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
         return;
       } else {
         throw fetchErr;
@@ -4118,11 +4096,10 @@ app.get("/download/mp3", async (req, res) => {
       console.warn(`[DOWNLOAD_MP3] Converter fallback başarısız: ${convErr.message}`);
     }
 
-    // ★ SON ÇARE: yt-dlp
-    console.log(`[DOWNLOAD_MP3] Son çare yt-dlp: ${videoId}`);
+    // Tüm yöntemler başarısız
+    console.warn(`[DOWNLOAD_MP3] Tüm API yöntemleri başarısız: ${videoId}`);
     if (!res.headersSent) {
-      res.setHeader("Content-Disposition", `attachment; filename=audio_${videoId}.m4a`);
-      await ytdlpStream(videoId, "audio", req, res);
+      res.status(503).json({ error: "MP3 indirme şu an kullanılamıyor, lütfen tekrar deneyin" });
     }
 
   } catch (err) {
@@ -4203,48 +4180,14 @@ app.get("/download/mp4", async (req, res) => {
         return;
       }
     } catch (apiErr) {
-      console.warn(`[DOWNLOAD_MP4] API Provider başarısız: ${apiErr.message}. yt-dlp fallback...`);
+      console.warn(`[DOWNLOAD_MP4] API Provider başarısız: ${apiErr.message}`);
     }
 
-    // ★ KATMAN 3: yt-dlp + proxy fallback
-    const cacheKey = `stream:video:${videoId}`;
-    const cached = await cacheGet(cacheKey);
-    let streamUrl, ua;
-
-    if (cached && cached.url) {
-      streamUrl = cached.url;
-      ua = cached.ua || getRandomUA();
-      console.log(`[DOWNLOAD_MP4] URL Cache Hit: ${videoId}`);
-    } else {
-      console.log(`[DOWNLOAD_MP4] Stream URL çözümleniyor: ${videoId}`);
-      ua = getRandomUA();
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
-
-      streamUrl = await queue.add(() => resolveStreamUrlWithFallback(videoId, "video", ua, countryClient));
-      await cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION);
+    // Tüm yöntemler başarısız
+    console.warn(`[DOWNLOAD_MP4] Tüm API yöntemleri başarısız: ${videoId}`);
+    if (!res.headersSent) {
+      res.status(503).json({ error: "MP4 indirme şu an kullanılamıyor, lütfen tekrar deneyin" });
     }
-
-    if (!streamUrl || typeof streamUrl !== "string" || !streamUrl.startsWith("http")) {
-      return res.status(500).json({ error: "Video URL çözümlenemedi" });
-    }
-
-    console.log(`[DOWNLOAD_MP4] YouTube CDN stream aktarılıyor: ${videoId}`);
-    const response = await axiosClient({
-      method: "GET",
-      url: streamUrl.toString().trim(),
-      responseType: "stream",
-      timeout: 120000,
-      headers: { "User-Agent": ua, "Referer": "https://www.youtube.com/" },
-      validateStatus: (status) => status < 400,
-      ...getProxyAxiosConfig({ _targetUrl: streamUrl.toString().trim() }, videoId)
-    });
-
-    res.setHeader("Content-Type", "video/mp4");
-    res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
-    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-
-    safePipe(response.data, res);
 
   } catch (err) {
     logError("DOWNLOAD_MP4", req.query.videoId, err.message);
