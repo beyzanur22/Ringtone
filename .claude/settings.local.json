@@ -64,7 +64,8 @@
       "Bash(python scripts/office/pack.py \"C:\\\\Users\\\\beyza\\\\Downloads\\\\tez_unpacked\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Tez_Bitirme_Final_GUNCEL.docx\" --original \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Bitirme_Final 3 \\(1\\).docx\" --validate false)",
       "Bash(taskkill /F /IM WINWORD.EXE)",
       "PowerShell(Get-Process WINWORD -ErrorAction SilentlyContinue)",
-      "PowerShell(Stop-Process -Force)"
+      "PowerShell(Stop-Process -Force)",
+      "Bash(find /c/Users/beyza/ringtone-admin-frontend -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.tsx\" 2>/dev/null | head -30)"
     ]
   }
 }

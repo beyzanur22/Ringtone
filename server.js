@@ -1811,8 +1811,8 @@ setInterval(() => {
 function setDrmHeaders(res) {
   res.setHeader("X-DRM-Protected", "true");
   res.setHeader("X-Content-Protection", "RingtoneMaster-DRM/1.0");
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
-  res.setHeader("Pragma", "no-cache");
+  // Cloudflare CDN cache'i: 1 saat tut, tarayıcıda 5dk tut
+  res.setHeader("Cache-Control", "public, s-maxage=3600, max-age=300");
 }
 
 
@@ -3475,7 +3475,8 @@ app.delete("/feedback/:id", (req, res) => {
 });
 
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
-app.get("/loadtest", basicAuth, (req, res) => {
+app.get("/loadtest", (req, res) => {
+  if (req.query.key !== APP_SECRET) return res.status(403).json({ error: "Unauthorized" });
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
