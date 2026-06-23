@@ -47,7 +47,24 @@
       "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Sablon \\(1\\).docx\")",
       "Bash(git update-index *)",
       "Bash(findstr /i \"temp_compare\")",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(cd \"C:\\\\Users\\\\beyza\\\\AndroidStudioProjects\\\\RingtoneMasterV2\\\\focus_ai\")",
+      "Bash(cat lib/main.dart)",
+      "Bash(head -60 lib/screens/splash_screen.dart)",
+      "Bash(git config *)",
+      "Bash(curl -s -m 60 https://focus-ai-backend.onrender.com/health)",
+      "Bash(curl -s -m 60 -X POST https://focus-ai-backend.onrender.com/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"beyzanurozcan13@gmail.com\",\"password\":\"123456\"}')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);console.log\\(j.message||j.error,'| admin:',j.user&&j.user.is_admin\\)}catch\\(e\\){console.log\\('yanit:',d.slice\\(0,100\\)\\)}}\\)\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | süre: %{time_total} sn\\\\n\" -m 90 https://focus-ai-backend.onrender.com/health)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | süre: %{time_total} sn\\\\n\" -m 30 https://focus-ai-backend.onrender.com/health)",
+      "Bash(grep -v \"//\")",
+      "PowerShell(if \\(Test-Path \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Bitirme Tezi FINAL.docx\"\\) { \"OLDU: \" + \\(Get-Item \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Bitirme Tezi FINAL.docx\"\\).Length + \" bytes, \" + \\(Get-Item \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Bitirme Tezi FINAL.docx\"\\).LastWriteTime } else { \"DOSYA YOK\" })",
+      "Bash(python scripts/office/pack.py \"C:\\\\Users\\\\beyza\\\\Downloads\\\\tez_unpacked\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Tez_Bitirme_Final_GUNCEL.docx\" --original \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Bitirme_Final 3 \\(1\\).docx\")",
+      "Bash(pip install *)",
+      "Bash(python scripts/office/pack.py \"C:\\\\Users\\\\beyza\\\\Downloads\\\\tez_unpacked\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Tez_Bitirme_Final_GUNCEL.docx\" --original \"C:\\\\Users\\\\beyza\\\\Downloads\\\\Tez_Bitirme_Final 3 \\(1\\).docx\" --validate false)",
+      "Bash(taskkill /F /IM WINWORD.EXE)",
+      "PowerShell(Get-Process WINWORD -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)"
     ]
   }
 }

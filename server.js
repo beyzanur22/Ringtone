@@ -2858,7 +2858,7 @@ async function getBazocamCdnUrl(videoId, type = "audio") {
       maxRedirects: 0,
       timeout: 20000,
       validateStatus: (status) => status >= 200 && status < 400,
-      headers: { "User-Agent": getRandomUserAgent() }
+      headers: { "User-Agent": getRandomUA() }
     });
 
     // 200 ile direkt link dönerse
