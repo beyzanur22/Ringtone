@@ -4,10 +4,12 @@
  * Örnek:    node loadtest.js 100
  */
 
-const https = require("https");
-const http  = require("http");
+const https  = require("https");
+const http   = require("http");
+const crypto = require("crypto");
 
 const BASE_URL        = "https://music.cevapla.tv";
+const APP_SECRET      = process.env.APP_KEY || "RINGTONE_MASTER_V2_SECRET_2026";
 const CONCURRENT      = parseInt(process.argv[2]) || 100;
 const REQUEST_TIMEOUT = 20000; // ms
 
@@ -44,6 +46,13 @@ const stats = {
   errors: [],
 };
 
+function authHeaders(path) {
+  const timestamp = Date.now().toString();
+  const payload   = timestamp + ":" + path;
+  const signature = crypto.createHmac("sha256", APP_SECRET).update(payload).digest("base64");
+  return { "X-Timestamp": timestamp, "X-Signature": signature, "X-Country": "TR" };
+}
+
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -64,10 +73,22 @@ function sleep(ms) {
 
 function req(url, label) {
   return new Promise((resolve) => {
-    const t0  = Date.now();
-    const mod = url.startsWith("https") ? https : http;
+    const t0     = Date.now();
+    const urlObj = new URL(url);
+    const isHttps = url.startsWith("https");
+    const mod    = isHttps ? https : http;
+    const path   = urlObj.pathname;
 
-    const request = mod.get(url, { timeout: REQUEST_TIMEOUT }, (res) => {
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (isHttps ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: "GET",
+      timeout: REQUEST_TIMEOUT,
+      headers: { ...authHeaders(path), "User-Agent": "LoadTest/1.0" },
+    };
+
+    const request = mod.request(options, (res) => {
       let size = 0;
       res.on("data", c => { size += c.length; });
       res.on("end", () => {
@@ -82,6 +103,7 @@ function req(url, label) {
       request.destroy();
       resolve({ ok: false, status: 0, ms: REQUEST_TIMEOUT, size: 0, label, error: "timeout" });
     });
+    request.end();
   });
 }
 
