@@ -1857,9 +1857,20 @@ if (!fs.existsSync(CONFIG_FILE)) {
     mp3Provider: { bazocam: true, backend: true },
     apiProviders: {
       providers: [
-        { id: "gamma", name: "gamma.gammacloud.net (yt2mp3.ai)", enabled: true, priority: 1 },
-        { id: "cnv", name: "cnv.cx (y2mate)", enabled: true, priority: 2, dailyLimit: 200 },
-        { id: "youtubemp3", name: "youtubemp3.ltd", enabled: true, priority: 3 }
+        {
+          id: "bazocam",
+          name: "Bazocam",
+          enabled: true,
+          priority: 1,
+          baseUrl: "https://bazocam.net",
+          apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
+          endpoints: {
+            mp3: "/mp3download.php?id={id}&key={key}&b={bitrate}",
+            mp4: "/mp4download.php?id={id}&key={key}&q={quality}",
+            search: "/searchapi.php?search={query}&key={key}",
+            autocomplete: "/ototamamlamaapi.php?search={query}&key={key}"
+          }
+        }
       ],
       apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
       baseUrl: "https://bazocam.net",
@@ -1969,111 +1980,183 @@ function validateMediaStream(srcStream, kind) {
   });
 }
 
-async function apiStreamMp3(videoId, bitrate = 320) {
+// ─────────────────────────────────────────────────────────────
+// ÇOKLU API PROVIDER SİSTEMİ
+// Her provider kendi baseUrl + apiKey + endpoint şablonlarına sahip.
+// Panelden yeni API eklenince backend otomatik kullanır — UYGULAMA GÜNCELLENMEZ.
+// İstekler priority sırasına göre denenir; biri çökerse sonrakine geçilir.
+// Şablon değişkenleri: {id} {key} {bitrate} {quality} {query}
+// ─────────────────────────────────────────────────────────────
+const DEFAULT_ENDPOINTS = {
+  mp3: "/mp3download.php?id={id}&key={key}&b={bitrate}",
+  mp4: "/mp4download.php?id={id}&key={key}&q={quality}",
+  search: "/searchapi.php?search={query}&key={key}",
+  autocomplete: "/ototamamlamaapi.php?search={query}&key={key}"
+};
+
+// Config'i normalize et — eski (tek baseUrl) ve yeni (provider başına baseUrl) şemayı destekler
+function normalizeProviders(includeDisabled = false) {
   const cfg = getApiProviderConfig();
-  const url = `${cfg.baseUrl}/mp3download.php?id=${videoId}&key=${cfg.apiKey}&b=${bitrate}`;
-  const MAX_ATTEMPTS = 3;
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      console.log(`[API_PROVIDER] MP3 stream isteniyor: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${MAX_ATTEMPTS}`);
-
-      const response = await axiosClient({
-        method: "GET",
-        url,
-        responseType: "stream",
-        timeout: 120000,
-        validateStatus: (status) => status === 200,
-        headers: { "User-Agent": getRandomUA() }
-      });
-
-      const contentType = response.headers["content-type"] || "";
-      if (contentType.includes("text/html") || contentType.includes("json")) {
-        try { response.data.destroy(); } catch {}
-        throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
-      }
-
-      const cacheHeader = response.headers["x-cache"] || "";
-      const validStream = await validateMediaStream(response.data, "audio");
-      console.log(`[API_PROVIDER] MP3 yanıt OK: ${videoId} | cache=${cacheHeader}`);
-
-      return {
-        stream: validStream,
-        contentType: response.headers["content-type"],
-        contentLength: response.headers["content-length"],
-        cacheHit: cacheHeader === "HIT"
-      };
-    } catch (err) {
-      console.warn(`[API_PROVIDER] MP3 deneme ${attempt}/${MAX_ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
-      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500 * attempt));
-      else throw err;
-    }
+  const fallbackBase = (cfg.baseUrl || "https://bazocam.net").replace(/\/+$/, "");
+  const fallbackKey = cfg.apiKey || "";
+  let list = (cfg.providers || []).map(p => ({
+    id: p.id,
+    name: p.name || p.id,
+    enabled: p.enabled !== false,
+    priority: (p.priority != null) ? p.priority : 99,
+    baseUrl: (p.baseUrl || fallbackBase).replace(/\/+$/, ""),
+    apiKey: p.apiKey || fallbackKey,
+    endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) }
+  }));
+  if (list.length === 0) {
+    list.push({
+      id: "default", name: "Default", enabled: true, priority: 1,
+      baseUrl: fallbackBase, apiKey: fallbackKey, endpoints: { ...DEFAULT_ENDPOINTS }
+    });
   }
+  if (!includeDisabled) list = list.filter(p => p.enabled);
+  return list.sort((a, b) => a.priority - b.priority);
+}
+
+// Şablondan tam URL üret — sadece {değişken}'leri encode eder, ?/& gibi yapıyı bozmaz
+function buildProviderUrl(provider, type, params) {
+  const tpl = provider.endpoints[type] || DEFAULT_ENDPOINTS[type];
+  const all = { key: provider.apiKey, ...params };
+  const path = tpl.replace(/\{(\w+)\}/g, (m, k) => {
+    const v = all[k];
+    return v === undefined ? "" : encodeURIComponent(v);
+  });
+  return provider.baseUrl + path;
+}
+
+async function apiStreamMp3(videoId, bitrate = 320) {
+  const providers = normalizeProviders();
+  const ATTEMPTS = 2;
+  let lastErr;
+  for (const provider of providers) {
+    const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      try {
+        console.log(`[API_PROVIDER:${provider.id}] MP3 stream: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${ATTEMPTS}`);
+
+        const response = await axiosClient({
+          method: "GET",
+          url,
+          responseType: "stream",
+          timeout: 120000,
+          validateStatus: (status) => status === 200,
+          headers: { "User-Agent": getRandomUA() }
+        });
+
+        const contentType = response.headers["content-type"] || "";
+        if (contentType.includes("text/html") || contentType.includes("json")) {
+          try { response.data.destroy(); } catch {}
+          throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
+        }
+
+        const cacheHeader = response.headers["x-cache"] || "";
+        const validStream = await validateMediaStream(response.data, "audio");
+        console.log(`[API_PROVIDER:${provider.id}] MP3 yanıt OK: ${videoId} | cache=${cacheHeader}`);
+
+        return {
+          stream: validStream,
+          contentType: response.headers["content-type"],
+          contentLength: response.headers["content-length"],
+          cacheHit: cacheHeader === "HIT"
+        };
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[API_PROVIDER:${provider.id}] MP3 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 1200 * attempt));
+      }
+    }
+    console.warn(`[API_PROVIDER:${provider.id}] MP3 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
+  }
+  throw lastErr || new Error("Tüm API provider'ları başarısız (MP3)");
 }
 
 async function apiStreamMp4(videoId, quality = 720) {
-  const cfg = getApiProviderConfig();
-  const url = `${cfg.baseUrl}/mp4download.php?id=${videoId}&key=${cfg.apiKey}&q=${quality}`;
-  const MAX_ATTEMPTS = 3;
+  const providers = normalizeProviders();
+  const ATTEMPTS = 2;
+  let lastErr;
+  for (const provider of providers) {
+    const url = buildProviderUrl(provider, "mp4", { id: videoId, quality });
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      try {
+        console.log(`[API_PROVIDER:${provider.id}] MP4 stream: ${videoId} (${quality}p) — deneme ${attempt}/${ATTEMPTS}`);
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      console.log(`[API_PROVIDER] MP4 stream isteniyor: ${videoId} (${quality}p) — deneme ${attempt}/${MAX_ATTEMPTS}`);
+        const response = await axiosClient({
+          method: "GET",
+          url,
+          responseType: "stream",
+          timeout: 120000,
+          validateStatus: (status) => status === 200,
+          headers: { "User-Agent": getRandomUA() }
+        });
 
-      const response = await axiosClient({
-        method: "GET",
-        url,
-        responseType: "stream",
-        timeout: 120000,
-        validateStatus: (status) => status === 200,
-        headers: { "User-Agent": getRandomUA() }
-      });
+        const contentType = response.headers["content-type"] || "";
+        if (contentType.includes("text/html") || contentType.includes("json")) {
+          try { response.data.destroy(); } catch {}
+          throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
+        }
 
-      const contentType = response.headers["content-type"] || "";
-      if (contentType.includes("text/html") || contentType.includes("json")) {
-        try { response.data.destroy(); } catch {}
-        throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
+        const validStream = await validateMediaStream(response.data, "video");
+
+        return {
+          stream: validStream,
+          contentType: response.headers["content-type"],
+          contentLength: response.headers["content-length"]
+        };
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[API_PROVIDER:${provider.id}] MP4 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 1200 * attempt));
       }
-
-      const validStream = await validateMediaStream(response.data, "video");
-
-      return {
-        stream: validStream,
-        contentType: response.headers["content-type"],
-        contentLength: response.headers["content-length"]
-      };
-    } catch (err) {
-      console.warn(`[API_PROVIDER] MP4 deneme ${attempt}/${MAX_ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
-      if (attempt < MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500 * attempt));
-      else throw err;
     }
+    console.warn(`[API_PROVIDER:${provider.id}] MP4 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
   }
+  throw lastErr || new Error("Tüm API provider'ları başarısız (MP4)");
 }
 
 async function apiSearch(query) {
-  const cfg = getApiProviderConfig();
-  const url = `${cfg.baseUrl}/searchapi.php?search=${encodeURIComponent(query)}&key=${cfg.apiKey}`;
-  console.log(`[API_PROVIDER] Arama: "${query}"`);
-
-  const response = await axiosClient.get(url, { timeout: 10000 });
-  return response.data;
+  const providers = normalizeProviders();
+  let lastErr;
+  for (const provider of providers) {
+    const url = buildProviderUrl(provider, "search", { query });
+    try {
+      console.log(`[API_PROVIDER:${provider.id}] Arama: "${query}"`);
+      const response = await axiosClient.get(url, { timeout: 10000 });
+      if (response.data) return response.data;
+      throw new Error("Boş arama yanıtı");
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[API_PROVIDER:${provider.id}] Arama başarısız: ${err.message}`);
+    }
+  }
+  throw lastErr || new Error("Tüm API provider'ları başarısız (arama)");
 }
 
 async function apiAutocomplete(query) {
-  const cfg = getApiProviderConfig();
-  const url = `${cfg.baseUrl}/ototamamlamaapi.php?search=${encodeURIComponent(query)}&key=${cfg.apiKey}`;
-
-  const response = await axiosClient.get(url, { timeout: 5000 });
-  return response.data;
+  const providers = normalizeProviders();
+  for (const provider of providers) {
+    const url = buildProviderUrl(provider, "autocomplete", { query });
+    try {
+      const response = await axiosClient.get(url, { timeout: 5000 });
+      if (response.data) return response.data;
+    } catch (err) {
+      console.warn(`[API_PROVIDER:${provider.id}] Otomatik tamamlama başarısız: ${err.message}`);
+    }
+  }
+  return []; // autocomplete kritik değil — hepsi çökse boş dön
 }
 
-// API Provider sağlık kontrolü
+// API Provider sağlık kontrolü — her provider kendi baseUrl'ünden test edilir
 async function checkProviderHealth() {
-  const cfg = getApiProviderConfig();
+  const providers = normalizeProviders(true); // pasifleri de göster
   const results = [];
-  for (const provider of (cfg.providers || [])) {
+  for (const provider of providers) {
     try {
-      const testUrl = `${cfg.baseUrl}/mp3download.php?id=test&key=${cfg.apiKey}&b=128`;
+      const testUrl = buildProviderUrl(provider, "mp3", { id: "test", bitrate: 128 });
       const resp = await axiosClient.get(testUrl, { timeout: 8000, validateStatus: () => true });
       results.push({
         ...provider,

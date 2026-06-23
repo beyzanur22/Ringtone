@@ -65,7 +65,12 @@
       "Bash(taskkill /F /IM WINWORD.EXE)",
       "PowerShell(Get-Process WINWORD -ErrorAction SilentlyContinue)",
       "PowerShell(Stop-Process -Force)",
-      "Bash(find /c/Users/beyza/ringtone-admin-frontend -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.tsx\" 2>/dev/null | head -30)"
+      "Bash(find /c/Users/beyza/ringtone-admin-frontend -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.tsx\" 2>/dev/null | head -30)",
+      "Bash(extract-text \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Tez_Sablon.docx\")",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\beyza\\\\Desktop\\\\Tez_Sablon.docx\" /tmp/sablon_unpacked/)",
+      "Bash(ls /tmp/sablon_unpacked/word/ 2>&1)",
+      "Bash(grep -oP '\\(?<=<w:t>\\)[^<]+|\\(?<=<w:t xml:space=\"preserve\">\\)[^<]+' /tmp/sablon_unpacked/word/document.xml | head -300)",
+      "Bash(grep -oE '<w:t[^>]*>[^<]+</w:t>' /tmp/sablon_unpacked/word/document.xml | sed 's/<w:t[^>]*>//;s/<\\\\/w:t>//' | head -300)"
     ]
   }
 }
