@@ -3116,81 +3116,12 @@ app.get("/stream", async (req, res) => {
       }
       return;
     } catch (apiErr) {
-      console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}. YouTube fallback deneniyor...`);
+      console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
+      if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
+      return;
     }
 
-    // ★ FALLBACK: Eski YouTube CDN çözümleme (yt-dlp / Innertube)
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    const countryClient = getPlayerClientForCountry(country);
-
-    const cacheKey = `stream:audio:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
-    let streamUrl, ua;
-
-    if (cachedData && cachedData.url) {
-      streamUrl = cachedData.url;
-      ua = cachedData.ua || getRandomUA();
-      console.log("AUDIO CACHE HIT:", videoId);
-    } else {
-      ua = getRandomUA();
-
-      const resolutionPromise = queue.add(async () => {
-        try {
-          const url = await resolveStreamUrlWithFallback(videoId, "audio", ua, countryClient);
-          return url;
-        } finally {
-          const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-          ongoingResolutions.delete(ongoingKey);
-        }
-      });
-
-      const ongoingKey = `ongoing:${typeStr}:${videoId}`;
-      resolutionPromise._startedAt = Date.now();
-      ongoingResolutions.set(ongoingKey, resolutionPromise);
-      streamUrl = await resolutionPromise;
-
-      // Stream URL'leri 5 saat cache'le (arka planda — kullanıcıyı bekletme)
-      cacheSet(cacheKey, { url: streamUrl, ua }, STREAM_CACHE_DURATION).catch(() => {});
-      console.log("AUDIO CACHE SAVE:", videoId);
-    }
-
-    let response;
-    let headersOptions;
-    try {
-      const dynamicHeaders = getAntiBotHeaders(ua);
-      headersOptions = {
-        ...dynamicHeaders,
-        "Referer": "https://www.youtube.com/"
-      };
-      if (req.headers.range) headersOptions["Range"] = req.headers.range;
-
-      response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
-      });
-    } catch (fetchErr) {
-      // Proxy hatası tespiti
-      if (fetchErr.response && (fetchErr.response.status === 402 || fetchErr.response.status === 407)) {
-        console.warn(`[PROXY_UYARISI]  AXIOS PROXY BİTİYOR VEYA REDDEDİLDİ! Status: ${fetchErr.response.status}`);
-      } else if (fetchErr.code && (fetchErr.code === 'ECONNRESET' || fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND')) {
-        console.warn(`[PROXY_UYARISI]  AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
-      }
-
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
-        console.warn(`[STREAM_AUDIO] ${fetchErr.response.status} — CDN hatası, video geçici olarak kullanılamıyor: ${videoId}`);
-        if (redis) await redis.del(cacheKey);
-        if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
-        return;
-      } else {
-        throw fetchErr;
-      }
-    }
-
-    res.status(response.status);
+    res.status(200);
     if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
     if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
     if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
@@ -3427,100 +3358,9 @@ app.get("/stream/video", async (req, res) => {
         return;
       }
     } catch (apiErr) {
-      console.warn(`[VIDEO_API] API Provider başarısız: ${videoId} — ${apiErr.message}. yt-dlp fallback deneniyor...`);
-    }
-
-    // ★ KATMAN 3: yt-dlp + proxy fallback (API başarısız olursa)
-    const cacheKey = `stream:video:${videoId}`;
-    const cachedData = await cacheGet(cacheKey);
-    let streamUrl;
-
-    if (cachedData && cachedData.url) {
-      streamUrl = cachedData.url;
-      console.log(`[VIDEO_CACHE_HIT] Hızlı URL kullanılıyor: ${videoId}`);
-    } else {
-      console.log(`[VIDEO_RESOLVE] YouTube'dan video URL çözümleniyor: ${videoId}`);
-      const ua = getRandomUA();
-      const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-      const countryClient = getPlayerClientForCountry(country);
-
-      streamUrl = await queue.add(async () => {
-        return await resolveStreamUrlWithFallback(videoId, "video", ua, countryClient);
-      });
-      await cacheSet(cacheKey, { url: streamUrl }, STREAM_CACHE_DURATION);
-    }
-
-    const headersOptions = {
-      "User-Agent": getRandomUA(),
-      "Referer": "https://www.youtube.com/",
-      "Accept-Encoding": "identity"
-    };
-    if (req.headers.range) headersOptions["Range"] = req.headers.range;
-
-    if (streamUrl.includes(".m3u8") || streamUrl.includes("manifest/")) {
-      console.warn(`[STREAM_VIDEO_HLS] M3U8 geldi, yönlendiriliyor...`);
-      return res.redirect(streamUrl);
-    }
-
-    let response;
-    try {
-      response = await axiosClient({
-        method: "GET",
-        url: streamUrl,
-        responseType: "stream",
-        headers: headersOptions,
-        decompress: false,
-        validateStatus: (status) => status < 400,
-        ...getProxyAxiosConfig({ _targetUrl: streamUrl }, videoId)
-      });
-    } catch (fetchErr) {
-      if (fetchErr.response && (fetchErr.response.status === 402 || fetchErr.response.status === 407)) {
-        console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BİTİYOR VEYA REDDEDİLDİ! Status: ${fetchErr.response.status}`);
-      } else if (fetchErr.code && (fetchErr.code === 'ECONNRESET' || fetchErr.code === 'ECONNREFUSED' || fetchErr.code === 'ENOTFOUND')) {
-        console.warn(`[PROXY_UYARISI] 🚨 AXIOS PROXY BAĞLANTISI KOPTU! Code: ${fetchErr.code}`);
-      }
-
-      if (fetchErr.response && (fetchErr.response.status === 403 || fetchErr.response.status === 404 || fetchErr.response.status === 502 || fetchErr.response.status === 503)) {
-        console.warn(`[STREAM_VIDEO] ${fetchErr.response.status} — CDN hatası, video geçici olarak kullanılamıyor: ${videoId}`);
-        if (redis) await redis.del(cacheKey);
-        if (!res.headersSent) res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
-        return;
-      } else {
-        throw fetchErr;
-      }
-    }
-
-    res.status(response.status);
-    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
-    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
-    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
-    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
-
-    safePipe(response.data, res);
-
-    // ARKA PLANDA: FFmpeg ile videoyu kalıcı kaydet
-    if (!mediaLib.getReadyTrack(videoId, "mp4") && !mediaLib.isProcessing(videoId)) {
-      const metadata = { 
-        title: req.query.title || "Unknown", 
-        artist: req.query.uploader || "Unknown" 
-      };
-      
-      mediaLib.upsertTrack(videoId, { ...metadata, category: "watching", status: "processing" });
-      const cookiePath = getRandomCookie();
-      const proxyUrl = getRandomProxy(videoId);
-      
-      ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
-        .then(result => {
-          mediaLib.markReady(videoId, result);
-          ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
-            if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
-          }).catch(() => { });
-          console.log(`[FFMPEG_BG_VIDEO] +++ Video kütüphaneye kaydedildi: ${videoId}`);
-        })
-        .catch(err => {
-          mediaLib.markFailed(videoId, err.message);
-          console.warn(`[FFMPEG_BG_VIDEO] *** Hata: ${videoId}: ${err.message}`);
-        });
+      console.warn(`[VIDEO_API] API Provider başarısız: ${videoId} — ${apiErr.message}`);
+      if (!res.headersSent) res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
+      return;
     }
 
   } catch (err) {
