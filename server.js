@@ -1655,6 +1655,7 @@ app.use(async (req, res, next) => {
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
+      req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone") {
     return next();
   }
