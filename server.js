@@ -2028,10 +2028,10 @@ function buildProviderUrl(provider, type, params) {
 }
 
 async function apiStreamMp3(videoId, bitrate = 320) {
-  const providers = normalizeProviders();
-  const ATTEMPTS = 2;
+  const providers = normalizeProviders(); //panelden apileri çek
+  const ATTEMPTS = 2; // 
   let lastErr;
-  for (const provider of providers) {
+  for (const provider of providers) { // her gelen apiyi sırayla dene 
     const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
