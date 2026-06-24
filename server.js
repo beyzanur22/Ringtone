@@ -2212,6 +2212,57 @@ app.get("/admin/api-health", basicAuth, async (req, res) => {
   }
 });
 
+// TEK PROVIDER'I GERÇEKTEN TEST ET — 4 özelliği de (mp3/mp4/arama/tamamlama) dener
+// Panelden gelen provider config'i (kaydetmeden) canlı dener, her özellik için OK/FAIL döner.
+app.post("/admin/test-provider", basicAuth, async (req, res) => {
+  const p = req.body || {};
+  // Gelen provider'ı normalize et (eksik alanları varsayılanla doldur)
+  const provider = {
+    id: p.id || "test",
+    name: p.name || "test",
+    baseUrl: (p.baseUrl || "").replace(/\/+$/, ""),
+    apiKey: p.apiKey || "",
+    endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) }
+  };
+  const testVideoId = p.videoId || "GcGPedcPsOs"; // bilinen, çalışan bir video ID
+  const testQuery = "test";
+  const results = {};
+
+  // mp3 + mp4: stream gelmeli, ilk byte'lar gerçek medya mı diye doğrula
+  for (const [type, kind] of [["mp3", "audio"], ["mp4", "video"]]) {
+    const url = buildProviderUrl(provider, type, { id: testVideoId, bitrate: 128, quality: 360 });
+    const t0 = Date.now();
+    try {
+      const r = await axiosClient({ method: "GET", url, responseType: "stream", timeout: 30000, validateStatus: () => true, headers: { "User-Agent": getRandomUA() } });
+      const ct = r.headers["content-type"] || "";
+      if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+      if (ct.includes("text/html") || ct.includes("json")) { try { r.data.destroy(); } catch {} throw new Error("HTML/JSON döndü, medya değil"); }
+      await validateMediaStream(r.data, kind); // gerçek medya mı?
+      try { r.data.destroy(); } catch {}
+      results[type] = { ok: true, ms: Date.now() - t0, contentType: ct };
+    } catch (err) {
+      results[type] = { ok: false, ms: Date.now() - t0, error: err.message, url };
+    }
+  }
+
+  // arama + otomatik tamamlama: JSON/veri dönmeli
+  for (const type of ["search", "autocomplete"]) {
+    const url = buildProviderUrl(provider, type, { query: testQuery });
+    const t0 = Date.now();
+    try {
+      const r = await axiosClient.get(url, { timeout: 15000, validateStatus: () => true });
+      if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+      if (!r.data) throw new Error("Boş yanıt");
+      results[type] = { ok: true, ms: Date.now() - t0 };
+    } catch (err) {
+      results[type] = { ok: false, ms: Date.now() - t0, error: err.message, url };
+    }
+  }
+
+  const okCount = Object.values(results).filter(x => x.ok).length;
+  res.json({ provider: provider.name, videoId: testVideoId, okCount, total: 4, results });
+});
+
 // Akıllı Cache ayarları
 app.get("/admin/smart-cache", basicAuth, async (req, res) => {
   try {
