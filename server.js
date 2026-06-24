@@ -2216,12 +2216,13 @@ app.get("/admin/api-health", basicAuth, async (req, res) => {
 // Panelden gelen provider config'i (kaydetmeden) canlı dener, her özellik için OK/FAIL döner.
 app.post("/admin/test-provider", basicAuth, async (req, res) => {
   const p = req.body || {};
-  // Gelen provider'ı normalize et (eksik alanları varsayılanla doldur)
+  // Eski şema provider'larında baseUrl/apiKey boş olabilir — global ayara düş
+  const cfg = getApiProviderConfig();
   const provider = {
     id: p.id || "test",
-    name: p.name || "test",
-    baseUrl: (p.baseUrl || "").replace(/\/+$/, ""),
-    apiKey: p.apiKey || "",
+    name: p.name || p.id || "test",
+    baseUrl: ((p.baseUrl && p.baseUrl.trim()) || cfg.baseUrl || "https://bazocam.net").replace(/\/+$/, ""),
+    apiKey: (p.apiKey && p.apiKey.trim()) || cfg.apiKey || "",
     endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) }
   };
   const testVideoId = p.videoId || "GcGPedcPsOs"; // bilinen, çalışan bir video ID
