@@ -4808,11 +4808,12 @@ app.get("/device-action/active", (req, res) => {
 
 // Yeni device action oluştur (admin)
 app.post("/device-action/create", express.json(), (req, res) => {
-  const { actionType, mode, value, label } = req.body;
+  const { actionType, mode, value, label, showOnce } = req.body;
   // actionType: "chrome_url" | "package_name" | "review_sheet"
   // mode: "direct" | "popup"
   // value: URL veya paket adı
   // label: popup modunda gösterilecek metin (opsiyonel)
+  // showOnce: true = cihaz başına 1 kere | false = her uygulama açılışında göster
   if (!actionType || !mode) return res.status(400).json({ error: "actionType ve mode zorunlu" });
   if (actionType !== "review_sheet" && !value) return res.status(400).json({ error: "value zorunlu" });
 
@@ -4826,6 +4827,7 @@ app.post("/device-action/create", express.json(), (req, res) => {
     mode,
     value: actionType === "review_sheet" ? "market://details?id=com.ringtone.master" : value,
     label: label || null,
+    showOnce: showOnce !== false, // varsayılan: tek seferlik
     active: true,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 saat geçerli
     createdAt: new Date().toISOString(),
