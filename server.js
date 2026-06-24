@@ -9,10 +9,8 @@ if (!APP_SECRET) {
   console.error("Çözüm: .env dosyasına APP_KEY=your_secret_here ekleyin veya PM2 ile APP_KEY tanımlayın.");
   process.exit(1);
 }
-const BAZOCAM_PASS_ENV = process.env.BAZOCAM_PASS || "";
-if (!BAZOCAM_PASS_ENV) {
-  console.warn("[WARNING] BAZOCAM_PASS env var tanımlı değil! Bazocam API çağrıları çalışmayacak.");
-}
+// NOT: BAZOCAM_PASS kaldırıldı. API kimlik bilgileri artık env'de değil,
+// panel'den yönetilen config.json'daki provider'larda (apiKey alanı) tutuluyor.
 const ADMIN_PASS = process.env.ADMIN_PASS;
 if (!ADMIN_PASS) {
   console.error("[SECURITY] ADMIN_PASS env değişkeni zorunludur! .env dosyasına ekleyin.");
@@ -1887,14 +1885,12 @@ if (!fs.existsSync(CONFIG_FILE)) {
 
 function getApiProviderConfig() {
   const config = getCachedConfig();
+  // Sabit API yok — config.json'da provider yoksa boş döner.
+  // Tüm API'ler panel'den (config.json) yönetilir.
   return config.apiProviders || {
-    providers: [
-      { id: "gamma", name: "gamma.gammacloud.net", enabled: true, priority: 1 },
-      { id: "cnv", name: "cnv.cx (y2mate)", enabled: true, priority: 2, dailyLimit: 200 },
-      { id: "youtubemp3", name: "youtubemp3.ltd", enabled: true, priority: 3 }
-    ],
-    apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
-    baseUrl: "https://bazocam.net",
+    providers: [],
+    apiKey: "",
+    baseUrl: "",
     smartCache: { enabled: true, minRequests: 3 }
   };
 }
@@ -1998,7 +1994,8 @@ const DEFAULT_ENDPOINTS = {
 // Config'i normalize et — eski (tek baseUrl) ve yeni (provider başına baseUrl) şemayı destekler
 function normalizeProviders(includeDisabled = false) {
   const cfg = getApiProviderConfig();
-  const fallbackBase = (cfg.baseUrl || "https://bazocam.net").replace(/\/+$/, "");
+  // Sabit API yok — baseUrl/key tamamen panel'den (config.json) gelir
+  const fallbackBase = (cfg.baseUrl || "").replace(/\/+$/, "");
   const fallbackKey = cfg.apiKey || "";
   let list = (cfg.providers || []).map(p => ({
     id: p.id,
@@ -2222,7 +2219,7 @@ app.post("/admin/test-provider", basicAuth, async (req, res) => {
   const provider = {
     id: p.id || "test",
     name: p.name || p.id || "test",
-    baseUrl: ((p.baseUrl && p.baseUrl.trim()) || cfg.baseUrl || "https://bazocam.net").replace(/\/+$/, ""),
+    baseUrl: ((p.baseUrl && p.baseUrl.trim()) || cfg.baseUrl || "").replace(/\/+$/, ""),
     apiKey: (p.apiKey && p.apiKey.trim()) || cfg.apiKey || "",
     endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) }
   };
@@ -2914,17 +2911,8 @@ app.get("/search", searchLimiter, async (req, res) => {
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
       logError("SEARCH_API_FAIL", null, `API Provider arama başarısız: ${apiError.message}`);
-
-      // Eski bazocam search.php fallback
-      try {
-        console.log(`[SEARCH] Eski Bazocam API fallback: "${query}"`);
-        const response = await axiosClient.get(`https://bazocam.net/search.php?PASS=${BAZOCAM_PASS}&action=search&q=${encodeURIComponent(query)}`, { timeout: 8000 });
-        const bazocamData = response.data || [];
-        const filteredData = filterBlockedChannels(bazocamData, country);
-        searchResult = { data: filteredData, nextPageToken: null };
-      } catch (fallbackErr) {
-        logError("SEARCH_BAZOCAM_FAIL", null, `Bazocam fallback başarısız: ${fallbackErr.message}`);
-      }
+      // Sabit bazocam fallback kaldırıldı — arama tamamen panel'deki provider'lardan gelir.
+      // apiSearch zaten tüm aktif provider'ları sırayla deniyor. Hepsi çökerse YouTube API'ye düşülür.
     }
 
     // ADIM 2: Bazocam başarısız → YouTube Data API fallback
@@ -3005,64 +2993,9 @@ app.post("/stream/token", async (req, res) => {
 // STREAM 
 
 // ========== BAZOCAM CDN URL ÇÖZÜCÜ ==========
-// Bazocam'ın kendi proxy sistemi üzerinden Google CDN linklerini alır.
-// Böylece senin sunucunda proxy kullanmana gerek kalmaz.
-const BAZOCAM_PASS = BAZOCAM_PASS_ENV;
-const BAZOCAM_BASE = "https://bazocam.net";
-
-async function getBazocamCdnUrl(videoId, type = "audio") {
-  try {
-    let url;
-    if (type === "audio") {
-      // M4A: 128kbps audio stream
-      url = `${BAZOCAM_BASE}/m4a.php?PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&q=140`;
-    } else {
-      // MP4: 720p video stream
-      url = `${BAZOCAM_BASE}/mp4.php?PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&res=720`;
-    }
-
-    console.log(`[BAZOCAM_CDN] ${type} URL isteniyor: ${videoId}`);
-
-    // Bazocam redirect ile Google CDN linkine yönlendiriyor
-    // maxRedirects: 0 ile redirect URL'ini yakalıyoruz
-    const response = await axios.get(url, {
-      maxRedirects: 0,
-      timeout: 20000,
-      validateStatus: (status) => status >= 200 && status < 400,
-      headers: { "User-Agent": getRandomUA() }
-    });
-
-    // 200 ile direkt link dönerse
-    if (response.status === 200 && response.request?.res?.responseUrl) {
-      const finalUrl = response.request.res.responseUrl;
-      if (finalUrl.includes("googlevideo.com") || finalUrl.includes("google.com")) {
-        console.log(`[BAZOCAM_CDN] ✅ Google CDN linki alındı: ${videoId}`);
-        return finalUrl;
-      }
-    }
-
-    // Response body'de URL varsa
-    const body = typeof response.data === "string" ? response.data.trim() : "";
-    if (body.startsWith("http") && (body.includes("googlevideo.com") || body.includes("google.com"))) {
-      console.log(`[BAZOCAM_CDN] ✅ Body'den CDN linki alındı: ${videoId}`);
-      return body;
-    }
-
-    console.log(`[BAZOCAM_CDN] ⚠️ CDN linki bulunamadı, fallback'e geçiliyor: ${videoId}`);
-    return null;
-  } catch (err) {
-    // 302 redirect'i yakala
-    if (err.response && (err.response.status === 301 || err.response.status === 302)) {
-      const redirectUrl = err.response.headers.location;
-      if (redirectUrl && redirectUrl.startsWith("http")) {
-        console.log(`[BAZOCAM_CDN] ✅ Redirect CDN linki: ${videoId}`);
-        return redirectUrl;
-      }
-    }
-    console.warn(`[BAZOCAM_CDN] ❌ Hata (${type}): ${err.message}`);
-    return null;
-  }
-}
+// NOT: Sabit bazocam.net'e giden getBazocamCdnUrl fonksiyonu kaldırıldı.
+// Tüm API çağrıları artık panel'den yönetilen provider sistemi üzerinden gidiyor
+// (normalizeProviders + buildProviderUrl). Backend'de sabit kodlanmış API URL'i yok.
 
 // ═══════════════════════════════════════════════════════════════
 //  CACHE NOTIFY — Android NewPipe ile çaldığında backend'e bildir
@@ -4067,27 +4000,8 @@ app.get("/download/mp3", async (req, res) => {
       console.warn(`[DOWNLOAD_MP3] API Provider başarısız: ${apiErr.message}`);
     }
 
-    // ★ İKİNCİL FALLBACK: Eski Bazocam converter.php
-    try {
-      const apiUrl = `https://bazocam.net/converter.php?action=api&PASS=${BAZOCAM_PASS}&youtubeID=${videoId}&kbps=${quality}`;
-      console.log(`[DOWNLOAD_MP3] Eski Bazocam converter fallback: ${videoId}`);
-
-      const apiResponse = await axiosClient.get(apiUrl, { timeout: 15000 });
-      const data = apiResponse.data;
-
-      if (data.status === "cached" && (data.download || data.download_url)) {
-        return await streamMp3FromUrl(data.download || data.download_url, videoId, data.title, res);
-      }
-
-      if (data.status === "converting" && data.status_url && (data.download || data.download_url)) {
-        const finalDownloadUrl = await pollConversionStatus(data.status_url, data.download || data.download_url, 120000);
-        return await streamMp3FromUrl(finalDownloadUrl, videoId, data.title, res);
-      }
-
-      throw new Error(`Converter beklenmeyen yanıt`);
-    } catch (convErr) {
-      console.warn(`[DOWNLOAD_MP3] Converter fallback başarısız: ${convErr.message}`);
-    }
+    // Sabit bazocam converter.php fallback kaldırıldı — indirme tamamen panel'deki
+    // provider'lardan gelir. apiStreamMp3 zaten tüm aktif provider'ları sırayla deniyor.
 
     // Tüm yöntemler başarısız
     console.warn(`[DOWNLOAD_MP3] Tüm API yöntemleri başarısız: ${videoId}`);
