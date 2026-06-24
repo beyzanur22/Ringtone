@@ -2231,20 +2231,30 @@ app.post("/admin/test-provider", basicAuth, async (req, res) => {
   const results = {};
 
   // mp3 + mp4: stream gelmeli, ilk byte'lar gerçek medya mı diye doğrula
+  // Gerçek uygulama gibi: varsayılan bitrate/kalite + 2 deneme (ilk istekte dönüşüm hazır olmayabilir)
   for (const [type, kind] of [["mp3", "audio"], ["mp4", "video"]]) {
-    const url = buildProviderUrl(provider, type, { id: testVideoId, bitrate: 128, quality: 360 });
+    const url = buildProviderUrl(provider, type, { id: testVideoId, bitrate: 320, quality: 720 });
     const t0 = Date.now();
-    try {
-      const r = await axiosClient({ method: "GET", url, responseType: "stream", timeout: 30000, validateStatus: () => true, headers: { "User-Agent": getRandomUA() } });
-      const ct = r.headers["content-type"] || "";
-      if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
-      if (ct.includes("text/html") || ct.includes("json")) { try { r.data.destroy(); } catch {} throw new Error("HTML/JSON döndü, medya değil"); }
-      await validateMediaStream(r.data, kind); // gerçek medya mı?
-      try { r.data.destroy(); } catch {}
-      results[type] = { ok: true, ms: Date.now() - t0, contentType: ct };
-    } catch (err) {
-      results[type] = { ok: false, ms: Date.now() - t0, error: err.message, url };
+    const ATTEMPTS = 2;
+    let lastError = "bilinmiyor";
+    let ok = false, ctOut = "";
+    for (let attempt = 1; attempt <= ATTEMPTS && !ok; attempt++) {
+      try {
+        const r = await axiosClient({ method: "GET", url, responseType: "stream", timeout: 60000, validateStatus: () => true, headers: { "User-Agent": getRandomUA() } });
+        const ct = r.headers["content-type"] || "";
+        if (r.status !== 200) throw new Error(`HTTP ${r.status}`);
+        if (ct.includes("text/html") || ct.includes("json")) { try { r.data.destroy(); } catch {} throw new Error("medya yerine HTML/JSON döndü (dönüşüm hazır değil olabilir)"); }
+        await validateMediaStream(r.data, kind); // gerçek medya mı?
+        try { r.data.destroy(); } catch {}
+        ok = true; ctOut = ct;
+      } catch (err) {
+        lastError = err.message;
+        if (attempt < ATTEMPTS) await new Promise(rs => setTimeout(rs, 2000));
+      }
     }
+    results[type] = ok
+      ? { ok: true, ms: Date.now() - t0, contentType: ctOut }
+      : { ok: false, ms: Date.now() - t0, error: lastError, url };
   }
 
   // arama + otomatik tamamlama: JSON/veri dönmeli
