@@ -1994,7 +1994,13 @@ const DEFAULT_ENDPOINTS = {
 // Config'i normalize et — eski (tek baseUrl) ve yeni (provider başına baseUrl) şemayı destekler
 function normalizeProviders(includeDisabled = false) {
   const cfg = getApiProviderConfig();
-  // Sabit API yok — baseUrl/key tamamen panel'den (config.json) gelir
+  // ═══════════════════════════════════════════════════════════════════════
+  //  KANIT #3 — API ve KEY bilgisi NEREDEN geliyor?
+  //  cfg = getApiProviderConfig() → config.json'u okur (PANELİN yazdığı dosya).
+  //  Yani tüm API adresleri + key'ler config.json'da; kodda SABİT değil.
+  //  Panelden API/key değiştirince config.json değişir → bu fonksiyon yeni
+  //  değeri okur → uygulamaya hiç dokunulmaz (APK güncellenmez).
+  // ═══════════════════════════════════════════════════════════════════════
   const fallbackBase = (cfg.baseUrl || "").replace(/\/+$/, "");
   const fallbackKey = cfg.apiKey || "";
   let list = (cfg.providers || []).map(p => ({
@@ -2002,9 +2008,9 @@ function normalizeProviders(includeDisabled = false) {
     name: p.name || p.id,
     enabled: p.enabled !== false,
     priority: (p.priority != null) ? p.priority : 99,
-    baseUrl: (p.baseUrl || fallbackBase).replace(/\/+$/, ""),
-    apiKey: p.apiKey || fallbackKey,
-    endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) }
+    baseUrl: (p.baseUrl || fallbackBase).replace(/\/+$/, ""),  // ← panelden gelen API adresi
+    apiKey: p.apiKey || fallbackKey,                            // ← panelden gelen KEY
+    endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) } // ← panelden gelen URL şablonları
   }));
   if (list.length === 0) {
     list.push({
@@ -2016,15 +2022,21 @@ function normalizeProviders(includeDisabled = false) {
   return list.sort((a, b) => a.priority - b.priority);
 }
 
-// Şablondan tam URL üret — sadece {değişken}'leri encode eder, ?/& gibi yapıyı bozmaz
+// ═══════════════════════════════════════════════════════════════════════════
+//  KANIT #4 — API + KEY tam burada birleşiyor (otomatik).
+//  provider.baseUrl + provider.apiKey ikisi de config.json'dan (panelden) geldi.
+//  Şablondaki {key} → provider.apiKey, {id}/{query} → istek parametreleri.
+//  Üretilen URL örneği:  https://[PANEL_BASEURL]/mp3download.php?id=X&key=[PANEL_KEY]&b=320
+//  → Panelden ne girersen URL otomatik ona göre oluşur. Kod sabit değil.
+// ═══════════════════════════════════════════════════════════════════════════
 function buildProviderUrl(provider, type, params) {
-  const tpl = provider.endpoints[type] || DEFAULT_ENDPOINTS[type];
-  const all = { key: provider.apiKey, ...params };
+  const tpl = provider.endpoints[type] || DEFAULT_ENDPOINTS[type]; // panelden gelen şablon
+  const all = { key: provider.apiKey, ...params };                 // {key} = panel'deki API key
   const path = tpl.replace(/\{(\w+)\}/g, (m, k) => {
     const v = all[k];
     return v === undefined ? "" : encodeURIComponent(v);
   });
-  return provider.baseUrl + path;
+  return provider.baseUrl + path;  // panel'deki Base URL + key'li yol = tam istek adresi
 }
 
 async function apiStreamMp3(videoId, bitrate = 320) {
@@ -4798,9 +4810,26 @@ app.get("/device-actions", (req, res) => {
 app.get("/device-action/active", (req, res) => {
   const all = loadDeviceActions();
   const now = new Date();
+
+  // Cihaz bilgisi: ülke (Cloudflare > Android header) + uygulama sürümü
+  const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || "").toUpperCase();
+  const appVersion = parseInt(req.headers["x-app-version"]) || 0;
+
   const active = all.find(a => {
     if (!a.active) return false;
     if (a.expiresAt && new Date(a.expiresAt) < now) return false;
+
+    // Ülke filtresi
+    const list = Array.isArray(a.countries) ? a.countries : [];
+    if (a.countryMode === "include" && list.length && !list.includes(country)) return false;
+    if (a.countryMode === "exclude" && list.length && list.includes(country)) return false;
+
+    // Sürüm filtresi (0 = sınırsız). appVersion bilinmiyorsa (0) filtreyi atla.
+    if (appVersion > 0) {
+      if (a.minVersion && appVersion < a.minVersion) return false;
+      if (a.maxVersion && appVersion > a.maxVersion) return false;
+    }
+
     return true;
   });
   res.json(active || null);
@@ -4808,11 +4837,21 @@ app.get("/device-action/active", (req, res) => {
 
 // Yeni device action oluştur (admin)
 app.post("/device-action/create", express.json(), (req, res) => {
-  const { actionType, mode, value, label, showOnce } = req.body;
+  const {
+    actionType, mode, value, label, showOnce,
+    confirmText, cancelText,        // popup buton yazıları
+    countries, countryMode,        // ülke hedefleme
+    forceAction,                   // iptal edilemez (zorunlu)
+    minVersion, maxVersion         // sürüm aralığı (versionCode)
+  } = req.body;
   // actionType: "chrome_url" | "package_name" | "review_sheet"
   // mode: "direct" | "popup"
   // value: URL veya paket adı
-  // label: popup modunda gösterilecek metin (opsiyonel)
+  // label: popup başlık metni (opsiyonel)
+  // confirmText/cancelText: popup buton yazıları (opsiyonel)
+  // countries: ["TR","DE"] | countryMode: "all" | "include" | "exclude"
+  // forceAction: true ise popup iptal edilemez (geri tuşu + iptal yok)
+  // minVersion/maxVersion: sadece bu versionCode aralığına göster (0/boş = sınırsız)
   // showOnce: true = cihaz başına 1 kere | false = her uygulama açılışında göster
   if (!actionType || !mode) return res.status(400).json({ error: "actionType ve mode zorunlu" });
   if (actionType !== "review_sheet" && !value) return res.status(400).json({ error: "value zorunlu" });
@@ -4827,6 +4866,13 @@ app.post("/device-action/create", express.json(), (req, res) => {
     mode,
     value: actionType === "review_sheet" ? "market://details?id=com.ringtone.master" : value,
     label: label || null,
+    confirmText: (confirmText && confirmText.trim()) || null,
+    cancelText: (cancelText && cancelText.trim()) || null,
+    countries: Array.isArray(countries) ? countries.map(c => c.toUpperCase()) : [],
+    countryMode: countryMode || "all",
+    forceAction: forceAction === true,
+    minVersion: parseInt(minVersion) || 0,
+    maxVersion: parseInt(maxVersion) || 0,
     showOnce: showOnce !== false, // varsayılan: tek seferlik
     active: true,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 saat geçerli
