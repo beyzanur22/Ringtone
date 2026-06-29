@@ -99,7 +99,11 @@
       "Bash(python \"/c/Users/beyza/Desktop/pack_poster.py\")",
       "Bash(cd \"/c/Users/beyza/Desktop\" && rm -f fill_poster.py pack_poster.py && echo \"temizlendi\" && ls -la BITIRME_Poster_FocusAI_DOLU.pptx)",
       "Bash(node -e \"require\\('@babel/core'\\).transformFileSync\\('src/App.js',{presets:['@babel/preset-react']}\\); console.log\\('✅ App.js JSX OK'\\)\")",
-      "PowerShell(Copy-Item -Recurse \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\\\\build\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy\\\\admin_panel\")"
+      "PowerShell(Copy-Item -Recurse \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\\\\build\" \"C:\\\\Users\\\\beyza\\\\Desktop\\\\ringtone-backend-deploy\\\\admin_panel\")",
+      "Bash(ls -la)",
+      "Bash(ls pubspec.yaml)",
+      "Bash(ls build.gradle*)",
+      "Bash(grep -iE \"material|appcompat|lifecycle|viewmodel|fragment|datastore|documentfile|coordinatorlayout|minSdk|targetSdk|compileSdk\" build.gradle*)"
     ]
   }
 }

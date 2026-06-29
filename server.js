@@ -2725,7 +2725,7 @@ async function translateText(text, targetLang) {
 }
 
 app.post("/send-notification", basicAuth, async (req, res) => {
-  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt, targetCountry } = req.body;
+  const { appId: bodyAppId, restKey: bodyRestKey, title, message, imageUrl, actionUrl, sendAt, targetCountry, targetMode } = req.body;
   if (!title || !message) {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
@@ -2755,11 +2755,20 @@ app.post("/send-notification", basicAuth, async (req, res) => {
       included_segments: ["All"]
     };
 
+    // Hedef mod filtresi (youtube | ringtone). "both"/boş = mevcut davranış (mod filtresi yok).
+    const modeFilter = (targetMode && targetMode !== "both" && targetMode !== "all")
+      ? { field: "tag", key: "app_mode", relation: "=", value: targetMode }
+      : null;
+
     if (targetCountry && targetCountry !== "all") {
       delete notifPayload.included_segments;
       notifPayload.filters = [
         { field: "country", value: targetCountry }
       ];
+      if (modeFilter) notifPayload.filters.push({ operator: "AND" }, modeFilter);
+    } else if (modeFilter) {
+      delete notifPayload.included_segments;
+      notifPayload.filters = [modeFilter];
     }
 
     if (imageUrl) notifPayload.big_picture = imageUrl;
@@ -4811,13 +4820,19 @@ app.get("/device-action/active", (req, res) => {
   const all = loadDeviceActions();
   const now = new Date();
 
-  // Cihaz bilgisi: ülke (Cloudflare > Android header) + uygulama sürümü
+  // Cihaz bilgisi: ülke (Cloudflare > Android header) + uygulama sürümü + app modu
   const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || "").toUpperCase();
   const appVersion = parseInt(req.headers["x-app-version"]) || 0;
+  // app modu: "youtube" | "ringtone". Eski istemciler header göndermez → "youtube".
+  const appMode = (req.headers["x-app-mode"] || "youtube").toLowerCase();
 
   const active = all.find(a => {
     if (!a.active) return false;
     if (a.expiresAt && new Date(a.expiresAt) < now) return false;
+
+    // App modu filtresi — alan yoksa eski action "youtube" kabul edilir (izolasyon).
+    const aMode = (a.appMode || "youtube").toLowerCase();
+    if (aMode !== "both" && aMode !== appMode) return false;
 
     // Ülke filtresi
     const list = Array.isArray(a.countries) ? a.countries : [];
@@ -4842,8 +4857,11 @@ app.post("/device-action/create", express.json(), (req, res) => {
     confirmText, cancelText,        // popup buton yazıları
     countries, countryMode,        // ülke hedefleme
     forceAction,                   // iptal edilemez (zorunlu)
-    minVersion, maxVersion         // sürüm aralığı (versionCode)
+    minVersion, maxVersion,        // sürüm aralığı (versionCode)
+    appMode: bodyAppMode           // "youtube" | "ringtone" | "both" — hangi uygulama modu
   } = req.body;
+  // Geçerli app modu (varsayılan: youtube — mevcut davranış korunur)
+  const appMode = ["youtube", "ringtone", "both"].includes(bodyAppMode) ? bodyAppMode : "youtube";
   // actionType: "chrome_url" | "package_name" | "review_sheet"
   // mode: "direct" | "popup"
   // value: URL veya paket adı
@@ -4857,13 +4875,14 @@ app.post("/device-action/create", express.json(), (req, res) => {
   if (actionType !== "review_sheet" && !value) return res.status(400).json({ error: "value zorunlu" });
 
   const all = loadDeviceActions();
-  // Önceki aktif action'ı deaktif et
-  all.forEach(a => a.active = false);
+  // Önceki aktif action'ı deaktif et — SADECE aynı app modundakileri (modlar izole).
+  all.forEach(a => { if ((a.appMode || "youtube") === appMode) a.active = false; });
 
   const newAction = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     actionType,
     mode,
+    appMode,
     value: actionType === "review_sheet" ? "market://details?id=com.ringtone.master" : value,
     label: label || null,
     confirmText: (confirmText && confirmText.trim()) || null,
