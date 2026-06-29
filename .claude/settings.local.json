@@ -103,7 +103,8 @@
       "Bash(ls -la)",
       "Bash(ls pubspec.yaml)",
       "Bash(ls build.gradle*)",
-      "Bash(grep -iE \"material|appcompat|lifecycle|viewmodel|fragment|datastore|documentfile|coordinatorlayout|minSdk|targetSdk|compileSdk\" build.gradle*)"
+      "Bash(grep -iE \"material|appcompat|lifecycle|viewmodel|fragment|datastore|documentfile|coordinatorlayout|minSdk|targetSdk|compileSdk\" build.gradle*)",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\"; $env:CI=\"false\"; npm run build 2>&1 | Select-String -Pattern \"Compiled|Failed to compile|Syntax error|Error|error|warning\" | Select-Object -First 30)"
     ]
   }
 }
