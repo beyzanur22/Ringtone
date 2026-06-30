@@ -2540,7 +2540,7 @@ function filterBlockedChannels(items, country = "all") {
     const channelTitle = (snippet.channelTitle || snippet.uploaderName || item.uploader || snippet.channel || "").toLowerCase();
     const videoTitle = (snippet.title || item.title || "").toLowerCase();
     const videoId = (typeof item.id === "object" ? item.id?.videoId : null) || item.videoId || snippet.videoId || item.id || item.url?.split("v=")[1] || "";
-    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || snippet.channelUrl || item.uploaderUrl || "";
+    const uploaderUrl = snippet.uploaderUrl || item.uploaderUrl || snippet.channelUrl || item.channelUrl || "";
     const channelId = snippet.channelId || item.channelId || item.uploaderId || (uploaderUrl.includes("/channel/") ? uploaderUrl.split("/channel/")[1] : "");
 
     const isBlocked = blockedGroups.some(group => {
@@ -2559,7 +2559,13 @@ function filterBlockedChannels(items, country = "all") {
         if (type === "keyword") {
           matched = videoTitle.includes(val.toLowerCase());
         } else if (type === "channelId") {
-          matched = channelId === val;
+          // Kullanıcı UC ID, @handle veya tam kanal URL'i yapıştırabilir → hepsini normalize edip eşleştir
+          const norm = s => (s || "").toLowerCase()
+            .replace(/^https?:\/\/(www\.)?youtube\.com\//, "")
+            .replace(/^@/, "").replace(/^channel\//, "").replace(/\/+$/, "").trim();
+          const target = norm(val);
+          const cu = norm(uploaderUrl); // oEmbed'den çözülen kanal url'i (/@handle veya channel/UC...)
+          matched = !!target && ((channelId || "").toLowerCase() === target || (cu.length > 3 && cu.includes(target)));
         } else if (type === "videoId") {
           matched = videoId === val;
         } else {
@@ -2580,31 +2586,42 @@ function filterBlockedChannels(items, country = "all") {
 // endpoint'i (API key/kota YOK) ile video ID'den kanal adını çekip dolduruyoruz.
 // Kanal adı değişmez → Redis'te 30 gün cache. Böylece kanal bazlı engelleme çalışır.
 // ─────────────────────────────────────────────────────────────────────────
-async function getChannelName(videoId) {
-  if (!videoId) return "";
-  const cacheKey = `chname:${videoId}`;
+// oEmbed'den kanal ADI + kanal URL'i çeker (ikisi de cache'lenir).
+// author_url, kanalın formatına göre /channel/UCxxxx VEYA /@handle döner — ikisini de saklarız.
+async function getChannelInfo(videoId) {
+  if (!videoId) return { name: "", url: "" };
+  const cacheKey = `chinfo:${videoId}`;
   const cached = await cacheGet(cacheKey);
-  if (cached !== null) return cached; // "" da geçerli (bilinen-boş → tekrar deneme)
-  let name = "";
+  if (cached !== null) return cached; // {name:"",url:""} da geçerli (bilinen-boş → tekrar deneme)
+  let info = { name: "", url: "" };
   try {
     const r = await axiosClient.get(
       `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
       { timeout: 3000, headers: { "User-Agent": getRandomUA() }, validateStatus: s => s === 200 }
     );
-    if (r.data && r.data.author_name) name = String(r.data.author_name);
+    if (r.data) info = { name: String(r.data.author_name || ""), url: String(r.data.author_url || "") };
   } catch (e) { /* özel/silinmiş/erişilemez video → boş bırak */ }
-  await cacheSet(cacheKey, name, name ? 2592000 : 3600); // başarı 30 gün, başarısız 1 saat
-  return name;
+  await cacheSet(cacheKey, info, info.name ? 2592000 : 3600); // başarı 30 gün, başarısız 1 saat
+  return info;
 }
 
-// Arama sonuçlarındaki boş "uploader" alanını kanal adıyla doldur (paralel).
+// Arama sonuçlarındaki boş "uploader" + "channelUrl/channelId" alanlarını doldur (paralel).
+// Hem kanal ADI hem kanal ID (/@handle veya /channel/UC...) engellemesi bu sayede çalışır.
 async function enrichUploaders(items) {
   if (!Array.isArray(items) || !items.length) return;
   await Promise.all(items.map(async it => {
-    if (it && it.uploader && String(it.uploader).trim()) return; // zaten dolu
-    const vid = (it && typeof it.id === "object" ? it.id && it.id.videoId : it && it.id) || (it && it.videoId) || "";
-    const name = await getChannelName(vid);
-    if (name && it) it.uploader = name;
+    if (!it) return;
+    const hasName = it.uploader && String(it.uploader).trim();
+    const hasUrl = it.channelUrl && String(it.channelUrl).trim();
+    if (hasName && hasUrl) return; // ikisi de doluysa atla
+    const vid = (typeof it.id === "object" ? it.id && it.id.videoId : it.id) || it.videoId || "";
+    const info = await getChannelInfo(vid);
+    if (info.name && !hasName) it.uploader = info.name;
+    if (info.url && !hasUrl) {
+      it.channelUrl = info.url;
+      const m = info.url.match(/\/channel\/(UC[\w-]+)/i); // UC kanal ID'sini ayıkla (varsa)
+      if (m) it.channelId = m[1];
+    }
   }));
 }
 
