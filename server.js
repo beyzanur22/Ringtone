@@ -2567,7 +2567,13 @@ function filterBlockedChannels(items, country = "all") {
           const cu = norm(uploaderUrl); // oEmbed'den çözülen kanal url'i (/@handle veya channel/UC...)
           matched = !!target && ((channelId || "").toLowerCase() === target || (cu.length > 3 && cu.includes(target)));
         } else if (type === "videoId") {
-          matched = videoId === val;
+          // Kullanıcı ham ID (CTckqh0TFrg) VEYA tam link (watch?v=..., youtu.be/..., shorts/...) yapıştırabilir
+          const extractId = s => {
+            s = (s || "").trim();
+            const m = s.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
+            return m ? m[1] : s;
+          };
+          matched = !!videoId && extractId(videoId) === extractId(val);
         } else {
           matched = channelTitle.includes(val.toLowerCase());
         }
