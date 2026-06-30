@@ -104,7 +104,9 @@
       "Bash(ls pubspec.yaml)",
       "Bash(ls build.gradle*)",
       "Bash(grep -iE \"material|appcompat|lifecycle|viewmodel|fragment|datastore|documentfile|coordinatorlayout|minSdk|targetSdk|compileSdk\" build.gradle*)",
-      "PowerShell(Set-Location \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\"; $env:CI=\"false\"; npm run build 2>&1 | Select-String -Pattern \"Compiled|Failed to compile|Syntax error|Error|error|warning\" | Select-Object -First 30)"
+      "PowerShell(Set-Location \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\"; $env:CI=\"false\"; npm run build 2>&1 | Select-String -Pattern \"Compiled|Failed to compile|Syntax error|Error|error|warning\" | Select-Object -First 30)",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "Bash(curl -s -m 25 \"https://music.cevapla.tv/config\" -H \"User-Agent: Mozilla/5.0\" -o /tmp/live_config.json -w \"HTTP=%{http_code} SIZE=%{size_download}\\\\n\")"
     ]
   }
 }

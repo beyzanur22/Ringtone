@@ -644,6 +644,17 @@ const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /
 });
 const MAX_CACHE_SIZE = 125 * 1024 * 1024 * 1024; // 125GB — Contabo VPS (145GB disk), 20GB sisteme kalır
 
+// 24 saattir DİNLENMEYEN cache dosyaları otomatik silinir. .env'de CACHE_MAX_IDLE_HOURS ile değiştirilir.
+const CACHE_MAX_IDLE_MS = (parseInt(process.env.CACHE_MAX_IDLE_HOURS) || 24) * 60 * 60 * 1000;
+
+// Cache dosyası dinlendiğinde "son erişim" zamanını GÜNCELLE (mtime = şimdi).
+// Böylece 24 saat boyunca hiç dinlenmeyen dosyalar checkDiskSpaceAndCleanup ile silinir,
+// düzenli dinlenenler ise diskte kalır. (R2'deki r2:last_access mantığının disk karşılığı.)
+function touchCache(filePath) {
+  const nowDate = new Date();
+  fs.promises.utimes(filePath, nowDate, nowDate).catch(() => {});
+}
+
 // Async disk temizleme — event loop'u bloke etmez
 async function checkDiskSpaceAndCleanup() {
   try {
@@ -669,6 +680,26 @@ async function checkDiskSpaceAndCleanup() {
         }
       }
     }
+
+    // ZAMAN BAZLI TEMİZLİK: 24 saattir DİNLENMEYEN cache dosyalarını sil (disk dolmasa bile).
+    // mtime, dinlenince touchCache ile "şimdi"ye çekiliyor → mtime = son dinlenme zamanı.
+    const survivors = [];
+    let idleDeleted = 0, idleFreed = 0;
+    for (const file of allFiles) {
+      const isMedia = file.name.endsWith('.mp3') || file.name.endsWith('.m4a') || file.name.endsWith('.mp4');
+      if (isMedia && (now - file.stat.mtimeMs > CACHE_MAX_IDLE_MS)) {
+        try {
+          await fs.promises.unlink(file.path);
+          idleDeleted++; idleFreed += file.stat.size;
+        } catch (_) { survivors.push(file); }
+      } else {
+        survivors.push(file);
+      }
+    }
+    if (idleDeleted > 0) {
+      console.log(`[DISK_CLEANUP] ${idleDeleted} dosya ${Math.round(CACHE_MAX_IDLE_MS / 3600000)} saattir dinlenmediği için silindi, ${(idleFreed / 1024 / 1024).toFixed(1)} MB açıldı.`);
+    }
+    allFiles = survivors;
 
     const totalSize = allFiles.reduce((acc, f) => acc + f.stat.size, 0);
     if (totalSize > MAX_CACHE_SIZE) {
@@ -3149,6 +3180,7 @@ app.get("/stream", async (req, res) => {
         fs.unlinkSync(diskFile);
       } else {
         console.log(`[DISK_CACHE_HIT]  Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+        touchCache(diskFile); // dinlendi → 24sa idle sayacını sıfırla
         const isMp3 = diskFile.endsWith(".mp3");
         if (req.path.includes("download")) {
           res.setHeader("Content-Disposition", `attachment; filename=${typeStr}_${videoId}.${isMp3 ? "mp3" : extStr}`);
@@ -3369,6 +3401,7 @@ app.get("/stream/video", async (req, res) => {
       if (vStats.size > 100 * 1024) {
         const fileSize = vStats.size;
         console.log(`[DISK_VIDEO_HIT] +++ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+        touchCache(diskVideoFile); // dinlendi → 24sa idle sayacını sıfırla
         uploadToR2(r2Key, diskVideoFile).catch(() => { });
 
         //  Range Request desteği (ExoPlayer için ZORUNLU)
@@ -4075,6 +4108,7 @@ app.get("/download/mp4", async (req, res) => {
         fs.unlinkSync(diskFile);
       } else {
         console.log(`[DOWNLOAD_MP4] Cache Hit! ${videoId} (${(fileStats.size / 1024 / 1024).toFixed(2)} MB)`);
+        touchCache(diskFile); // indirildi → 24sa idle sayacını sıfırla
         res.setHeader("Content-Type", "video/mp4");
         res.setHeader("Content-Length", fileStats.size);
         res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);
