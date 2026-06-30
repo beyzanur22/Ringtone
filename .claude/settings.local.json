@@ -112,7 +112,15 @@
       "Bash(grep -rl \"Musica\\\\\\\\\\\\\\\\'ya hoş geldiniz\" app/src/main/res/values/strings.xml app/src/main/res/values-tr/strings.xml)",
       "Bash(grep -oE \"GİRİŞ.{0,40}hoş geldiniz\" app/src/main/res/values/strings.xml app/src/main/res/values-tr/strings.xml)",
       "Bash(curl -s -m 15 \"https://music.cevapla.tv/blocked-channels\" -H \"User-Agent: Mozilla/5.0\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(findstr /E \"\\\\.js|\\\\.json|\\\\.conf|\\\\.yml|\\\\.yaml|\\\\.sh|\\\\.md\")",
+      "Bash(cd /c/Users/beyza/ringtone-admin-frontend && find . -type f -name \"*.js\" -o -name \"*.jsx\" -o -name \"*.json\" -o -name \"*.css\" | head -100)",
+      "Bash(cd /c/Users/beyza/ringtone-admin-frontend && ls -la src/)",
+      "Read(//c/c/Users/beyza/ringtone-admin-frontend/src/**)",
+      "Bash(cd /c/Users/beyza/ringtone-admin-frontend && ls -la public/)",
+      "Bash(xargs grep -l \"interface OnboardingHost\\\\|class.*OnboardingHost\")",
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(xargs grep -A 2 \"onb_restore\")"
     ]
   }
 }
