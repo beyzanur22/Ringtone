@@ -2875,7 +2875,7 @@ app.post("/send-notification", basicAuth, async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json; charset=utf-8",
-        "Authorization": `Basic ${restKey}`
+        "Authorization": `Key ${restKey}`
       },
       body: JSON.stringify(notifPayload)
     });
