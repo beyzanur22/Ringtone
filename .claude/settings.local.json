@@ -106,7 +106,13 @@
       "Bash(grep -iE \"material|appcompat|lifecycle|viewmodel|fragment|datastore|documentfile|coordinatorlayout|minSdk|targetSdk|compileSdk\" build.gradle*)",
       "PowerShell(Set-Location \"C:\\\\Users\\\\beyza\\\\ringtone-admin-frontend\"; $env:CI=\"false\"; npm run build 2>&1 | Select-String -Pattern \"Compiled|Failed to compile|Syntax error|Error|error|warning\" | Select-Object -First 30)",
       "mcp__Claude_in_Chrome__list_connected_browsers",
-      "Bash(curl -s -m 25 \"https://music.cevapla.tv/config\" -H \"User-Agent: Mozilla/5.0\" -o /tmp/live_config.json -w \"HTTP=%{http_code} SIZE=%{size_download}\\\\n\")"
+      "Bash(curl -s -m 25 \"https://music.cevapla.tv/config\" -H \"User-Agent: Mozilla/5.0\" -o /tmp/live_config.json -w \"HTTP=%{http_code} SIZE=%{size_download}\\\\n\")",
+      "Bash(curl -s -m 15 -o /dev/null -w \"URL: https://beyzanur22.github.io/privacy-policy.html\\\\nHTTP=%{http_code}\\\\n\" \"https://beyzanur22.github.io/privacy-policy.html\")",
+      "Bash(grep -o \"privacy_policy_content\\\\\">[^\\\\\\\\]*\" app/src/main/res/values-tr/strings.xml)",
+      "Bash(grep -rl \"Musica\\\\\\\\\\\\\\\\'ya hoş geldiniz\" app/src/main/res/values/strings.xml app/src/main/res/values-tr/strings.xml)",
+      "Bash(grep -oE \"GİRİŞ.{0,40}hoş geldiniz\" app/src/main/res/values/strings.xml app/src/main/res/values-tr/strings.xml)",
+      "Bash(curl -s -m 15 \"https://music.cevapla.tv/blocked-channels\" -H \"User-Agent: Mozilla/5.0\")",
+      "Bash(node -e ' *)"
     ]
   }
 }

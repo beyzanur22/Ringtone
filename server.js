@@ -2573,6 +2573,48 @@ function filterBlockedChannels(items, country = "all") {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// KANAL ADI ZENGİNLEŞTİRME (enrichment)
+// Arama kaynağı (bazocam) sonuçlarda kanal/uploader adını VERMİYOR (boş gelir).
+// Bu yüzden "Kanal Adı" engelleme çalışmıyordu. YouTube'un ÜCRETSİZ oEmbed
+// endpoint'i (API key/kota YOK) ile video ID'den kanal adını çekip dolduruyoruz.
+// Kanal adı değişmez → Redis'te 30 gün cache. Böylece kanal bazlı engelleme çalışır.
+// ─────────────────────────────────────────────────────────────────────────
+async function getChannelName(videoId) {
+  if (!videoId) return "";
+  const cacheKey = `chname:${videoId}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached !== null) return cached; // "" da geçerli (bilinen-boş → tekrar deneme)
+  let name = "";
+  try {
+    const r = await axiosClient.get(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+      { timeout: 3000, headers: { "User-Agent": getRandomUA() }, validateStatus: s => s === 200 }
+    );
+    if (r.data && r.data.author_name) name = String(r.data.author_name);
+  } catch (e) { /* özel/silinmiş/erişilemez video → boş bırak */ }
+  await cacheSet(cacheKey, name, name ? 2592000 : 3600); // başarı 30 gün, başarısız 1 saat
+  return name;
+}
+
+// Arama sonuçlarındaki boş "uploader" alanını kanal adıyla doldur (paralel).
+async function enrichUploaders(items) {
+  if (!Array.isArray(items) || !items.length) return;
+  await Promise.all(items.map(async it => {
+    if (it && it.uploader && String(it.uploader).trim()) return; // zaten dolu
+    const vid = (it && typeof it.id === "object" ? it.id && it.id.videoId : it && it.id) || (it && it.videoId) || "";
+    const name = await getChannelName(vid);
+    if (name && it) it.uploader = name;
+  }));
+}
+
+// Engelli listede "kanal adı" / "kanal ID" tipi kural var mı? (enrichment sadece gerekince yapılır)
+function hasChannelTypeRule() {
+  try {
+    return getBlockedChannels().some(g => { const t = g.type || "channel"; return t === "channel" || t === "channelId"; });
+  } catch { return false; }
+}
+
 // Kendi sunucumuzda Top25'e çıkarıldı + FFmpeg ile kalıcı disk kaydı eklendi
 function prewarmTop10(items) {
   if (!items || !Array.isArray(items)) return;
@@ -2945,6 +2987,7 @@ app.get("/search", searchLimiter, async (req, res) => {
     if (cached) {
       const cachedData = cached.data || cached;
       if (Array.isArray(cachedData)) {
+        if (hasChannelTypeRule()) await enrichUploaders(cachedData);
         const filtered = filterBlockedChannels(cachedData, country);
         return res.json({ ...cached, data: filtered });
       }
@@ -2957,9 +3000,10 @@ app.get("/search", searchLimiter, async (req, res) => {
       console.log(`[SEARCH] API Provider kullanılıyor: "${query}"`);
       const apiData = await apiSearch(query);
       const results = apiData.results || apiData.data || apiData || [];
-      if (Array.isArray(results) && results.length > 0) {
-      }
-      const filteredData = filterBlockedChannels(Array.isArray(results) ? results : [], country);
+      const resultsArr = Array.isArray(results) ? results : [];
+      // Kanal bazlı engelleme kuralı varsa, boş uploader'ları kanal adıyla doldur
+      if (hasChannelTypeRule()) await enrichUploaders(resultsArr);
+      const filteredData = filterBlockedChannels(resultsArr, country);
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
       logError("SEARCH_API_FAIL", null, `API Provider arama başarısız: ${apiError.message}`);
