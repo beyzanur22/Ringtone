@@ -120,7 +120,9 @@
       "Bash(cd /c/Users/beyza/ringtone-admin-frontend && ls -la public/)",
       "Bash(xargs grep -l \"interface OnboardingHost\\\\|class.*OnboardingHost\")",
       "Bash(grep -E \"\\\\.kt$\")",
-      "Bash(xargs grep -A 2 \"onb_restore\")"
+      "Bash(xargs grep -A 2 \"onb_restore\")",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
