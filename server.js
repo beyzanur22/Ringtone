@@ -1670,6 +1670,8 @@ app.use(async (req, res, next) => {
       (req.path === "/device-action/executed" && req.method === "POST") ||
       (req.path === "/autocomplete" && req.method === "GET") ||
       req.path.startsWith("/top50/test") ||
+      req.path === "/privacy-policy.html" ||
+      req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
   }
