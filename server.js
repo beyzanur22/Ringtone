@@ -4571,6 +4571,15 @@ app.get("/proxy-panel/test", basicAuth, async (req, res) => {
   }
 });
 
+// ---------------- LEGAL PAGES (public — Google Play icin) ----------------
+// basicAuth YOK: gizlilik politikasi ve cocuk guvenligi sayfalari herkese acik olmali.
+app.get("/privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "privacy-policy.html"));
+});
+app.get("/child-safety-standards.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "child-safety-standards.html"));
+});
+
 // ---------------- CONVERTER PAGE ----------------
 app.get("/converter", basicAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "converter.html"));
