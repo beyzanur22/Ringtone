@@ -9,6 +9,7 @@ error.log
 cache/
 media/
 media_db.json
+login_ips.json
 # Cookie dosyaları HARİÇ tüm .txt'leri ignore et
 *.txt
 !yt_cookies/*.txt

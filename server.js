@@ -1649,6 +1649,7 @@ app.post("/auth/token", async (req, res) => {
       return res.status(500).json({ error: "Redis kayıt hatası" });
     }
 
+    recordLoginIp(req, "/auth/token");
     console.log(`[AUTH_TOKEN] --> Yeni API token verildi (Redis): IP: ${req.ip} | Token: ${token.substring(0, 8)}...`);
     res.json({ token, expiresIn: API_TOKEN_TTL / 1000 }); // saniye cinsinden süre
   } catch (err) {
@@ -1687,7 +1688,8 @@ app.use(async (req, res, next) => {
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
-      req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone") {
+      req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
+      req.path === "/admin/login-ips") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -2745,6 +2747,7 @@ app.get("/admin/media-stats", basicAuth, (req, res) => {
 });
 
 app.get("/config", (req, res) => {
+  recordLoginIp(req, "/config");
   const config = { ...getCachedConfig() };
   config.watch_base = "https://www.youtube.com/watch?v=";
   if (!config.autocompleteSource) config.autocompleteSource = "google";
@@ -3679,6 +3682,89 @@ app.delete("/feedback/:id", (req, res) => {
   const filtered = all.filter(f => f.id !== req.params.id);
   if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
   saveFeedbacks(filtered);
+  res.json({ ok: true });
+});
+
+/* =========================
+   GİRİŞ YAPAN IP'LER (Admin Panel)
+========================= */
+const LOGIN_IPS_FILE = path.join(__dirname, "login_ips.json");
+const LOGIN_IPS_MAX = 500; // en fazla 500 IP tutulur (en eski lastSeen düşer)
+
+let _loginIps = null;
+let _loginIpsDirty = false;
+
+function loadLoginIps() {
+  if (_loginIps) return _loginIps;
+  try {
+    if (!fs.existsSync(LOGIN_IPS_FILE)) fs.writeFileSync(LOGIN_IPS_FILE, "[]");
+    _loginIps = JSON.parse(fs.readFileSync(LOGIN_IPS_FILE, "utf-8"));
+  } catch (e) {
+    _loginIps = [];
+  }
+  return _loginIps;
+}
+
+// Disk yazımı debounce: her istekte değil, 10 sn'de bir flush
+setInterval(() => {
+  if (!_loginIpsDirty || !_loginIps) return;
+  _loginIpsDirty = false;
+  try {
+    fs.writeFileSync(LOGIN_IPS_FILE, JSON.stringify(_loginIps, null, 2));
+  } catch (e) {
+    console.error("[LOGIN_IPS] Dosya yazma hatası:", e.message);
+  }
+}, 10000);
+
+function recordLoginIp(req, endpoint) {
+  try {
+    const list = loadLoginIps();
+    const ip = req.ip || "?";
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "?";
+    const now = new Date().toISOString();
+    const existing = list.find(e => e.ip === ip);
+    if (existing) {
+      existing.count = (existing.count || 0) + 1;
+      existing.lastSeen = now;
+      existing.endpoint = endpoint;
+      if (country !== "?") existing.country = country;
+      existing.userAgent = req.headers["user-agent"] || existing.userAgent || "";
+    } else {
+      list.unshift({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        ip,
+        country,
+        userAgent: req.headers["user-agent"] || "",
+        endpoint,
+        count: 1,
+        firstSeen: now,
+        lastSeen: now
+      });
+      if (list.length > LOGIN_IPS_MAX) {
+        list.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+        list.length = LOGIN_IPS_MAX;
+      }
+    }
+    _loginIpsDirty = true;
+  } catch (e) {
+    console.error("[LOGIN_IPS] Kayıt hatası:", e.message);
+  }
+}
+
+app.get("/admin/login-ips", basicAuth, (req, res) => {
+  const list = [...loadLoginIps()].sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
+  res.json({ total: list.length, ips: list });
+});
+
+app.delete("/admin/login-ips", basicAuth, (req, res) => {
+  _loginIps = [];
+  _loginIpsDirty = false;
+  try {
+    fs.writeFileSync(LOGIN_IPS_FILE, "[]");
+  } catch (e) {
+    return res.status(500).json({ error: "Dosya temizlenemedi: " + e.message });
+  }
+  console.log(`[LOGIN_IPS] Liste temizlendi (istek IP: ${req.ip})`);
   res.json({ ok: true });
 });
 
