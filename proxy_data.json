@@ -10,6 +10,17 @@
       "latencyMs": null,
       "banCount": 0,
       "testResult": null
+    },
+    {
+      "ip": "http://fWiiPEDAYp7V1FJ0:3HPIG2fMkyce8EDp@geo.iproyal.com:12321",
+      "added": "2026-07-16T11:34:43.733Z",
+      "successCount": 0,
+      "failCount": 0,
+      "lastUsed": null,
+      "lastTested": null,
+      "latencyMs": null,
+      "banCount": 0,
+      "testResult": null
     }
   ],
   "banned": [],
