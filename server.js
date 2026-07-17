@@ -3686,86 +3686,83 @@ app.delete("/feedback/:id", (req, res) => {
 });
 
 /* =========================
-   GİRİŞ YAPAN IP'LER (Admin Panel)
+   GİRİŞ YAPAN IP'LER (Admin Panel) — Redis tabanlı
+   Not: Sunucu PM2 cluster (çok worker) ile çalışıyor. Eski dosya+hafıza
+   yöntemi worker'lar arası tutarsızdı ve "temizle" kalıcı olmuyordu
+   (başka worker eski listeyi geri yazıyordu). Redis tüm worker'larda
+   ortak olduğu için kayıt/temizleme artık atomik ve kalıcı.
 ========================= */
-const LOGIN_IPS_FILE = path.join(__dirname, "login_ips.json");
-const LOGIN_IPS_MAX = 500; // en fazla 500 IP tutulur (en eski lastSeen düşer)
+const LOGIN_IPS_MAX = 500;              // en fazla 500 IP tutulur (en eskisi düşer)
+const LOGIN_IPS_ZKEY = "login:ips:z";   // sorted set: member=ip, score=lastSeen(ms)
+const loginIpKey = (ip) => `login:ip:${ip}`;
 
-let _loginIps = null;
-let _loginIpsDirty = false;
-
-function loadLoginIps() {
-  if (_loginIps) return _loginIps;
+async function recordLoginIp(req, endpoint) {
   try {
-    if (!fs.existsSync(LOGIN_IPS_FILE)) fs.writeFileSync(LOGIN_IPS_FILE, "[]");
-    _loginIps = JSON.parse(fs.readFileSync(LOGIN_IPS_FILE, "utf-8"));
-  } catch (e) {
-    _loginIps = [];
-  }
-  return _loginIps;
-}
-
-// Disk yazımı debounce: her istekte değil, 10 sn'de bir flush
-setInterval(() => {
-  if (!_loginIpsDirty || !_loginIps) return;
-  _loginIpsDirty = false;
-  try {
-    fs.writeFileSync(LOGIN_IPS_FILE, JSON.stringify(_loginIps, null, 2));
-  } catch (e) {
-    console.error("[LOGIN_IPS] Dosya yazma hatası:", e.message);
-  }
-}, 10000);
-
-function recordLoginIp(req, endpoint) {
-  try {
-    const list = loadLoginIps();
     const ip = req.ip || "?";
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "?";
-    const now = new Date().toISOString();
-    const existing = list.find(e => e.ip === ip);
-    if (existing) {
-      existing.count = (existing.count || 0) + 1;
-      existing.lastSeen = now;
-      existing.endpoint = endpoint;
-      if (country !== "?") existing.country = country;
-      existing.userAgent = req.headers["user-agent"] || existing.userAgent || "";
-    } else {
-      list.unshift({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        ip,
-        country,
-        userAgent: req.headers["user-agent"] || "",
-        endpoint,
-        count: 1,
-        firstSeen: now,
-        lastSeen: now
-      });
-      if (list.length > LOGIN_IPS_MAX) {
-        list.sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
-        list.length = LOGIN_IPS_MAX;
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const key = loginIpKey(ip);
+
+    const pipe = redis.pipeline();
+    pipe.hincrby(key, "count", 1);
+    pipe.hset(key, { lastSeen: nowIso, endpoint, userAgent: req.headers["user-agent"] || "" });
+    if (country !== "?") pipe.hset(key, "country", country);
+    // İlk görülme / id / ip yalnızca yoksa yazılır
+    pipe.hsetnx(key, "firstSeen", nowIso);
+    pipe.hsetnx(key, "id", nowMs.toString(36) + Math.random().toString(36).slice(2, 6));
+    pipe.hsetnx(key, "ip", ip);
+    pipe.zadd(LOGIN_IPS_ZKEY, nowMs, ip);
+    await pipe.exec();
+
+    // 500 sınırı: fazlaysa en eski kayıtları at (yalnızca primary worker yapar)
+    if (isPrimaryWorker) {
+      const total = await redis.zcard(LOGIN_IPS_ZKEY);
+      if (total > LOGIN_IPS_MAX) {
+        const stale = await redis.zrange(LOGIN_IPS_ZKEY, 0, total - LOGIN_IPS_MAX - 1);
+        if (stale.length) {
+          const delPipe = redis.pipeline();
+          stale.forEach(sip => delPipe.del(loginIpKey(sip)));
+          delPipe.zremrangebyrank(LOGIN_IPS_ZKEY, 0, stale.length - 1);
+          await delPipe.exec();
+        }
       }
     }
-    _loginIpsDirty = true;
   } catch (e) {
     console.error("[LOGIN_IPS] Kayıt hatası:", e.message);
   }
 }
 
-app.get("/admin/login-ips", basicAuth, (req, res) => {
-  const list = [...loadLoginIps()].sort((a, b) => new Date(b.lastSeen) - new Date(a.lastSeen));
-  res.json({ total: list.length, ips: list });
+app.get("/admin/login-ips", basicAuth, async (req, res) => {
+  try {
+    const ips = await redis.zrevrange(LOGIN_IPS_ZKEY, 0, -1); // en yeni önce
+    if (!ips.length) return res.json({ total: 0, ips: [] });
+    const pipe = redis.pipeline();
+    ips.forEach(ip => pipe.hgetall(loginIpKey(ip)));
+    const results = await pipe.exec();
+    const list = results
+      .map(([err, h]) => (err || !h || !h.ip) ? null : { ...h, count: Number(h.count) || 0 })
+      .filter(Boolean);
+    res.json({ total: list.length, ips: list });
+  } catch (e) {
+    console.error("[LOGIN_IPS] Listeleme hatası:", e.message);
+    res.status(500).json({ error: "Listeleme hatası: " + e.message });
+  }
 });
 
-app.delete("/admin/login-ips", basicAuth, (req, res) => {
-  _loginIps = [];
-  _loginIpsDirty = false;
+app.delete("/admin/login-ips", basicAuth, async (req, res) => {
   try {
-    fs.writeFileSync(LOGIN_IPS_FILE, "[]");
+    const ips = await redis.zrange(LOGIN_IPS_ZKEY, 0, -1);
+    const pipe = redis.pipeline();
+    ips.forEach(ip => pipe.del(loginIpKey(ip)));
+    pipe.del(LOGIN_IPS_ZKEY);
+    await pipe.exec();
+    console.log(`[LOGIN_IPS] Liste temizlendi (${ips.length} kayıt, istek IP: ${req.ip})`);
+    res.json({ ok: true, cleared: ips.length });
   } catch (e) {
-    return res.status(500).json({ error: "Dosya temizlenemedi: " + e.message });
+    console.error("[LOGIN_IPS] Temizleme hatası:", e.message);
+    res.status(500).json({ error: "Temizlenemedi: " + e.message });
   }
-  console.log(`[LOGIN_IPS] Liste temizlendi (istek IP: ${req.ip})`);
-  res.json({ ok: true });
 });
 
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
