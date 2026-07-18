@@ -2074,9 +2074,14 @@ function buildProviderUrl(provider, type, params) {
   return provider.baseUrl + path;  // panel'deki Base URL + key'li yol = tam istek adresi
 }
 
+// Provider (bazocam vb.) cache'inde OLMAYAN şarkıda dönüştürmeye başlar ve iş bitene
+// kadar HTML/JSON ("işleniyor") döner ya da hiç yanıt vermez. Eski ayar (2 deneme,
+// aralarında 1.2 sn) dönüşüm sürerken pes ediyordu → yeni/az dinlenen şarkılarda
+// sürekli 503. Deneme sayısı ve aralar dönüşüme zaman tanıyacak şekilde artırıldı.
+const API_RETRY_DELAYS_MS = [15000, 20000]; // 1.→2. deneme arası, 2.→3. arası
 async function apiStreamMp3(videoId, bitrate = 320) {
   const providers = normalizeProviders(); //panelden apileri çek
-  const ATTEMPTS = 2; // 
+  const ATTEMPTS = 3;
   let lastErr;
   for (const provider of providers) { // her gelen apiyi sırayla dene 
     const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
@@ -2112,7 +2117,7 @@ async function apiStreamMp3(videoId, bitrate = 320) {
       } catch (err) {
         lastErr = err;
         console.warn(`[API_PROVIDER:${provider.id}] MP3 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
-        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 1200 * attempt));
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, API_RETRY_DELAYS_MS[attempt - 1] || 20000));
       }
     }
     console.warn(`[API_PROVIDER:${provider.id}] MP3 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
@@ -2122,7 +2127,7 @@ async function apiStreamMp3(videoId, bitrate = 320) {
 
 async function apiStreamMp4(videoId, quality = 720) {
   const providers = normalizeProviders();
-  const ATTEMPTS = 2;
+  const ATTEMPTS = 3; // MP3 ile aynı gerekçe: dönüşüm süresine zaman tanı
   let lastErr;
   for (const provider of providers) {
     const url = buildProviderUrl(provider, "mp4", { id: videoId, quality });
@@ -2155,7 +2160,7 @@ async function apiStreamMp4(videoId, quality = 720) {
       } catch (err) {
         lastErr = err;
         console.warn(`[API_PROVIDER:${provider.id}] MP4 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
-        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, 1200 * attempt));
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, API_RETRY_DELAYS_MS[attempt - 1] || 20000));
       }
     }
     console.warn(`[API_PROVIDER:${provider.id}] MP4 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
