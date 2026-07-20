@@ -1661,6 +1661,8 @@ app.post("/auth/token", async (req, res) => {
 app.use(async (req, res, next) => {
   // CORS preflight — OPTIONS isteklerini her zaman geçir
   if (req.method === "OPTIONS") return next();
+  // Canlı kullanıcı sayacı — uygulamadan gelen her istek burada işaretlenir (fire&forget)
+  recordPresence(req);
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
       (req.path === "/blocked-channels" && req.method === "GET") ||
@@ -1689,7 +1691,7 @@ app.use(async (req, res, next) => {
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
-      req.path === "/admin/login-ips") {
+      req.path === "/admin/login-ips" || req.path === "/admin/active-users") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -3767,6 +3769,170 @@ app.delete("/admin/login-ips", basicAuth, async (req, res) => {
   } catch (e) {
     console.error("[LOGIN_IPS] Temizleme hatası:", e.message);
     res.status(500).json({ error: "Temizlenemedi: " + e.message });
+  }
+});
+
+/* =========================
+   CANLI (AKTİF) KULLANICILAR — Redis tabanlı presence
+   Uygulamada heartbeat yok; "aktif" = son N dakikada backend'e istek atmış cihaz.
+   Kimlik önceliği: X-Device-Id > Bearer token > ip+userAgent hash'i.
+   Cluster'da tutarlı olsun diye tüm veri Redis'te (login-ips ile aynı gerekçe).
+========================= */
+const PRESENCE_ZKEY = "presence:z";              // sorted set: member=uid, score=lastSeen(ms)
+const PRESENCE_RETENTION_MS = 60 * 60 * 1000;    // 1 saatten eski kayıtlar düşer
+const PRESENCE_THROTTLE_MS = 30 * 1000;          // aynı cihaz için en fazla 30 sn'de bir Redis yazımı
+const PRESENCE_LIST_LIMIT = 300;                 // panele en fazla bu kadar satır gönderilir
+const presenceLastWrite = new Map();             // worker-local throttle: uid -> ms
+const presenceKey = (uid) => `presence:u:${uid}`;
+const presenceMinKey = (ms) => "presence:min:" + new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "");
+
+function presenceUid(req) {
+  const dev = req.headers["x-device-id"];
+  if (typeof dev === "string" && dev.length >= 6) return "d:" + dev.slice(0, 64);
+  const auth = req.headers["authorization"];
+  if (auth && auth.startsWith("Bearer ")) {
+    return "t:" + crypto.createHash("sha1").update(auth.substring(7)).digest("hex").slice(0, 16);
+  }
+  const raw = (req.ip || "?") + "|" + (req.headers["user-agent"] || "");
+  return "i:" + crypto.createHash("sha1").update(raw).digest("hex").slice(0, 16);
+}
+
+// Sayılmayacak istekler: admin paneli, statik dosyalar, sağlık kontrolü, load test
+function isPresenceCountable(req) {
+  const p = req.path;
+  if (req.headers["x-app-key"] === APP_SECRET) return false;   // admin panel frontend
+  if (p === "/health" || p === "/favicon.ico" || p === "/loadtest") return false;
+  if (p.startsWith("/admin") || p.startsWith("/proxy-panel") || p.startsWith("/cache-panel")) return false;
+  if (p === "/converter" || p === "/playlist-cache") return false;
+  if (p.endsWith(".html") || p.endsWith(".js") || p.endsWith(".css") || p.endsWith(".map") ||
+      p.endsWith(".png") || p.endsWith(".ico") || p.endsWith(".json")) return false;
+  return true;
+}
+
+function recordPresence(req) {
+  try {
+    if (!isPresenceCountable(req)) return;
+    const uid = presenceUid(req);
+    const nowMs = Date.now();
+
+    // Throttle — aynı cihaz 30 sn içinde tekrar yazılmaz (yoğun trafikte Redis'i korur)
+    const last = presenceLastWrite.get(uid);
+    if (last && nowMs - last < PRESENCE_THROTTLE_MS) return;
+    presenceLastWrite.set(uid, nowMs);
+    if (presenceLastWrite.size > 20000) {
+      for (const [k, t] of presenceLastWrite) {
+        if (nowMs - t > PRESENCE_THROTTLE_MS) presenceLastWrite.delete(k);
+      }
+    }
+
+    const ip = req.ip || "?";
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "?";
+    const key = presenceKey(uid);
+    const minKey = presenceMinKey(nowMs);
+
+    const pipe = redis.pipeline();
+    pipe.hset(key, { ip, lastSeen: nowMs.toString(), endpoint: req.path, userAgent: req.headers["user-agent"] || "" });
+    if (country !== "?") pipe.hset(key, "country", country);
+    pipe.hsetnx(key, "firstSeen", nowMs.toString());
+    pipe.hincrby(key, "hits", 1);
+    pipe.expire(key, 3600);
+    pipe.zadd(PRESENCE_ZKEY, nowMs, uid);
+    pipe.pfadd(minKey, uid);      // dakikalık benzersiz sayım (grafik için)
+    pipe.expire(minKey, 7200);
+    pipe.exec().catch(() => {});
+  } catch (e) {
+    // presence asla isteği bozmamalı — sessizce yut
+  }
+}
+
+// Eski kayıtların temizliği — yalnızca primary worker
+if (isPrimaryWorker) {
+  setInterval(async () => {
+    try {
+      const cutoff = Date.now() - PRESENCE_RETENTION_MS;
+      const stale = await redis.zrangebyscore(PRESENCE_ZKEY, 0, cutoff);
+      if (stale.length) {
+        const pipe = redis.pipeline();
+        stale.forEach(uid => pipe.del(presenceKey(uid)));
+        pipe.zremrangebyscore(PRESENCE_ZKEY, 0, cutoff);
+        await pipe.exec();
+      }
+    } catch (e) {
+      console.error("[PRESENCE] Temizlik hatası:", e.message);
+    }
+  }, 5 * 60 * 1000).unref();
+}
+
+app.get("/admin/active-users", basicAuth, async (req, res) => {
+  try {
+    const nowMs = Date.now();
+    const windowMin = Math.min(Math.max(parseInt(req.query.window) || 5, 1), 60);
+    const winFrom = nowMs - windowMin * 60 * 1000;
+
+    const [c5, c15, c60] = await Promise.all([
+      redis.zcount(PRESENCE_ZKEY, nowMs - 5 * 60 * 1000, "+inf"),
+      redis.zcount(PRESENCE_ZKEY, nowMs - 15 * 60 * 1000, "+inf"),
+      redis.zcount(PRESENCE_ZKEY, nowMs - 60 * 60 * 1000, "+inf"),
+    ]);
+
+    // Pencere içindeki cihazlar (en yeni önce)
+    const uids = await redis.zrevrangebyscore(PRESENCE_ZKEY, "+inf", winFrom);
+    let users = [];
+    const byCountryMap = {};
+    if (uids.length) {
+      const pipe = redis.pipeline();
+      uids.forEach(uid => pipe.hgetall(presenceKey(uid)));
+      const results = await pipe.exec();
+      results.forEach(([err, h], i) => {
+        if (err || !h || !h.ip) return;
+        const country = h.country || "?";
+        byCountryMap[country] = (byCountryMap[country] || 0) + 1;
+        if (users.length < PRESENCE_LIST_LIMIT) {
+          users.push({
+            uid: uids[i],
+            ip: h.ip,
+            country,
+            endpoint: h.endpoint || "",
+            hits: Number(h.hits) || 0,
+            firstSeen: new Date(Number(h.firstSeen) || nowMs).toISOString(),
+            lastSeen: new Date(Number(h.lastSeen) || nowMs).toISOString(),
+            secondsAgo: Math.max(0, Math.round((nowMs - (Number(h.lastSeen) || nowMs)) / 1000)),
+          });
+        }
+      });
+    }
+
+    const byCountry = Object.entries(byCountryMap)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Son 60 dakikanın dakika bazlı benzersiz cihaz sayısı (grafik)
+    const tlPipe = redis.pipeline();
+    const minutes = [];
+    for (let i = 59; i >= 0; i--) {
+      const ms = nowMs - i * 60 * 1000;
+      minutes.push(new Date(ms).toISOString().slice(11, 16));
+      tlPipe.pfcount(presenceMinKey(ms));
+    }
+    const tlRes = await tlPipe.exec();
+    const timeline = tlRes.map(([err, v], i) => ({ t: minutes[i], count: err ? 0 : (Number(v) || 0) }));
+
+    res.json({
+      online: c5,                              // varsayılan "şu an aktif" = son 5 dk
+      online5m: c5,
+      online15m: c15,
+      online1h: c60,
+      window: windowMin,
+      windowCount: uids.length,
+      listed: users.length,
+      byCountry,
+      timeline,
+      users,
+      updatedAt: new Date(nowMs).toISOString(),
+    });
+  } catch (e) {
+    console.error("[PRESENCE] Listeleme hatası:", e.message);
+    res.status(500).json({ error: "Listeleme hatası: " + e.message });
   }
 });
 
