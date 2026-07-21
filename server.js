@@ -1585,7 +1585,7 @@ app.use(cors({
     }
   },
   methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token"],
+  allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token", "X-Extractor", "X-Android-Sdk", "X-App-Version", "X-App-Mode"],
   credentials: false
 }));
 app.use(express.json({ limit: '1mb' }));
@@ -3798,6 +3798,26 @@ const presenceLastWrite = new Map();             // worker-local throttle: uid -
 const presenceKey = (uid) => `presence:u:${uid}`;
 const presenceMinKey = (ms) => "presence:min:" + new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "");
 
+/* --- Çıkarıcı (NewPipe / Backend) ayrımı ---
+   Uygulama iki yoldan biriyle içerik çözer:
+     Android 13+ (SDK>=33) → NewPipe Extractor, cihaz üzerinde
+     Android 12- (SDK<33)  → backend'in /search + /stream API'leri
+   Bu ayrım SUNUCUDAN ANLAŞILAMAZ: uygulamadaki tüm istekler aynı sabit
+   tarayıcı User-Agent'ını kullanıyor. Bu yüzden uygulama X-Extractor
+   header'ıyla kendisi bildirir; eski APK'lar için X-Android-Sdk'dan türetilir. */
+const EXTRACTORS = ["newpipe", "backend", "unknown"];
+const PRESENCE_EXTRACTOR_ZKEY = (ex) => `presence:z:${ex}`;
+
+function normalizeExtractor(req) {
+  const raw = String(req.headers["x-extractor"] || "").toLowerCase().trim();
+  if (raw === "newpipe" || raw === "np") return "newpipe";
+  if (raw === "backend" || raw === "api") return "backend";
+  // Eski APK: X-Extractor yok ama SDK varsa kuraldan türet
+  const sdk = parseInt(req.headers["x-android-sdk"]);
+  if (Number.isFinite(sdk) && sdk > 0) return sdk >= 33 ? "newpipe" : "backend";
+  return "unknown";
+}
+
 function presenceUid(req) {
   const dev = req.headers["x-device-id"];
   if (typeof dev === "string" && dev.length >= 6) return "d:" + dev.slice(0, 64);
@@ -3842,9 +3862,22 @@ function recordPresence(req) {
     const key = presenceKey(uid);
     const minKey = presenceMinKey(nowMs);
 
+    // Çıkarıcı (extractor) tespiti — Android 13+ NewPipe, altı backend API kullanır.
+    // Uygulama X-Extractor gönderir; göndermiyorsa (eski APK) X-Android-Sdk'dan türetilir.
+    // İkisi de yoksa "unknown" — sunucu tarafında güvenilir başka sinyal yok.
+    const extractor = normalizeExtractor(req);
+    const sdk = parseInt(req.headers["x-android-sdk"]);
+
     const pipe = redis.pipeline();
     pipe.hset(key, { ip, lastSeen: nowMs.toString(), endpoint: req.path, userAgent: req.headers["user-agent"] || "" });
     if (country !== "?") pipe.hset(key, "country", country);
+    if (extractor !== "unknown") pipe.hset(key, "extractor", extractor);
+    if (Number.isFinite(sdk) && sdk > 0) pipe.hset(key, "sdk", String(sdk));
+    // Cihaz tek bir çıkarıcı kümesinde bulunmalı — APK güncellemesiyle
+    // "unknown" → "newpipe" geçişinde çift sayılmasın diye diğerlerinden çıkar.
+    pipe.zadd(PRESENCE_EXTRACTOR_ZKEY(extractor), nowMs, uid);
+    EXTRACTORS.filter(ex => ex !== extractor)
+      .forEach(ex => pipe.zrem(PRESENCE_EXTRACTOR_ZKEY(ex), uid));
     pipe.hsetnx(key, "firstSeen", nowMs.toString());
     pipe.hincrby(key, "hits", 1);
     pipe.expire(key, 3600);
@@ -3863,12 +3896,12 @@ if (isPrimaryWorker) {
     try {
       const cutoff = Date.now() - PRESENCE_RETENTION_MS;
       const stale = await redis.zrangebyscore(PRESENCE_ZKEY, 0, cutoff);
-      if (stale.length) {
-        const pipe = redis.pipeline();
-        stale.forEach(uid => pipe.del(presenceKey(uid)));
-        pipe.zremrangebyscore(PRESENCE_ZKEY, 0, cutoff);
-        await pipe.exec();
-      }
+      const pipe = redis.pipeline();
+      stale.forEach(uid => pipe.del(presenceKey(uid)));
+      pipe.zremrangebyscore(PRESENCE_ZKEY, 0, cutoff);
+      // Çıkarıcı kümeleri de aynı pencereyle budanır
+      EXTRACTORS.forEach(ex => pipe.zremrangebyscore(PRESENCE_EXTRACTOR_ZKEY(ex), 0, cutoff));
+      await pipe.exec();
     } catch (e) {
       console.error("[PRESENCE] Temizlik hatası:", e.message);
     }
@@ -3887,10 +3920,29 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       redis.zcount(PRESENCE_ZKEY, nowMs - 60 * 60 * 1000, "+inf"),
     ]);
 
+    // Çıkarıcı bazlı sayaçlar (NewPipe / Backend / Bilinmiyor) — 5 dk, 15 dk, 1 sa
+    const exPipe = redis.pipeline();
+    EXTRACTORS.forEach(ex => {
+      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 5 * 60 * 1000, "+inf");
+      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 15 * 60 * 1000, "+inf");
+      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 60 * 60 * 1000, "+inf");
+    });
+    const exRes = await exPipe.exec();
+    const byExtractor = {};
+    EXTRACTORS.forEach((ex, i) => {
+      const num = (r) => (r && !r[0] ? Number(r[1]) || 0 : 0);
+      byExtractor[ex] = {
+        online5m: num(exRes[i * 3]),
+        online15m: num(exRes[i * 3 + 1]),
+        online1h: num(exRes[i * 3 + 2]),
+      };
+    });
+
     // Pencere içindeki cihazlar (en yeni önce)
     const uids = await redis.zrevrangebyscore(PRESENCE_ZKEY, "+inf", winFrom);
     let users = [];
     const byCountryMap = {};
+    const windowByExtractor = { newpipe: 0, backend: 0, unknown: 0 };
     if (uids.length) {
       const pipe = redis.pipeline();
       uids.forEach(uid => pipe.hgetall(presenceKey(uid)));
@@ -3899,11 +3951,15 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
         if (err || !h || !h.ip) return;
         const country = h.country || "?";
         byCountryMap[country] = (byCountryMap[country] || 0) + 1;
+        const ex = EXTRACTORS.includes(h.extractor) ? h.extractor : "unknown";
+        windowByExtractor[ex]++;
         if (users.length < PRESENCE_LIST_LIMIT) {
           users.push({
             uid: uids[i],
             ip: h.ip,
             country,
+            extractor: ex,
+            sdk: h.sdk ? Number(h.sdk) : null,
             endpoint: h.endpoint || "",
             hits: Number(h.hits) || 0,
             firstSeen: new Date(Number(h.firstSeen) || nowMs).toISOString(),
@@ -3937,6 +3993,8 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       window: windowMin,
       windowCount: uids.length,
       listed: users.length,
+      byExtractor,             // {newpipe|backend|unknown: {online5m, online15m, online1h}}
+      windowByExtractor,       // seçili pencere içindeki kırılım
       byCountry,
       timeline,
       users,
