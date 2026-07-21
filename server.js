@@ -1867,6 +1867,9 @@ function getCachedConfig() {
   try {
     _cachedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
   } catch (e) { _cachedConfig = {}; }
+  // ringtoneAsns: bu ASN'lerden gelen cihazlar ulke/global ayarina bakilmadan
+  // dogrudan zil sesi moduna gider. Eski config.json'larda alan yok -> bos dizi.
+  if (!Array.isArray(_cachedConfig.ringtoneAsns)) _cachedConfig.ringtoneAsns = [];
   return _cachedConfig;
 }
 
@@ -2763,7 +2766,16 @@ app.get("/config", (req, res) => {
 
 app.post("/config", async (req, res) => {
   try {
-    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(req.body, null, 2));
+    const body = { ...req.body };
+    // ringtoneAsns normalize: "AS15169" / "15169" / 15169 -> 15169, tekrarlari at
+    if (body.ringtoneAsns !== undefined) {
+      body.ringtoneAsns = [...new Set(
+        (Array.isArray(body.ringtoneAsns) ? body.ringtoneAsns : [])
+          .map(v => parseInt(String(v).replace(/\D/g, ""), 10))
+          .filter(n => Number.isInteger(n) && n > 0)
+      )];
+    }
+    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(body, null, 2));
     _cachedConfig = null; // Cache'i hemen invalidate et
     res.json({ message: "Config updated successfully" });
   } catch (e) {

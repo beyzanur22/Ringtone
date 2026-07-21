@@ -22,5 +22,15 @@
   "bottomBannerAd": {
     "enabled": false,
     "rules": []
-  }
+  },
+  "ringtoneAsns": [
+    15169,
+    36384,
+    43515,
+    16591,
+    19527,
+    396982,
+    36385,
+    17735
+  ]
 }

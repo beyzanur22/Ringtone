@@ -24,14 +24,14 @@ module.exports = {
       }
     },
 
-    // ═══════════════════════════════════════════════════
+
     // yt-dlp RESOLVE WORKER'LARI
     // Her worker 6 paralel yt-dlp çalıştırır
     // 4 worker × 6 = 24 eşzamanlı çözümleme (tek sunucu)
     //
     // Başka sunucuya eklemek için:
     //   REDIS_URL=redis://ana-sunucu:6379 pm2 start resolve_worker.js -i 4
-    // ═══════════════════════════════════════════════════
+
     {
       name: "resolver",
       script: "./resolve_worker.js",
@@ -55,9 +55,9 @@ module.exports = {
       }
     },
 
-    // ═══════════════════════════════════════════════════
+
     // WEBHOOK DEPLOY — GitHub push → otomatik admin panel build
-    // ═══════════════════════════════════════════════════
+   
     {
       name: "webhook",
       script: "./webhook-deploy.js",
