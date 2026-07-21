@@ -5176,18 +5176,23 @@ app.get("/popup/active", (req, res) => {
     if (Array.isArray(ann.countries) && country) return ann.countries.includes(country);
     return true;
   });
-  res.json(active);
+  // type alanı sonradan eklendi — eski kayıtlarda yok, istemci hep dolu görsün
+  res.json(active.map(ann => ({ ...ann, type: ann.type === "review" ? "review" : "vote" })));
 });
 
 // Yeni duyuru oluştur (admin)
 app.post("/popup/create", express.json(), (req, res) => {
-  const { title, message, buttons, countries, startTime, endTime, minLaunches } = req.body;
+  const { title, message, buttons, countries, startTime, endTime, minLaunches, type } = req.body;
   if (!title || !message) return res.status(400).json({ error: "title ve message zorunlu" });
+  // type: "vote" = yıldız oylaması (eski davranış) | "review" = tek butonlu değerlendirme daveti.
+  // review'da yıldıza göre ayrım yapılmaz, Google kartı herkese açılır (Play politikasına uygun).
+  const popupType = type === "review" ? "review" : "vote";
   if (!Array.isArray(buttons) || buttons.length === 0) return res.status(400).json({ error: "en az bir buton gerekli" });
 
   const all = loadAnnouncements();
   const newAnn = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    type: popupType,
     title,
     message,
     buttons,
