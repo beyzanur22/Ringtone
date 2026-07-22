@@ -3759,20 +3759,32 @@ app.get("/admin/review-logs", basicAuth, (req, res) => {
   const all = loadReviewLogs();
   const counts = { popup_shown: 0, button_tap: 0, request_ok: 0, request_fail: 0, flow_done: 0 };
   const errorCodes = {};
+  // Google kartın gösterilip gösterilmediğini bildirmez. İstemci bunu pencere
+  // odağı üzerinden ölçüyor: kart açılırsa uygulama odağı kaybeder. Sonuç
+  // flow_done kaydının detail alanına yazılır. Eski süre tahmini KULLANILMIYOR.
+  //   card_shown     → kart gerçekten ekrana geldi
+  //   card_not_shown → akış çalıştı ama kart hiç açılmadı (çoğunlukla Play'den
+  //                    kurulmamış cihaz veya Google kotası)
+  //   unknown        → ölçüm güvenilir değildi, hiçbir sayıya katılmaz
+  let cardShown = 0, cardNotShown = 0, cardUnknown = 0;
   for (const l of all) {
     if (counts[l.event] !== undefined) counts[l.event]++;
     if (l.event === "request_fail" && l.errorCode) {
       errorCodes[l.errorCode] = (errorCodes[l.errorCode] || 0) + 1;
     }
+    if (l.event === "flow_done") {
+      if (l.detail === "card_shown") cardShown++;
+      else if (l.detail === "card_not_shown") cardNotShown++;
+      else cardUnknown++;   // eski sürümlerden gelen detailsiz kayıtlar da buraya düşer
+    }
   }
-  // NOT: Google, in-app review kartının gösterilip gösterilmediğini bildirmez.
-  // flow_done kart açılsa da açılmasa da atılır; buradan "kart görüldü" sayısı
-  // türetilemez. Süreye bakan eski tahmin (cardShown/cardNotShown) yanıltıcı
-  // olduğu için kaldırıldı.
   res.json({
     total: all.length,
     counts,
     errorCodes,
+    cardShown,
+    cardNotShown,
+    cardUnknown,
     logs: all.slice(0, 300)
   });
 });
