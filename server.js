@@ -1669,6 +1669,7 @@ app.use(async (req, res, next) => {
       (req.path === "/popup/active" && req.method === "GET") ||
       (req.path === "/popup/vote" && req.method === "POST") ||
       (req.path === "/feedback" && req.method === "POST") ||
+      (req.path === "/review-log" && req.method === "POST") ||
       (req.path === "/device-action/active" && req.method === "GET") ||
       (req.path === "/device-action/executed" && req.method === "POST") ||
       (req.path === "/autocomplete" && req.method === "GET") ||
@@ -1691,7 +1692,8 @@ app.use(async (req, res, next) => {
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
-      req.path === "/admin/login-ips" || req.path === "/admin/active-users") {
+      req.path === "/admin/login-ips" || req.path === "/admin/active-users" ||
+      req.path === "/admin/review-logs") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -3701,6 +3703,86 @@ app.delete("/feedback/:id", (req, res) => {
   const filtered = all.filter(f => f.id !== req.params.id);
   if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
   saveFeedbacks(filtered);
+  res.json({ ok: true });
+});
+
+/* =========================
+   GOOGLE IN-APP REVIEW LOGLARI
+   ÖNEMLİ SINIR: Google, kullanıcının kaç yıldız verdiğini ASLA bildirmez.
+   Buradaki loglar sadece şunu ölçer:
+     request_ok   → Google isteği kabul etti, kart hazır
+     request_fail → Google reddetti (errorCode ile), kart KESİNLİKLE açılmadı
+     flow_done    → akış bitti; durationMs kısa ise kart görünmemiş demektir
+   Gerçek yıldız ortalaması yalnızca Play Console'da görülür.
+========================= */
+const REVIEW_LOG_FILE = path.join(__dirname, "review_logs.json");
+const REVIEW_LOG_MAX = 2000;
+
+function loadReviewLogs() {
+  try {
+    if (!fs.existsSync(REVIEW_LOG_FILE)) fs.writeFileSync(REVIEW_LOG_FILE, "[]");
+    return JSON.parse(fs.readFileSync(REVIEW_LOG_FILE, "utf-8"));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveReviewLogs(data) {
+  fs.writeFileSync(REVIEW_LOG_FILE, JSON.stringify(data.slice(0, REVIEW_LOG_MAX), null, 2));
+}
+
+const REVIEW_EVENTS = ["popup_shown", "button_tap", "request_ok", "request_fail", "flow_done"];
+
+app.post("/review-log", express.json(), (req, res) => {
+  const { event, detail, errorCode, durationMs, deviceId, appVersion } = req.body;
+  if (!REVIEW_EVENTS.includes(event)) return res.status(400).json({ error: "gecersiz event" });
+
+  const all = loadReviewLogs();
+  all.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    event,
+    detail: detail || "",
+    errorCode: errorCode !== undefined && errorCode !== null ? String(errorCode) : "",
+    durationMs: Number(durationMs) || 0,
+    // durationMs kısa = kart ekranda hiç durmamış (tahmin, kesin bilgi değil)
+    cardLikelyShown: event === "flow_done" ? (Number(durationMs) || 0) >= 500 : null,
+    deviceId: deviceId || "",
+    appVersion: appVersion || "",
+    country: req.headers["cf-ipcountry"] || req.headers["x-country"] || "?",
+    sdk: req.headers["x-android-sdk"] || "",
+    ip: req.ip || "",
+    createdAt: new Date().toISOString()
+  });
+  saveReviewLogs(all);
+  res.json({ ok: true });
+});
+
+app.get("/admin/review-logs", basicAuth, (req, res) => {
+  const all = loadReviewLogs();
+  const counts = { popup_shown: 0, button_tap: 0, request_ok: 0, request_fail: 0, flow_done: 0 };
+  const errorCodes = {};
+  let cardShown = 0, cardNotShown = 0;
+  for (const l of all) {
+    if (counts[l.event] !== undefined) counts[l.event]++;
+    if (l.event === "request_fail" && l.errorCode) {
+      errorCodes[l.errorCode] = (errorCodes[l.errorCode] || 0) + 1;
+    }
+    if (l.event === "flow_done") {
+      if (l.cardLikelyShown) cardShown++; else cardNotShown++;
+    }
+  }
+  res.json({
+    total: all.length,
+    counts,
+    errorCodes,
+    cardShown,        // akış 500ms+ sürdü → kart görülmüş olmalı
+    cardNotShown,     // akış anında bitti → kart açılmamış
+    logs: all.slice(0, 300)
+  });
+});
+
+app.delete("/admin/review-logs", basicAuth, (req, res) => {
+  saveReviewLogs([]);
   res.json({ ok: true });
 });
 
