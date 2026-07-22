@@ -3744,8 +3744,6 @@ app.post("/review-log", express.json(), (req, res) => {
     detail: detail || "",
     errorCode: errorCode !== undefined && errorCode !== null ? String(errorCode) : "",
     durationMs: Number(durationMs) || 0,
-    // durationMs kısa = kart ekranda hiç durmamış (tahmin, kesin bilgi değil)
-    cardLikelyShown: event === "flow_done" ? (Number(durationMs) || 0) >= 500 : null,
     deviceId: deviceId || "",
     appVersion: appVersion || "",
     country: req.headers["cf-ipcountry"] || req.headers["x-country"] || "?",
@@ -3761,22 +3759,20 @@ app.get("/admin/review-logs", basicAuth, (req, res) => {
   const all = loadReviewLogs();
   const counts = { popup_shown: 0, button_tap: 0, request_ok: 0, request_fail: 0, flow_done: 0 };
   const errorCodes = {};
-  let cardShown = 0, cardNotShown = 0;
   for (const l of all) {
     if (counts[l.event] !== undefined) counts[l.event]++;
     if (l.event === "request_fail" && l.errorCode) {
       errorCodes[l.errorCode] = (errorCodes[l.errorCode] || 0) + 1;
     }
-    if (l.event === "flow_done") {
-      if (l.cardLikelyShown) cardShown++; else cardNotShown++;
-    }
   }
+  // NOT: Google, in-app review kartının gösterilip gösterilmediğini bildirmez.
+  // flow_done kart açılsa da açılmasa da atılır; buradan "kart görüldü" sayısı
+  // türetilemez. Süreye bakan eski tahmin (cardShown/cardNotShown) yanıltıcı
+  // olduğu için kaldırıldı.
   res.json({
     total: all.length,
     counts,
     errorCodes,
-    cardShown,        // akış 500ms+ sürdü → kart görülmüş olmalı
-    cardNotShown,     // akış anında bitti → kart açılmamış
     logs: all.slice(0, 300)
   });
 });
