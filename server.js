@@ -2979,8 +2979,11 @@ app.get("/top50", async (req, res) => {
 
     await cacheSet(cacheKey, items, CACHE_DURATION);
 
-    // Top50 prewarm — popüler şarkılar cache'te hazır olsun
-    prewarmTop10(items);
+    // Top50 prewarm İPTAL: her /top50 isteğinde 15 şarkının MP3'ünü arka planda
+    // dış provider'dan çözmeye çalışıyordu; provider 500 döndüğünde log'u hata seline
+    // boğuyor ve zaten zorlanan provider'a ekstra yük biniyordu. Şarkılar ilk gerçek
+    // dinlemede zaten çözülüp cache'leniyor.
+    // prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
     res.json({ source: "youtube", region, data: items });
@@ -3646,8 +3649,9 @@ async function warmTop50() {
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
-      // Top50 prewarm — popüler şarkılar cache'te hazır olsun
-      if (regions.length <= 5) prewarmTop10(items);
+      // Top50 prewarm İPTAL (yukarıdaki /top50 ile aynı gerekçe): MP3 ön-ısıtma dış
+      // provider'ı boğup 500 seline yol açıyordu. Liste cache'i (yukarıda) korunuyor.
+      // if (regions.length <= 5) prewarmTop10(items);
     } catch (e) {
       console.warn(`[WARMUP] Top50 ${region} başarısız: ${e.message}`);
       // Quota aşıldıysa diğer bölgeleri de deneme
@@ -5254,7 +5258,8 @@ app.get("/announcements", (req, res) => {
 
 // Aktif duyuruları getir (Android uygulaması için, ülke filtreli)
 app.get("/popup/active", (req, res) => {
-  const country = (req.query.country || "").toUpperCase();
+  // Ülke tespiti: Cloudflare header > Android X-Country header > query param (kodun geri kalanıyla tutarlı)
+  const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || req.query.country || "").toUpperCase();
   const now = new Date();
   const all = loadAnnouncements();
   const active = all.filter(ann => {
@@ -5263,7 +5268,9 @@ app.get("/popup/active", (req, res) => {
     if (start && now < start) return false;
     if (end && now > end) return false;
     if (ann.countries === "all") return true;
-    if (Array.isArray(ann.countries) && country) return ann.countries.includes(country);
+    // Ülke hedeflemesi olan duyuru: ülke eşleşmiyorsa VEYA ülke bilinmiyorsa gösterme (fail-closed).
+    // Eskiden ülke boşsa "return true" ile herkese gidiyordu — hedefleme çalışmıyordu.
+    if (Array.isArray(ann.countries)) return !!country && ann.countries.includes(country);
     return true;
   });
   // type alanı sonradan eklendi — eski kayıtlarda yok, istemci hep dolu görsün
