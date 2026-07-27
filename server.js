@@ -2634,7 +2634,11 @@ function applyContentFilter(items) {
   let removedLive = 0, removedLong = 0, removedNoDur = 0;
   const out = items.filter(item => {
     if (cf.blockLive && isLiveResult(item)) { removedLive++; return false; }
-    const durSec = parseDurationToSeconds(item.duration ?? item.lengthSeconds ?? item.length);
+    // Süre: YouTube'dan gelen GERÇEK süre varsa onu kullan (provider'ınki güvenilmez),
+    // yoksa provider'ın verdiğine düş.
+    const durSec = (typeof item._ytDurationSec === "number")
+      ? item._ytDurationSec
+      : parseDurationToSeconds(item.duration ?? item.lengthSeconds ?? item.length);
     // KRİTİK: bazocam provider'ı canlı yayınları süre=0 ile döndürüyor; gerçek şarkılar
     // HER ZAMAN süreli geliyor. Bu yüzden blockLive açıkken süresiz (0/bilinmeyen) içerikleri
     // de canlı/geçersiz kabul edip ele. (Müzik uygulamasında süresiz sonuç zaten indirilemez.)
@@ -2665,20 +2669,26 @@ async function enrichWithYouTubeDetails(items) {
     for (let i = 0; i < ids.length; i += 50) { // videos.list en fazla 50 ID
       const chunk = ids.slice(i, i + 50).join(",");
       const resp = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
-        params: { part: "snippet", id: chunk, key: YOUTUBE_API_KEY },
+        params: { part: "snippet,contentDetails", id: chunk, key: YOUTUBE_API_KEY },
         timeout: 8000
       });
       for (const v of (resp.data.items || [])) byId[v.id] = v;
     }
-    let liveFound = 0;
+    let liveFound = 0, durFixed = 0;
     for (const it of items) {
       const v = byId[it.id || it.videoId];
       if (!v) continue;
       const lbc = v.snippet?.liveBroadcastContent || "none";
       it.liveBroadcastContent = lbc; // "live" / "upcoming" / "none" — kesin canlı işareti
       if (lbc === "live" || lbc === "upcoming") liveFound++;
+      // GERÇEK süre (provider'ın süresi güvenilmez; YouTube'unki kesin). Ayrı alanda tut,
+      // provider'ın `duration`'ına dokunma (Android süre gösterimi bozulmasın).
+      if (v.contentDetails?.duration) {
+        const real = parseDurationToSeconds(v.contentDetails.duration); // ISO8601 → sn
+        if (real >= 0) { it._ytDurationSec = real; durFixed++; }
+      }
     }
-    if (liveFound) console.log(`[CONTENT_FILTER] YouTube ile ${liveFound} canlı yayın kesin tespit edildi`);
+    if (liveFound || durFixed) console.log(`[CONTENT_FILTER] YouTube ile ${liveFound} canlı + ${durFixed} gerçek süre alındı`);
   } catch (e) {
     console.warn(`[CONTENT_FILTER] YouTube zenginleştirme başarısız (sezgiye düşülüyor): ${e.message}`);
   }
