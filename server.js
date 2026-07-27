@@ -2612,6 +2612,16 @@ function isLiveResult(item) {
   // Bazı scraper'lar rozet (badge) döner
   const badges = item.badges || snippet.badges;
   if (Array.isArray(badges) && badges.some(b => (b || "").toString().toLowerCase().includes("live"))) return true;
+  // BAŞLIK BAZLI: bazocam provider'ı canlı yayınları hiçbir işaretle göndermiyor,
+  // sadece başlıkta "Canlı Yayın" / "7/24" yazıyor. Bu kalıpları yakala.
+  // NOT: "canlı performans", "canlı konser" gibi KAYIT videoları eşleşmez (kasıtlı).
+  const title = (item.title || item.name || snippet.title || "").toString().toLowerCase();
+  const livePatterns = [
+    "canlı yayın", "canli yayin", "canlı yayin", "canli yayın",
+    "7/24", "24/7", "7 24", "🔴", "live stream", "livestream", "live now",
+    "canlı izle", "canli izle", "canlı tv", "canli tv", "en vivo", "en direct"
+  ];
+  if (livePatterns.some(p => title.includes(p))) return true;
   return false;
 }
 
@@ -2621,16 +2631,20 @@ function applyContentFilter(items) {
   const cf = getContentFilter();
   if (!cf.enabled) return items;
   const maxSec = cf.maxDurationMinutes * 60;
-  let removedLive = 0, removedLong = 0;
+  let removedLive = 0, removedLong = 0, removedNoDur = 0;
   const out = items.filter(item => {
     if (cf.blockLive && isLiveResult(item)) { removedLive++; return false; }
     const durSec = parseDurationToSeconds(item.duration ?? item.lengthSeconds ?? item.length);
-    // Süre biliniyorsa ve limitin üstündeyse ele. Bilinmiyorsa (-1) dokunma.
+    // KRİTİK: bazocam provider'ı canlı yayınları süre=0 ile döndürüyor; gerçek şarkılar
+    // HER ZAMAN süreli geliyor. Bu yüzden blockLive açıkken süresiz (0/bilinmeyen) içerikleri
+    // de canlı/geçersiz kabul edip ele. (Müzik uygulamasında süresiz sonuç zaten indirilemez.)
+    if (cf.blockLive && durSec < 0) { removedNoDur++; return false; }
+    // Süre biliniyorsa ve limitin üstündeyse ele.
     if (durSec >= 0 && durSec >= maxSec) { removedLong++; return false; }
     return true;
   });
-  if (removedLive || removedLong) {
-    console.log(`[CONTENT_FILTER] elenen → canlı:${removedLive} uzun(≥${cf.maxDurationMinutes}dk):${removedLong} | kalan:${out.length}/${items.length}`);
+  if (removedLive || removedLong || removedNoDur) {
+    console.log(`[CONTENT_FILTER] elenen → canlı:${removedLive} süresiz(muhtemel-canlı):${removedNoDur} uzun(≥${cf.maxDurationMinutes}dk):${removedLong} | kalan:${out.length}/${items.length}`);
   }
   return out;
 }
