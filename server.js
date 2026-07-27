@@ -2638,7 +2638,9 @@ function applyContentFilter(items) {
     // KRİTİK: bazocam provider'ı canlı yayınları süre=0 ile döndürüyor; gerçek şarkılar
     // HER ZAMAN süreli geliyor. Bu yüzden blockLive açıkken süresiz (0/bilinmeyen) içerikleri
     // de canlı/geçersiz kabul edip ele. (Müzik uygulamasında süresiz sonuç zaten indirilemez.)
-    if (cf.blockLive && durSec < 0) { removedNoDur++; return false; }
+    // AMA YouTube kesin "none" (canlı değil) dediyse, süre 0 olsa bile koru — yanlış eleme olmasın.
+    const ytConfirmedNotLive = item.liveBroadcastContent === "none";
+    if (cf.blockLive && durSec < 0 && !ytConfirmedNotLive) { removedNoDur++; return false; }
     // Süre biliniyorsa ve limitin üstündeyse ele.
     if (durSec >= 0 && durSec >= maxSec) { removedLong++; return false; }
     return true;
@@ -2647,6 +2649,40 @@ function applyContentFilter(items) {
     console.log(`[CONTENT_FILTER] elenen → canlı:${removedLive} süresiz(muhtemel-canlı):${removedNoDur} uzun(≥${cf.maxDurationMinutes}dk):${removedLong} | kalan:${out.length}/${items.length}`);
   }
   return out;
+}
+
+// YouTube'un RESMİ canlı işaretiyle zenginleştir. Provider (bazocam) canlı bilgisi
+// vermiyor; video ID'lerini YouTube Data API'ye sorup her sonuca gerçek
+// `liveBroadcastContent` ("live"/"upcoming"/"none") değerini ekliyoruz.
+// YOUTUBE_API_KEY yoksa veya çağrı başarısızsa dokunmaz → başlık/süre sezgisi devreye girer.
+// NOT: provider'ın `duration` alanına DOKUNMUYORUZ (Android süre gösterimi bozulmasın).
+async function enrichWithYouTubeDetails(items) {
+  if (!YOUTUBE_API_KEY || !Array.isArray(items) || !items.length) return items;
+  try {
+    const ids = items.map(it => it.id || it.videoId).filter(Boolean);
+    if (!ids.length) return items;
+    const byId = {};
+    for (let i = 0; i < ids.length; i += 50) { // videos.list en fazla 50 ID
+      const chunk = ids.slice(i, i + 50).join(",");
+      const resp = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+        params: { part: "snippet", id: chunk, key: YOUTUBE_API_KEY },
+        timeout: 8000
+      });
+      for (const v of (resp.data.items || [])) byId[v.id] = v;
+    }
+    let liveFound = 0;
+    for (const it of items) {
+      const v = byId[it.id || it.videoId];
+      if (!v) continue;
+      const lbc = v.snippet?.liveBroadcastContent || "none";
+      it.liveBroadcastContent = lbc; // "live" / "upcoming" / "none" — kesin canlı işareti
+      if (lbc === "live" || lbc === "upcoming") liveFound++;
+    }
+    if (liveFound) console.log(`[CONTENT_FILTER] YouTube ile ${liveFound} canlı yayın kesin tespit edildi`);
+  } catch (e) {
+    console.warn(`[CONTENT_FILTER] YouTube zenginleştirme başarısız (sezgiye düşülüyor): ${e.message}`);
+  }
+  return items;
 }
 
 function filterBlockedChannels(items, country = "all") {
@@ -3156,6 +3192,8 @@ app.get("/search", searchLimiter, async (req, res) => {
       const resultsArr = Array.isArray(results) ? results : [];
       // Kanal bazlı engelleme kuralı varsa, boş uploader'ları kanal adıyla doldur
       if (hasChannelTypeRule()) await enrichUploaders(resultsArr);
+      // YouTube'un resmi canlı işaretiyle zenginleştir (provider vermiyor) → kesin canlı tespiti
+      await enrichWithYouTubeDetails(resultsArr);
       const filteredData = applyContentFilter(filterBlockedChannels(resultsArr, country));
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
