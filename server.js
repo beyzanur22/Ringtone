@@ -1687,6 +1687,7 @@ app.use(async (req, res, next) => {
   }
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
   if (req.path.startsWith("/proxy-panel") || req.path.startsWith("/cache-panel") ||
+      req.path.startsWith("/content-filter") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
@@ -1872,6 +1873,17 @@ function getCachedConfig() {
   // ringtoneAsns: bu ASN'lerden gelen cihazlar ulke/global ayarina bakilmadan
   // dogrudan zil sesi moduna gider. Eski config.json'larda alan yok -> bos dizi.
   if (!Array.isArray(_cachedConfig.ringtoneAsns)) _cachedConfig.ringtoneAsns = [];
+  // contentFilter: arama sonuçlarında canlı yayınları ve çok uzun videoları ele.
+  // Eski config.json'larda alan yoksa varsayılanla doldur (panelden değiştirilebilir).
+  if (!_cachedConfig.contentFilter || typeof _cachedConfig.contentFilter !== "object") {
+    _cachedConfig.contentFilter = { enabled: true, maxDurationMinutes: 35, blockLive: true };
+  } else {
+    const cf = _cachedConfig.contentFilter;
+    if (typeof cf.enabled !== "boolean") cf.enabled = true;
+    if (typeof cf.blockLive !== "boolean") cf.blockLive = true;
+    const m = Number(cf.maxDurationMinutes);
+    cf.maxDurationMinutes = Number.isFinite(m) && m > 0 ? m : 35;
+  }
   return _cachedConfig;
 }
 
@@ -2548,6 +2560,81 @@ function getBlockedChannels() {
   return getCachedBlockedChannels();
 }
 
+// ===== İÇERİK FİLTRESİ (canlı yayın + süre) =====
+// Arama sonuçlarında canlı yayınları ve çok uzun videoları eler.
+// Değerler config.json > contentFilter'dan gelir; panelden değiştirilebilir.
+
+function getContentFilter() {
+  const cf = getCachedConfig().contentFilter || {};
+  return {
+    enabled: cf.enabled !== false,
+    maxDurationMinutes: Number(cf.maxDurationMinutes) > 0 ? Number(cf.maxDurationMinutes) : 35,
+    blockLive: cf.blockLive !== false
+  };
+}
+
+// Süreyi saniyeye çevir: 275 (sayı), "3:45", "1:02:03", "PT3M45S" (ISO8601) desteklenir.
+// Bilinmiyorsa/çözülemezse -1 döner (süre bilgisi yok anlamında).
+function parseDurationToSeconds(val) {
+  if (val === null || val === undefined) return -1;
+  if (typeof val === "number") return Number.isFinite(val) && val > 0 ? Math.floor(val) : -1;
+  const s = String(val).trim();
+  if (!s) return -1;
+  // ISO8601 (PT#H#M#S)
+  const iso = s.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+  if (iso) {
+    const h = parseInt(iso[1] || "0", 10), m = parseInt(iso[2] || "0", 10), sec = parseInt(iso[3] || "0", 10);
+    const total = h * 3600 + m * 60 + sec;
+    return total > 0 ? total : -1;
+  }
+  // "H:MM:SS" veya "M:SS"
+  if (s.includes(":")) {
+    const parts = s.split(":").map(p => parseInt(p, 10));
+    if (parts.some(n => Number.isNaN(n))) return -1;
+    let total = 0;
+    for (const n of parts) total = total * 60 + n;
+    return total > 0 ? total : -1;
+  }
+  // Düz sayı (saniye)
+  const num = parseFloat(s);
+  return Number.isFinite(num) && num > 0 ? Math.floor(num) : -1;
+}
+
+// Canlı yayın mı? Provider'lar farklı alan adları kullanabilir → hepsini kontrol et.
+function isLiveResult(item) {
+  if (!item || typeof item !== "object") return false;
+  const snippet = item.snippet || {};
+  if (item.isLive === true || item.is_live === true || item.live === true || item.liveNow === true) return true;
+  const lbc = (item.liveBroadcastContent || snippet.liveBroadcastContent || item.live_status || "").toString().toLowerCase();
+  if (lbc === "live" || lbc === "upcoming" || lbc === "is_live") return true;
+  const durTxt = (item.duration || item.lengthText || item.length || "").toString().toLowerCase();
+  if (durTxt === "live" || durTxt === "canlı" || durTxt === "canli") return true;
+  // Bazı scraper'lar rozet (badge) döner
+  const badges = item.badges || snippet.badges;
+  if (Array.isArray(badges) && badges.some(b => (b || "").toString().toLowerCase().includes("live"))) return true;
+  return false;
+}
+
+// Arama sonuçlarına içerik filtresini uygula (canlı + süre).
+function applyContentFilter(items) {
+  if (!Array.isArray(items) || !items.length) return items;
+  const cf = getContentFilter();
+  if (!cf.enabled) return items;
+  const maxSec = cf.maxDurationMinutes * 60;
+  let removedLive = 0, removedLong = 0;
+  const out = items.filter(item => {
+    if (cf.blockLive && isLiveResult(item)) { removedLive++; return false; }
+    const durSec = parseDurationToSeconds(item.duration ?? item.lengthSeconds ?? item.length);
+    // Süre biliniyorsa ve limitin üstündeyse ele. Bilinmiyorsa (-1) dokunma.
+    if (durSec >= 0 && durSec >= maxSec) { removedLong++; return false; }
+    return true;
+  });
+  if (removedLive || removedLong) {
+    console.log(`[CONTENT_FILTER] elenen → canlı:${removedLive} uzun(≥${cf.maxDurationMinutes}dk):${removedLong} | kalan:${out.length}/${items.length}`);
+  }
+  return out;
+}
+
 function filterBlockedChannels(items, country = "all") {
   const blockedGroups = getBlockedChannels();
   if (!blockedGroups.length) return items;
@@ -3040,7 +3127,7 @@ app.get("/search", searchLimiter, async (req, res) => {
       const cachedData = cached.data || cached;
       if (Array.isArray(cachedData)) {
         if (hasChannelTypeRule()) await enrichUploaders(cachedData);
-        const filtered = filterBlockedChannels(cachedData, country);
+        const filtered = applyContentFilter(filterBlockedChannels(cachedData, country));
         return res.json({ ...cached, data: filtered });
       }
       return res.json(cached);
@@ -3055,7 +3142,7 @@ app.get("/search", searchLimiter, async (req, res) => {
       const resultsArr = Array.isArray(results) ? results : [];
       // Kanal bazlı engelleme kuralı varsa, boş uploader'ları kanal adıyla doldur
       if (hasChannelTypeRule()) await enrichUploaders(resultsArr);
-      const filteredData = filterBlockedChannels(resultsArr, country);
+      const filteredData = applyContentFilter(filterBlockedChannels(resultsArr, country));
       searchResult = { data: filteredData, nextPageToken: null };
     } catch (apiError) {
       logError("SEARCH_API_FAIL", null, `API Provider arama başarısız: ${apiError.message}`);
@@ -3087,14 +3174,42 @@ app.get("/search", searchLimiter, async (req, res) => {
           uploader: item.snippet.channelTitle,
           uploaderUrl: "",
           duration: 0,
+          // search.list süre döndürmez; canlı bilgisini snippet'ten taşı (aşağıda süre ile zenginleştirilir)
+          liveBroadcastContent: item.snippet.liveBroadcastContent || "none",
           snippet: {
             title: item.snippet.title,
             channelTitle: item.snippet.channelTitle,
-            channelId: item.snippet.channelId || ""
+            channelId: item.snippet.channelId || "",
+            liveBroadcastContent: item.snippet.liveBroadcastContent || "none"
           }
         }));
 
-        const filteredYt = filterBlockedChannels(ytItems, country);
+        // search.list süre içermez → içerik filtresinin (≥35dk) çalışması için videos.list ile
+        // gerçek süreleri (contentDetails.duration, ISO8601) ve canlı durumunu çek. Fallback nadir
+        // çalıştığı için tek ek istek yeterli; başarısız olursa canlı filtresi yine snippet'ten çalışır.
+        try {
+          const ytIds = ytItems.map(i => i.id).filter(Boolean).join(",");
+          if (ytIds) {
+            const detailResp = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+              params: { part: "contentDetails,snippet", id: ytIds, key: YOUTUBE_API_KEY },
+              timeout: 8000
+            });
+            const byId = {};
+            for (const v of (detailResp.data.items || [])) byId[v.id] = v;
+            for (const it of ytItems) {
+              const v = byId[it.id];
+              if (!v) continue;
+              if (v.contentDetails?.duration) it.duration = v.contentDetails.duration; // "PT3M45S"
+              const lbc = v.snippet?.liveBroadcastContent || it.liveBroadcastContent;
+              it.liveBroadcastContent = lbc;
+              it.snippet.liveBroadcastContent = lbc;
+            }
+          }
+        } catch (detErr) {
+          console.warn(`[SEARCH] videos.list süre zenginleştirme başarısız: ${detErr.message}`);
+        }
+
+        const filteredYt = applyContentFilter(filterBlockedChannels(ytItems, country));
         searchResult = { data: filteredYt, nextPageToken: ytResponse.data.nextPageToken || null };
         console.log(`[SEARCH] YouTube API fallback başarılı: ${filteredYt.length} sonuç`);
       } catch (ytError) {
@@ -4778,6 +4893,13 @@ app.get("/admin", basicAuth, (req, res) => {
         <p>MP3/MP4 dönüştürücü</p>
       </div>
     </a>
+    <a class="card" href="/content-filter">
+      <div class="icon" style="background:#2a1a1a">🎚️</div>
+      <div class="card-info">
+        <h3>İçerik Filtresi</h3>
+        <p>Canlı yayın engeli & süre limiti</p>
+      </div>
+    </a>
     <a class="card" href="/admin/stats">
       <div class="icon" style="background:#2a1e2a">📊</div>
       <div class="card-info">
@@ -4831,6 +4953,42 @@ app.get("/admin/panel/*", basicAuth, (req, res) => {
 // ==========================================
 // ADMIN_PASS ve basicAuth dosyanın başında tanımlı (satır ~15)
 const PANEL_TEMPLATE = path.join(__dirname, "proxy_panel.html");
+
+// ===== İÇERİK FİLTRESİ PANELİ (canlı yayın + süre limiti) =====
+const CONTENT_FILTER_PANEL = path.join(__dirname, "content_filter_panel.html");
+
+app.get("/content-filter", basicAuth, (req, res) => {
+  try {
+    res.sendFile(CONTENT_FILTER_PANEL);
+  } catch (e) {
+    res.status(500).send("İçerik filtresi paneli yüklenemedi: " + e.message);
+  }
+});
+
+// Panelin okuyacağı mevcut değerler (yalnız contentFilter)
+app.get("/content-filter/config", basicAuth, (req, res) => {
+  res.json(getContentFilter());
+});
+
+// Panelden kaydet — sadece contentFilter alanını günceller, config'in geri kalanına dokunmaz
+app.post("/content-filter", express.json(), basicAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const config = { ...getCachedConfig() };
+    const cur = config.contentFilter || {};
+    const m = Number(body.maxDurationMinutes);
+    config.contentFilter = {
+      enabled: typeof body.enabled === "boolean" ? body.enabled : (cur.enabled !== false),
+      blockLive: typeof body.blockLive === "boolean" ? body.blockLive : (cur.blockLive !== false),
+      maxDurationMinutes: Number.isFinite(m) && m > 0 ? Math.round(m) : (Number(cur.maxDurationMinutes) > 0 ? Number(cur.maxDurationMinutes) : 35)
+    };
+    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+    _cachedConfig = null; // anında geçerli olsun
+    res.json({ message: "İçerik filtresi güncellendi", contentFilter: config.contentFilter });
+  } catch (e) {
+    res.status(500).json({ error: "Kaydetme başarısız: " + e.message });
+  }
+});
 
 app.get("/proxy-panel", basicAuth, (req, res) => {
   loadProxyData();

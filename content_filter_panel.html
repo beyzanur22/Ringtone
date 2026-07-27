@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>İçerik Filtresi — Melodia</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f1115; color: #e5e7eb;
+    }
+    .wrap { max-width: 620px; margin: 0 auto; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: #7c7f88; font-size: 13px; margin-bottom: 24px; }
+    .card {
+      background: #171a21; border: 1px solid #262a33; border-radius: 14px;
+      padding: 22px; margin-bottom: 18px;
+    }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #22262f; }
+    .row:last-child { border-bottom: none; }
+    .row .label { font-size: 15px; font-weight: 600; }
+    .row .desc { font-size: 12px; color: #7c7f88; margin-top: 3px; }
+    input[type="number"] {
+      width: 90px; padding: 9px 10px; font-size: 15px; text-align: center;
+      background: #0f1115; border: 1px solid #333844; border-radius: 8px; color: #e5e7eb;
+    }
+    .unit { color: #7c7f88; font-size: 13px; margin-left: 6px; }
+    /* toggle */
+    .switch { position: relative; display: inline-block; width: 50px; height: 28px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #3a3f4b; border-radius: 28px; transition: .2s; }
+    .slider::before { content: ""; position: absolute; height: 22px; width: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+    input:checked + .slider { background: #22c55e; }
+    input:checked + .slider::before { transform: translateX(22px); }
+    button {
+      width: 100%; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer;
+      background: #7c3aed; color: #fff; border: none; border-radius: 10px; margin-top: 4px;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    .toast { text-align: center; font-size: 14px; margin-top: 14px; min-height: 20px; }
+    .toast.ok { color: #22c55e; }
+    .toast.err { color: #ef4444; }
+    .note { font-size: 12px; color: #6b6f78; margin-top: 18px; line-height: 1.6; }
+    a.back { color: #a855f7; text-decoration: none; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/admin">← Panele dön</a>
+    <h1 style="margin-top:10px;">🎚️ İçerik Filtresi</h1>
+    <div class="sub">Arama sonuçlarında canlı yayınları ve çok uzun videoları eler. Değişiklik anında geçerli olur (yeni aramalar için).</div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="label">Filtre aktif</div>
+          <div class="desc">Kapatılırsa hiçbir filtre uygulanmaz.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="enabled"><span class="slider"></span></label>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Canlı yayınları engelle</div>
+          <div class="desc">Canlı / yayında olan içerikler arama sonuçlarında çıkmaz, indirilemez.</div>
+        </div>
+        <label class="switch"><input type="checkbox" id="blockLive"><span class="slider"></span></label>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Maksimum süre</div>
+          <div class="desc">Bu değer ve üstündeki videolar aramada gizlenir. (Örn: 35 → 35 dk ve üstü elenir)</div>
+        </div>
+        <div style="white-space:nowrap;">
+          <input type="number" id="maxDurationMinutes" min="1" max="600" step="1">
+          <span class="unit">dakika</span>
+        </div>
+      </div>
+    </div>
+
+    <button id="saveBtn" onclick="save()">Kaydet</button>
+    <div class="toast" id="toast"></div>
+
+    <div class="note">
+      ⚠️ Not: Bu filtre <b>backend arama</b> (Android 12 ve altı + backend fallback) için geçerlidir.
+      Android 13+ cihazlar aramayı telefonda NewPipe ile yaptığı için bu filtreden etkilenmez —
+      onlar için filtre uygulama koduna ihtiyaç var.
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    async function load() {
+      try {
+        const r = await fetch('/content-filter/config', { headers: { 'Accept': 'application/json' } });
+        const cf = await r.json();
+        $('enabled').checked = cf.enabled !== false;
+        $('blockLive').checked = cf.blockLive !== false;
+        $('maxDurationMinutes').value = cf.maxDurationMinutes || 35;
+      } catch (e) {
+        showToast('Ayarlar yüklenemedi: ' + e.message, false);
+      }
+    }
+
+    async function save() {
+      const btn = $('saveBtn');
+      btn.disabled = true;
+      const payload = {
+        enabled: $('enabled').checked,
+        blockLive: $('blockLive').checked,
+        maxDurationMinutes: parseInt($('maxDurationMinutes').value, 10) || 35
+      };
+      try {
+        const r = await fetch('/content-filter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await r.json();
+        if (r.ok) showToast('✓ Kaydedildi', true);
+        else showToast('Hata: ' + (data.error || r.status), false);
+      } catch (e) {
+        showToast('Kaydetme başarısız: ' + e.message, false);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function showToast(msg, ok) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + (ok ? 'ok' : 'err');
+      setTimeout(() => { t.textContent = ''; t.className = 'toast'; }, 3500);
+    }
+
+    load();
+  </script>
+</body>
+</html>

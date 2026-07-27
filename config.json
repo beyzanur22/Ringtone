@@ -3,6 +3,11 @@
     "enabled": true,
     "mode": "youtube"
   },
+  "contentFilter": {
+    "enabled": true,
+    "maxDurationMinutes": 35,
+    "blockLive": true
+  },
   "countries": {},
   "downloadAd": {
     "enabled": true,
