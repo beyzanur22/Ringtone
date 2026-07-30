@@ -1,0 +1,20 @@
+{
+  "default": {
+    "id": "default",
+    "name": "Musica",
+    "packageName": "com.descargarmusica.abb",
+    "brandPrimary": "#2E6BF6",
+    "policySlug": "privacy-policy",
+    "onesignalAppId": "",
+    "onesignalRestKey": ""
+  },
+  "memomusic": {
+    "id": "memomusic",
+    "name": "Memo Music",
+    "packageName": "com.memoomusic.app",
+    "brandPrimary": "#6D4AFF",
+    "policySlug": "memo-music-privacy-policy",
+    "onesignalAppId": "",
+    "onesignalRestKey": ""
+  }
+}

@@ -1674,13 +1674,13 @@ app.use(async (req, res, next) => {
       (req.path === "/device-action/executed" && req.method === "POST") ||
       (req.path === "/autocomplete" && req.method === "GET") ||
       req.path.startsWith("/top50/test") ||
-      req.path === "/privacy-policy.html" ||
+      req.path === "/privacy-policy.html" || req.path === "/memo-music-privacy-policy.html" ||
       req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
     return next();
@@ -1861,30 +1861,75 @@ function setDrmHeaders(res) {
 const CONFIG_FILE = "config.json";
 const DATA_FILE = "blockedChannels.json";
 
-// Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir
-let _cachedConfig = null;
+/* =========================================================================
+   ÇOK UYGULAMALI (MULTI-APP) İZOLASYON
+   Her uygulama (musica, Memo Music, ...) kendi config/popup/device/blocked
+   dosyalarını kullanır. "default" = musica → dosyalar KÖKTE kalır (taşıma yok).
+   Diğer uygulamalar → data/<appId>/ altında.
+   appId kaynağı: Android "X-App-Id" header'ı VEYA panel "?appId=" query'si.
+   Bilinmeyen/boş appId → "default" (fail-open: sahadaki eski istemciler bozulmaz).
+========================================================================= */
+const APPS_FILE = path.join(__dirname, "apps.json");
+let _cachedApps = null;
+function getApps() {
+  if (_cachedApps) return _cachedApps;
+  try {
+    _cachedApps = fs.existsSync(APPS_FILE) ? JSON.parse(fs.readFileSync(APPS_FILE, "utf-8")) : {};
+  } catch (e) { _cachedApps = {}; }
+  // "default" her zaman bulunsun (dosya bozuk/eksik olsa bile musica çalışır)
+  if (!_cachedApps.default) {
+    _cachedApps.default = { id: "default", name: "Musica", packageName: "com.descargarmusica.abb" };
+  }
+  return _cachedApps;
+}
+function saveApps(data) {
+  fs.writeFileSync(APPS_FILE, JSON.stringify(data, null, 2));
+  _cachedApps = null;
+}
+// İstekten appId çöz. Sadece [a-z0-9_-] — path traversal engellenir.
+function resolveAppId(req) {
+  const raw = (req.headers["x-app-id"] || (req.query && req.query.appId) || "").toString();
+  const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return getApps()[slug] ? slug : "default";
+}
+// appId'ye göre veri dosyası yolu. default → kök, diğerleri → data/<appId>/
+function pathFor(appId, filename) {
+  if (!appId || appId === "default") return path.join(__dirname, filename);
+  return path.join(__dirname, "data", appId, filename);
+}
+// Non-default uygulama için data/<appId>/ klasörünü garanti et
+function ensureAppData(appId) {
+  if (!appId || appId === "default") return;
+  try { fs.mkdirSync(path.join(__dirname, "data", appId), { recursive: true }); } catch (e) {}
+}
+
+// Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir.
+// Config artık uygulama başına cache'lenir: appId -> config nesnesi.
+let _cachedConfigByApp = {};
 let _cachedBlockedChannels = null;
 
-function getCachedConfig() {
-  if (_cachedConfig) return _cachedConfig;
+function getCachedConfig(appId = "default") {
+  if (_cachedConfigByApp[appId]) return _cachedConfigByApp[appId];
+  let cfg;
   try {
-    _cachedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-  } catch (e) { _cachedConfig = {}; }
+    cfg = JSON.parse(fs.readFileSync(pathFor(appId, CONFIG_FILE), "utf-8"));
+  } catch (e) { cfg = {}; }
   // ringtoneAsns: bu ASN'lerden gelen cihazlar ulke/global ayarina bakilmadan
   // dogrudan zil sesi moduna gider. Eski config.json'larda alan yok -> bos dizi.
-  if (!Array.isArray(_cachedConfig.ringtoneAsns)) _cachedConfig.ringtoneAsns = [];
+  if (!Array.isArray(cfg.ringtoneAsns)) cfg.ringtoneAsns = [];
   // contentFilter: arama sonuçlarında canlı yayınları ve çok uzun videoları ele.
   // Eski config.json'larda alan yoksa varsayılanla doldur (panelden değiştirilebilir).
-  if (!_cachedConfig.contentFilter || typeof _cachedConfig.contentFilter !== "object") {
-    _cachedConfig.contentFilter = { enabled: true, maxDurationMinutes: 35, blockLive: true };
+  if (!cfg.contentFilter || typeof cfg.contentFilter !== "object") {
+    cfg.contentFilter = { enabled: true, maxDurationMinutes: 35, blockLive: true };
   } else {
-    const cf = _cachedConfig.contentFilter;
+    const cf = cfg.contentFilter;
     if (typeof cf.enabled !== "boolean") cf.enabled = true;
     if (typeof cf.blockLive !== "boolean") cf.blockLive = true;
     const m = Number(cf.maxDurationMinutes);
     cf.maxDurationMinutes = Number.isFinite(m) && m > 0 ? m : 35;
   }
-  return _cachedConfig;
+  _cachedConfigByApp[appId] = cfg;
+  return cfg;
 }
 
 function getCachedBlockedChannels() {
@@ -1899,7 +1944,7 @@ function getCachedBlockedChannels() {
 
 // Her 60 saniyede cache'i yenile (dosya değişikliklerini yakala)
 setInterval(() => {
-  _cachedConfig = null;
+  _cachedConfigByApp = {};
   _cachedBlockedChannels = null;
 }, 60000);
 
@@ -2264,7 +2309,7 @@ app.post("/admin/api-providers", basicAuth, async (req, res) => {
     const config = getCachedConfig();
     config.apiProviders = { ...getApiProviderConfig(), ...req.body };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    _cachedConfig = null;
+    _cachedConfigByApp = {};
     res.json({ success: true, apiProviders: config.apiProviders });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2375,7 +2420,7 @@ app.post("/admin/smart-cache", basicAuth, async (req, res) => {
     if (!config.apiProviders) config.apiProviders = getApiProviderConfig();
     config.apiProviders.smartCache = { ...config.apiProviders.smartCache, ...req.body };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    _cachedConfig = null;
+    _cachedConfigByApp = {};
     res.json({ success: true, smartCache: config.apiProviders.smartCache });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2461,7 +2506,7 @@ app.post("/admin/auto-ringtone", basicAuth, (req, res) => {
     if (!config.autoRingtone) config.autoRingtone = { enabled: false };
     if (req.body.enabled !== undefined) config.autoRingtone.enabled = !!req.body.enabled;
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    _cachedConfig = null;
+    _cachedConfigByApp = {};
     console.log(`[ADMIN] Auto-ringtone ${config.autoRingtone.enabled ? "açıldı" : "kapatıldı"}`);
     res.json({ success: true, autoRingtone: config.autoRingtone });
   } catch (err) {
@@ -2905,9 +2950,63 @@ app.get("/admin/media-stats", basicAuth, (req, res) => {
   });
 });
 
+/* =========================================================================
+   ÇOK UYGULAMALI YÖNETİM — panel uygulama seçicisi buradan beslenir
+========================================================================= */
+// Kayıtlı uygulamaları listele (panel dropdown'u)
+app.get("/admin/apps", basicAuth, (req, res) => {
+  res.json(getApps());
+});
+
+// Uygulama ekle/güncelle + veri klasörünü tohumla
+app.post("/admin/apps", basicAuth, express.json(), async (req, res) => {
+  try {
+    const { id, name, packageName, brandPrimary, policySlug, onesignalAppId, onesignalRestKey } = req.body || {};
+    const slug = String(id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    if (!slug) return res.status(400).json({ error: "geçerli id zorunlu (a-z0-9_-)" });
+    if (!name) return res.status(400).json({ error: "name zorunlu" });
+
+    const apps = { ...getApps() };
+    const existing = apps[slug] || {};
+    apps[slug] = {
+      id: slug,
+      name,
+      packageName: packageName || existing.packageName || "",
+      brandPrimary: brandPrimary || existing.brandPrimary || "#2E6BF6",
+      policySlug: policySlug || existing.policySlug || "",
+      onesignalAppId: onesignalAppId !== undefined ? onesignalAppId : (existing.onesignalAppId || ""),
+      onesignalRestKey: onesignalRestKey !== undefined ? onesignalRestKey : (existing.onesignalRestKey || "")
+    };
+    saveApps(apps);
+
+    // Yeni uygulama için veri klasörünü tohumla — default config'i kopyala, reklamları KAPAT
+    if (slug !== "default") {
+      ensureAppData(slug);
+      const cfgPath = pathFor(slug, CONFIG_FILE);
+      if (!fs.existsSync(cfgPath)) {
+        let seed = {};
+        try { seed = JSON.parse(fs.readFileSync(pathFor("default", CONFIG_FILE), "utf-8")); } catch (e) {}
+        for (const k of ["downloadAd", "bannerAd", "bottomBannerAd"]) {
+          if (seed[k] && typeof seed[k] === "object") seed[k].enabled = false;
+        }
+        seed.global = { enabled: true, mode: "youtube" };
+        fs.writeFileSync(cfgPath, JSON.stringify(seed, null, 2));
+      }
+      for (const f of ["announcements.json", "device_actions.json", "blockedChannels.json"]) {
+        const p = pathFor(slug, f);
+        if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
+      }
+    }
+    res.json({ ok: true, app: apps[slug] });
+  } catch (e) {
+    res.status(500).json({ error: "Apps write failed: " + e.message });
+  }
+});
+
 app.get("/config", (req, res) => {
   recordLoginIp(req, "/config");
-  const config = { ...getCachedConfig() };
+  const appId = resolveAppId(req);
+  const config = { ...getCachedConfig(appId) };
   config.watch_base = "https://www.youtube.com/watch?v=";
   if (!config.autocompleteSource) config.autocompleteSource = "google";
   res.json(config);
@@ -2915,6 +3014,7 @@ app.get("/config", (req, res) => {
 
 app.post("/config", async (req, res) => {
   try {
+    const appId = resolveAppId(req);
     const body = { ...req.body };
     // ringtoneAsns normalize: "AS15169" / "15169" / 15169 -> 15169, tekrarlari at
     if (body.ringtoneAsns !== undefined) {
@@ -2924,8 +3024,9 @@ app.post("/config", async (req, res) => {
           .filter(n => Number.isInteger(n) && n > 0)
       )];
     }
-    await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(body, null, 2));
-    _cachedConfig = null; // Cache'i hemen invalidate et
+    ensureAppData(appId);
+    await fs.promises.writeFile(pathFor(appId, CONFIG_FILE), JSON.stringify(body, null, 2));
+    delete _cachedConfigByApp[appId]; // Sadece bu uygulamanın cache'ini invalidate et
     res.json({ message: "Config updated successfully" });
   } catch (e) {
     res.status(500).json({ error: "Config write failed: " + e.message });
@@ -2934,17 +3035,20 @@ app.post("/config", async (req, res) => {
 
 app.get("/blocked-channels", (req, res) => {
   try {
-    if (!fs.existsSync(BLOCKED_FILE)) return res.json([]);
-    const data = fs.readFileSync(BLOCKED_FILE, "utf-8");
+    const blockedFile = pathFor(resolveAppId(req), "blockedChannels.json");
+    if (!fs.existsSync(blockedFile)) return res.json([]);
+    const data = fs.readFileSync(blockedFile, "utf-8");
     res.type("json").send(data || "[]");
   } catch (e) { res.json([]); }
 });
 
 app.post("/blocked-channels", async (req, res) => {
   try {
+    const appId = resolveAppId(req);
+    const blockedFile = pathFor(appId, "blockedChannels.json");
     let blocked = [];
-    if (fs.existsSync(BLOCKED_FILE)) {
-      blocked = JSON.parse(await fs.promises.readFile(BLOCKED_FILE, "utf-8") || "[]");
+    if (fs.existsSync(blockedFile)) {
+      blocked = JSON.parse(await fs.promises.readFile(blockedFile, "utf-8") || "[]");
     }
     const { id, channels, countries, type } = req.body;
 
@@ -2956,19 +3060,22 @@ app.post("/blocked-channels", async (req, res) => {
       blocked.push({ id: newId, channels: channels || [], countries: countries || "all", type: type || "channel" });
     }
 
-    await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
-    _cachedBlockedChannels = null;
+    ensureAppData(appId);
+    await fs.promises.writeFile(blockedFile, JSON.stringify(blocked, null, 2));
+    if (appId === "default") _cachedBlockedChannels = null;
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
 
 app.delete("/blocked-channels/:id", async (req, res) => {
   try {
-    if (!fs.existsSync(BLOCKED_FILE)) return res.json({ success: true });
-    let blocked = JSON.parse(await fs.promises.readFile(BLOCKED_FILE, "utf-8") || "[]");
+    const appId = resolveAppId(req);
+    const blockedFile = pathFor(appId, "blockedChannels.json");
+    if (!fs.existsSync(blockedFile)) return res.json({ success: true });
+    let blocked = JSON.parse(await fs.promises.readFile(blockedFile, "utf-8") || "[]");
     blocked = blocked.filter(ch => ch.id !== req.params.id);
-    await fs.promises.writeFile(BLOCKED_FILE, JSON.stringify(blocked, null, 2));
-    _cachedBlockedChannels = null;
+    await fs.promises.writeFile(blockedFile, JSON.stringify(blocked, null, 2));
+    if (appId === "default") _cachedBlockedChannels = null;
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
@@ -2999,11 +3106,15 @@ app.post("/send-notification", basicAuth, async (req, res) => {
     return res.status(400).json({ error: "Başlık ve mesaj gereklidir" });
   }
 
-  const appId = bodyAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
-  const restKey = bodyRestKey || process.env.ONESIGNAL_REST_KEY || "";
+  // Uygulama başına OneSignal: önce body (panel açıkça gönderirse), sonra kayıt
+  // defterindeki seçili uygulamanın kimliği, en son env varsayılanı (musica).
+  const _targetAppId = resolveAppId(req);
+  const _appEntry = getApps()[_targetAppId] || {};
+  const appId = bodyAppId || _appEntry.onesignalAppId || process.env.ONESIGNAL_APP_ID || "9a255882-6fc4-43e6-af33-24f5f69642cf";
+  const restKey = bodyRestKey || _appEntry.onesignalRestKey || process.env.ONESIGNAL_REST_KEY || "";
 
   if (!restKey) {
-    return res.status(400).json({ success: false, details: "REST API Key boş. Panelden veya .env'den tanımlayın." });
+    return res.status(400).json({ success: false, details: "REST API Key boş. Panelden veya apps.json'daki uygulama kaydından tanımlayın." });
   }
 
   try {
@@ -5045,7 +5156,7 @@ app.post("/content-filter", express.json(), basicAuth, async (req, res) => {
       maxDurationMinutes: Number.isFinite(m) && m > 0 ? Math.round(m) : (Number(cur.maxDurationMinutes) > 0 ? Number(cur.maxDurationMinutes) : 35)
     };
     await fs.promises.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
-    _cachedConfig = null; // anında geçerli olsun
+    _cachedConfigByApp = {}; // anında geçerli olsun
     res.json({ message: "İçerik filtresi güncellendi", contentFilter: config.contentFilter });
   } catch (e) {
     res.status(500).json({ error: "Kaydetme başarısız: " + e.message });
@@ -5215,6 +5326,9 @@ app.get("/proxy-panel/test", basicAuth, async (req, res) => {
 // basicAuth YOK: gizlilik politikasi ve cocuk guvenligi sayfalari herkese acik olmali.
 app.get("/privacy-policy.html", (req, res) => {
   res.sendFile(path.join(__dirname, "privacy-policy.html"));
+});
+app.get("/memo-music-privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "memo-music-privacy-policy.html"));
 });
 app.get("/child-safety-standards.html", (req, res) => {
   res.sendFile(path.join(__dirname, "child-safety-standards.html"));
@@ -5458,22 +5572,24 @@ app.get("/proxy-panel/health-check", basicAuth, async (req, res) => {
 ========================= */
 const ANNOUNCEMENTS_FILE = path.join(__dirname, "announcements.json");
 
-function loadAnnouncements() {
+function loadAnnouncements(appId = "default") {
+  const file = pathFor(appId, "announcements.json");
   try {
-    if (!fs.existsSync(ANNOUNCEMENTS_FILE)) fs.writeFileSync(ANNOUNCEMENTS_FILE, "[]");
-    return JSON.parse(fs.readFileSync(ANNOUNCEMENTS_FILE, "utf-8"));
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch (e) {
     return [];
   }
 }
 
-function saveAnnouncements(data) {
-  fs.writeFileSync(ANNOUNCEMENTS_FILE, JSON.stringify(data, null, 2));
+function saveAnnouncements(data, appId = "default") {
+  ensureAppData(appId);
+  fs.writeFileSync(pathFor(appId, "announcements.json"), JSON.stringify(data, null, 2));
 }
 
 // Tüm duyuruları listele (admin)
 app.get("/announcements", (req, res) => {
-  res.json(loadAnnouncements());
+  res.json(loadAnnouncements(resolveAppId(req)));
 });
 
 // Aktif duyuruları getir (Android uygulaması için, ülke filtreli)
@@ -5481,7 +5597,7 @@ app.get("/popup/active", (req, res) => {
   // Ülke tespiti: Cloudflare header > Android X-Country header > query param (kodun geri kalanıyla tutarlı)
   const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || req.query.country || "").toUpperCase();
   const now = new Date();
-  const all = loadAnnouncements();
+  const all = loadAnnouncements(resolveAppId(req));
   const active = all.filter(ann => {
     const start = ann.startTime ? new Date(ann.startTime) : null;
     const end = ann.endTime ? new Date(ann.endTime) : null;
@@ -5506,7 +5622,8 @@ app.post("/popup/create", express.json(), (req, res) => {
   const popupType = type === "review" ? "review" : "vote";
   if (!Array.isArray(buttons) || buttons.length === 0) return res.status(400).json({ error: "en az bir buton gerekli" });
 
-  const all = loadAnnouncements();
+  const appId = resolveAppId(req);
+  const all = loadAnnouncements(appId);
   const newAnn = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     type: popupType,
@@ -5521,16 +5638,17 @@ app.post("/popup/create", express.json(), (req, res) => {
     votes: {}
   };
   all.unshift(newAnn);
-  saveAnnouncements(all);
+  saveAnnouncements(all, appId);
   res.json({ id: newAnn.id, ok: true });
 });
 
 // Duyuruyu sil (admin)
 app.delete("/popup/:id", (req, res) => {
-  const all = loadAnnouncements();
+  const appId = resolveAppId(req);
+  const all = loadAnnouncements(appId);
   const filtered = all.filter(a => a.id !== req.params.id);
   if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
-  saveAnnouncements(filtered);
+  saveAnnouncements(filtered, appId);
   res.json({ ok: true });
 });
 
@@ -5539,13 +5657,14 @@ app.post("/popup/vote", express.json(), (req, res) => {
   const { announcementId, buttonValue } = req.body;
   if (!announcementId || !buttonValue) return res.status(400).json({ error: "announcementId ve buttonValue zorunlu" });
 
-  const all = loadAnnouncements();
+  const appId = resolveAppId(req);
+  const all = loadAnnouncements(appId);
   const ann = all.find(a => a.id === announcementId);
   if (!ann) return res.status(404).json({ error: "Duyuru bulunamadı" });
 
   if (!ann.votes) ann.votes = {};
   ann.votes[buttonValue] = (ann.votes[buttonValue] || 0) + 1;
-  saveAnnouncements(all);
+  saveAnnouncements(all, appId);
   res.json({ ok: true, votes: ann.votes });
 });
 
@@ -5555,27 +5674,29 @@ app.post("/popup/vote", express.json(), (req, res) => {
 ========================= */
 const DEVICE_ACTIONS_FILE = path.join(__dirname, "device_actions.json");
 
-function loadDeviceActions() {
+function loadDeviceActions(appId = "default") {
+  const file = pathFor(appId, "device_actions.json");
   try {
-    if (!fs.existsSync(DEVICE_ACTIONS_FILE)) fs.writeFileSync(DEVICE_ACTIONS_FILE, "[]");
-    return JSON.parse(fs.readFileSync(DEVICE_ACTIONS_FILE, "utf-8"));
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch (e) {
     return [];
   }
 }
 
-function saveDeviceActions(data) {
-  fs.writeFileSync(DEVICE_ACTIONS_FILE, JSON.stringify(data, null, 2));
+function saveDeviceActions(data, appId = "default") {
+  ensureAppData(appId);
+  fs.writeFileSync(pathFor(appId, "device_actions.json"), JSON.stringify(data, null, 2));
 }
 
 // Tüm device action'ları listele (admin)
 app.get("/device-actions", (req, res) => {
-  res.json(loadDeviceActions());
+  res.json(loadDeviceActions(resolveAppId(req)));
 });
 
 // Aktif device action'ı getir (Android uygulaması polling)
 app.get("/device-action/active", (req, res) => {
-  const all = loadDeviceActions();
+  const all = loadDeviceActions(resolveAppId(req));
   const now = new Date();
 
   // Cihaz bilgisi: ülke (Cloudflare > Android header) + uygulama sürümü + app modu
@@ -5632,7 +5753,8 @@ app.post("/device-action/create", express.json(), (req, res) => {
   if (!actionType || !mode) return res.status(400).json({ error: "actionType ve mode zorunlu" });
   if (actionType !== "review_sheet" && !value) return res.status(400).json({ error: "value zorunlu" });
 
-  const all = loadDeviceActions();
+  const targetAppId = resolveAppId(req);
+  const all = loadDeviceActions(targetAppId);
   // Önceki aktif action'ı deaktif et — SADECE aynı app modundakileri (modlar izole).
   all.forEach(a => { if ((a.appMode || "youtube") === appMode) a.active = false; });
 
@@ -5657,26 +5779,28 @@ app.post("/device-action/create", express.json(), (req, res) => {
     executedCount: 0
   };
   all.unshift(newAction);
-  saveDeviceActions(all);
+  saveDeviceActions(all, targetAppId);
   res.json({ id: newAction.id, ok: true });
 });
 
 // Device action'ı sil (admin)
 app.delete("/device-action/:id", (req, res) => {
-  const all = loadDeviceActions();
+  const appId = resolveAppId(req);
+  const all = loadDeviceActions(appId);
   const filtered = all.filter(a => a.id !== req.params.id);
   if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
-  saveDeviceActions(filtered);
+  saveDeviceActions(filtered, appId);
   res.json({ ok: true });
 });
 
 // Device action deaktif et (admin)
 app.post("/device-action/:id/deactivate", (req, res) => {
-  const all = loadDeviceActions();
+  const appId = resolveAppId(req);
+  const all = loadDeviceActions(appId);
   const action = all.find(a => a.id === req.params.id);
   if (!action) return res.status(404).json({ error: "Bulunamadı" });
   action.active = false;
-  saveDeviceActions(all);
+  saveDeviceActions(all, appId);
   res.json({ ok: true });
 });
 
@@ -5684,10 +5808,11 @@ app.post("/device-action/:id/deactivate", (req, res) => {
 app.post("/device-action/executed", express.json(), (req, res) => {
   const { actionId } = req.body;
   if (!actionId) return res.status(400).json({ error: "actionId zorunlu" });
-  const all = loadDeviceActions();
+  const appId = resolveAppId(req);
+  const all = loadDeviceActions(appId);
   const action = all.find(a => a.id === actionId);
   if (!action) return res.status(404).json({ error: "Bulunamadı" });
   action.executedCount = (action.executedCount || 0) + 1;
-  saveDeviceActions(all);
+  saveDeviceActions(all, appId);
   res.json({ ok: true, executedCount: action.executedCount });
 });
