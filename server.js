@@ -17,6 +17,14 @@ if (!ADMIN_PASS) {
   process.exit(1);
 }
 const basicAuth = (req, res, next) => {
+  // Yeni kişisel admin oturumunda yalnızca süper yönetici, mevcut teknik
+  // panellere erişebilir. Böylece eski basic-auth davranışı korunurken Beyza
+  // kendi giriş ekranından da tüm araçlara ulaşabilir.
+  const portalUser = getAdminSession(req);
+  if (portalUser && portalUser.isSuperAdmin) {
+    req.adminUser = portalUser;
+    return next();
+  }
   // X-App-Key ile React admin panel erişimi (master VEYA uygulamaya özel key).
   // resolveAppFromKey aşağıda function-declaration olarak tanımlı → hoist edilir.
   const _xkey = req.headers["x-app-key"];
@@ -1667,6 +1675,7 @@ app.use(async (req, res, next) => {
   recordPresence(req);
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
+      req.path === "/admin/login" || req.path === "/admin/logout" ||
       (req.path === "/blocked-channels" && req.method === "GET") ||
       (req.path === "/popup/active" && req.method === "GET") ||
       (req.path === "/popup/vote" && req.method === "POST") ||
@@ -1953,6 +1962,92 @@ function readCookie(req, name) {
   const raw = req.headers.cookie || "";
   const hit = raw.split(/;\s*/).find(c => c.startsWith(name + "="));
   return hit ? decodeURIComponent(hit.slice(name.length + 1)) : null;
+}
+
+/* =========================================================================
+   KİŞİSEL ADMIN GİRİŞİ
+   Parolalar yalnızca .env içindeki scrypt hash'leri olarak tutulur. Roller
+   burada açıkça tanımlıdır; istemci tarafından gönderilen appId asla yetki
+   kaynağı değildir.
+========================================================================= */
+const ADMIN_SESSION_COOKIE = "melodia_admin_session";
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const ADMIN_USERS = {
+  beyza: { label: "Beyza", isSuperAdmin: true, apps: ["default", "memomusic", "ogzmusic"], passwordHash: process.env.ADMIN_BEYZA_PASSWORD_HASH || "" },
+  oguz: { label: "Oğuz", isSuperAdmin: false, apps: ["ogzmusic"], passwordHash: process.env.ADMIN_OGUZ_PASSWORD_HASH || "" },
+  olcay: { label: "Olcay", isSuperAdmin: false, apps: ["memomusic", "ogzmusic"], passwordHash: process.env.ADMIN_OLCAY_PASSWORD_HASH || "" }
+};
+
+function normalizeAdminUsername(value) {
+  const normalized = String(value || "").trim().toLocaleLowerCase("tr-TR");
+  return normalized === "oğuz" ? "oguz" : normalized;
+}
+
+function verifyPasswordHash(password, stored) {
+  const parts = String(stored || "").split("$");
+  if (parts.length !== 3 || parts[0] !== "scrypt" || !password) return false;
+  try {
+    const expected = Buffer.from(parts[2], "hex");
+    const actual = crypto.scryptSync(String(password), parts[1], expected.length);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch (e) {
+    return false;
+  }
+}
+
+function signAdminSession(username, expiresAt) {
+  const payload = `${username}.${expiresAt}`;
+  const signature = crypto.createHmac("sha256", APP_SECRET).update(`admin-session:${payload}`).digest("hex");
+  return `${payload}.${signature}`;
+}
+
+function getAdminSession(req) {
+  const raw = readCookie(req, ADMIN_SESSION_COOKIE);
+  if (!raw) return null;
+  const parts = raw.split(".");
+  if (parts.length !== 3) return null;
+  const [username, expiresAt, signature] = parts;
+  const user = ADMIN_USERS[username];
+  if (!user || !/^\d+$/.test(expiresAt) || Date.now() > Number(expiresAt)) return null;
+  const expected = crypto.createHmac("sha256", APP_SECRET).update(`admin-session:${username}.${expiresAt}`).digest("hex");
+  try {
+    if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  } catch (e) { return null; }
+  return { username, label: user.label, isSuperAdmin: user.isSuperAdmin, apps: user.apps };
+}
+
+function issueAdminSession(res, req, username) {
+  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
+  const flags = [`${ADMIN_SESSION_COOKIE}=${encodeURIComponent(signAdminSession(username, expiresAt))}`, "Path=/admin", "HttpOnly", "SameSite=Lax", `Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}`];
+  if (secure) flags.push("Secure");
+  res.setHeader("Set-Cookie", flags.join("; "));
+}
+
+function clearAdminSession(res) {
+  res.setHeader("Set-Cookie", `${ADMIN_SESSION_COOKIE}=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function portalAuth(req, res, next) {
+  const user = getAdminSession(req);
+  if (!user) return res.redirect("/admin/login");
+  req.adminUser = user;
+  return next();
+}
+
+function userCanAccessApp(user, appId) {
+  return !!user && (user.isSuperAdmin || user.apps.includes(appId));
+}
+
+function portalAppPanelAuth(req, res, next) {
+  const appId = String(req.params.appId || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const user = getAdminSession(req);
+  if (user && getApps()[appId] && userCanAccessApp(user, appId)) {
+    req.adminUser = user;
+    req._panelAppId = appId;
+    return next();
+  }
+  return res.redirect("/admin/login");
 }
 // Sadece MASTER (süper admin) mı? Per-app key ile gelen isteklerde false.
 // İzole panel yöneticileri başka uygulamaların giriş bilgilerini GÖRMEMELİ.
@@ -5090,12 +5185,41 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
+function renderAdminLogin(res, invalid = false) {
+  const error = invalid ? '<p class="error">Kullanıcı adı veya şifre hatalı.</p>' : "";
+  res.setHeader("Cache-Control", "no-store");
+  return res.status(invalid ? 401 : 200).send(`<!DOCTYPE html>
+<html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Melodia Admin Giriş</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f0f11;color:#fff;font-family:Segoe UI,Arial,sans-serif;padding:24px}.login{width:100%;max-width:390px;background:#1a1a1f;border:1px solid #2a2a35;border-radius:18px;padding:32px;box-shadow:0 16px 50px rgba(0,0,0,.3)}h1{font-size:26px;margin:0 0 8px;background:linear-gradient(135deg,#a855f7,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent}.sub{color:#94a3b8;font-size:14px;margin:0 0 26px}label{display:block;color:#cbd5e1;font-size:13px;margin:16px 0 6px}input{width:100%;padding:12px;border-radius:9px;border:1px solid #3a3a45;background:#101014;color:#fff;font-size:15px}input:focus{outline:2px solid #7c3aed;border-color:transparent}button{width:100%;margin-top:24px;padding:12px;border:0;border-radius:9px;background:#7c3aed;color:#fff;font-size:15px;font-weight:700;cursor:pointer}button:hover{background:#6d28d9}.error{background:#451a1a;color:#fecaca;border:1px solid #7f1d1d;border-radius:8px;padding:10px;font-size:13px;margin:0 0 16px}
+</style></head><body><main class="login"><h1>🎵 Melodia</h1><p class="sub">Yönetim paneline giriş yapın</p>${error}<form method="post" action="/admin/login" autocomplete="on"><label for="username">Kullanıcı adı</label><input id="username" name="username" required autocomplete="username" autofocus><label for="password">Şifre</label><input id="password" name="password" type="password" required autocomplete="current-password"><button type="submit">Giriş Yap</button></form></main></body></html>`);
+}
+
+app.get("/admin/login", (req, res) => {
+  if (getAdminSession(req)) return res.redirect("/admin");
+  return renderAdminLogin(res);
+});
+
+app.post("/admin/login", express.urlencoded({ extended: false }), (req, res) => {
+  const username = normalizeAdminUsername(req.body && req.body.username);
+  const user = ADMIN_USERS[username];
+  if (!user || !verifyPasswordHash(req.body && req.body.password, user.passwordHash)) return renderAdminLogin(res, true);
+  issueAdminSession(res, req, username);
+  return res.redirect("/admin");
+});
+
+app.post("/admin/logout", portalAuth, (req, res) => {
+  clearAdminSession(res);
+  return res.redirect("/admin/login");
+});
+
 // ADMIN ANASAYFA — tüm panellere tek noktadan erişim
-app.get("/admin", basicAuth, (req, res) => {
+app.get("/admin", portalAuth, (req, res) => {
+  const currentUser = req.adminUser;
   // Kayıtlı her uygulama (default hariç) için izole panel kartı — otomatik.
   const _esc = (s) => String(s == null ? "" : s).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
   const appCards = Object.values(getApps())
-    .filter(a => a && a.id && a.id !== "default")
+    .filter(a => a && a.id && a.id !== "default" && userCanAccessApp(currentUser, a.id))
     .map(a => `
     <a class="card" href="/admin/${_esc(a.id)}/panel" style="border-color:${_esc(a.brandPrimary || "#22c55e")}">
       <div class="icon" style="background:#15271d">📱</div>
@@ -5192,9 +5316,10 @@ app.get("/admin", basicAuth, (req, res) => {
 </head>
 <body>
   <div class="logo">🎵 Melodia</div>
-  <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+  <div class="subtitle">${_esc(currentUser.label)} · Yönetim Paneli</div>
 
   <div class="grid">
+    ${currentUser.isSuperAdmin ? `
     <a class="card" href="/cache-panel">
       <div class="icon" style="background:#1e293b">💾</div>
       <div class="card-info">
@@ -5250,9 +5375,10 @@ app.get("/admin", basicAuth, (req, res) => {
         <h3>React Panel</h3>
         <p>Config, Popup & Kanal Yönetimi (Tümü)</p>
       </div>
-    </a>${appCards}
+    </a>` : ""}${appCards}
   </div>
 
+  <form method="post" action="/admin/logout" style="margin-top:32px"><button type="submit" style="background:#24242c;border:1px solid #3a3a45;color:#cbd5e1;border-radius:8px;padding:9px 14px;cursor:pointer">Çıkış Yap</button></form>
   <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
 
   <script>
@@ -5289,6 +5415,8 @@ function sendPanelIndex(res, appId, appKey) {
 // Statik varlıklar (JS/CSS/chunk): master basicAuth VEYA master key VEYA geçerli izole-panel cookie'si.
 // Cookie, /admin/<appId>/panel girişinde set edilir → tarayıcı /admin/panel/static isteklerine de yollar.
 function panelAssetAuth(req, res, next) {
+  const portalUser = getAdminSession(req);
+  if (portalUser && portalUser.isSuperAdmin) return next();
   const authHeader = req.headers.authorization;
   if (authHeader) {
     try {
@@ -5302,20 +5430,18 @@ function panelAssetAuth(req, res, next) {
   return res.status(401).send("Authentication required");
 }
 
-// İzole panel girişi: kullanıcı=<appId>, şifre=perAppPass(appId) (master APP_SECRET'ten türetilir)
+// İzole panel girişi: kişisel admin oturumu uygulama yetkisini mutlaka taşımalıdır.
+// Eski türetilmiş uygulama parolaları ile doğrudan giriş kapatıldı; böylece
+// uygulama erişimi yalnızca tanımlı kullanıcı rollerinden gelir.
 function perAppPanelAuth(req, res, next) {
   const appId = String(req.params.appId || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
-  if (!getApps()[appId] || appId === "default") return res.status(404).send("Bilinmeyen uygulama paneli");
-  const realm = appId + " panel";
-  const authHeader = req.headers.authorization;
-  if (authHeader) {
-    try {
-      const [u, p] = Buffer.from(authHeader.split(" ")[1], "base64").toString().split(":");
-      if (u === appId && p === perAppPass(appId)) { req._panelAppId = appId; return next(); }
-    } catch (e) {}
+  const user = getAdminSession(req);
+  if (user && getApps()[appId] && userCanAccessApp(user, appId)) {
+    req.adminUser = user;
+    req._panelAppId = appId;
+    return next();
   }
-  res.setHeader("WWW-Authenticate", `Basic realm="${realm}"`);
-  return res.status(401).send("Giriş gerekli");
+  return res.redirect("/admin/login");
 }
 
 // --- Statik varlıklar (önce kaydedilir; /admin/panel/* get'ten önce eşleşir) ---
