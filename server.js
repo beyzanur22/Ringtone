@@ -4248,6 +4248,15 @@ const presenceMinKey = (ms) => "presence:min:" + new Date(ms).toISOString().slic
 const EXTRACTORS = ["newpipe", "backend", "unknown"];
 const PRESENCE_EXTRACTOR_ZKEY = (ex) => `presence:z:${ex}`;
 
+/* appId-kapsamlı presence anahtarları — izole panelde canlı-kullanıcı sayımı
+   sadece o uygulamayı göstersin diye. appId boş/"default" → GLOBAL (süper panel,
+   eski davranış aynen korunur). Non-default trafik hem global hem per-app havuza yazılır. */
+const presenceZKeyApp = (appId) => appId ? `presence:z:app:${appId}` : PRESENCE_ZKEY;
+const presenceExtractorZKeyApp = (ex, appId) => appId ? `presence:z:app:${appId}:${ex}` : PRESENCE_EXTRACTOR_ZKEY(ex);
+const presenceMinKeyApp = (ms, appId) => appId
+  ? "presence:min:app:" + appId + ":" + new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "")
+  : presenceMinKey(ms);
+
 function normalizeExtractor(req) {
   const raw = String(req.headers["x-extractor"] || "").toLowerCase().trim();
   if (raw === "newpipe" || raw === "np") return "newpipe";
@@ -4272,7 +4281,7 @@ function presenceUid(req) {
 // Sayılmayacak istekler: admin paneli, statik dosyalar, sağlık kontrolü, load test
 function isPresenceCountable(req) {
   const p = req.path;
-  if (req.headers["x-app-key"] === APP_SECRET) return false;   // admin panel frontend
+  if (req.headers["x-app-key"]) return false;   // admin panel (master VEYA per-app key) — son kullanıcı değil
   if (p === "/health" || p === "/favicon.ico" || p === "/loadtest") return false;
   if (p.startsWith("/admin") || p.startsWith("/proxy-panel") || p.startsWith("/cache-panel")) return false;
   if (p === "/converter" || p === "/playlist-cache") return false;
@@ -4324,6 +4333,20 @@ function recordPresence(req) {
     pipe.zadd(PRESENCE_ZKEY, nowMs, uid);
     pipe.pfadd(minKey, uid);      // dakikalık benzersiz sayım (grafik için)
     pipe.expire(minKey, 7200);
+
+    // İZOLE PANEL: non-default uygulama trafiğini ayrıca per-app havuza yaz.
+    // appId, uygulamanın gönderdiği X-App-Id header'ından gelir (yoksa "default").
+    const appId = resolveAppId(req);
+    if (appId && appId !== "default") {
+      pipe.hset(key, "appId", appId);
+      pipe.zadd(presenceZKeyApp(appId), nowMs, uid);
+      pipe.zadd(presenceExtractorZKeyApp(extractor, appId), nowMs, uid);
+      EXTRACTORS.filter(ex => ex !== extractor)
+        .forEach(ex => pipe.zrem(presenceExtractorZKeyApp(ex, appId), uid));
+      const minKeyApp = presenceMinKeyApp(nowMs, appId);
+      pipe.pfadd(minKeyApp, uid);
+      pipe.expire(minKeyApp, 7200);
+    }
     pipe.exec().catch(() => {});
   } catch (e) {
     // presence asla isteği bozmamalı — sessizce yut
@@ -4341,6 +4364,11 @@ if (isPrimaryWorker) {
       pipe.zremrangebyscore(PRESENCE_ZKEY, 0, cutoff);
       // Çıkarıcı kümeleri de aynı pencereyle budanır
       EXTRACTORS.forEach(ex => pipe.zremrangebyscore(PRESENCE_EXTRACTOR_ZKEY(ex), 0, cutoff));
+      // Per-app (izole panel) kümeleri de budanır
+      Object.keys(getApps()).filter(id => id !== "default").forEach(id => {
+        pipe.zremrangebyscore(presenceZKeyApp(id), 0, cutoff);
+        EXTRACTORS.forEach(ex => pipe.zremrangebyscore(presenceExtractorZKeyApp(ex, id), 0, cutoff));
+      });
       await pipe.exec();
     } catch (e) {
       console.error("[PRESENCE] Temizlik hatası:", e.message);
@@ -4354,18 +4382,25 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     const windowMin = Math.min(Math.max(parseInt(req.query.window) || 5, 1), 60);
     const winFrom = nowMs - windowMin * 60 * 1000;
 
+    // İZOLE PANEL kapsamı: per-app key ile gelindiyse SADECE o uygulama;
+    // master key (süper panel) ile gelindiyse null → GLOBAL (tüm uygulamalar).
+    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const ZKEY = presenceZKeyApp(boundApp);
+    const EXKEY = (ex) => presenceExtractorZKeyApp(ex, boundApp);
+    const MINKEY = (ms) => presenceMinKeyApp(ms, boundApp);
+
     const [c5, c15, c60] = await Promise.all([
-      redis.zcount(PRESENCE_ZKEY, nowMs - 5 * 60 * 1000, "+inf"),
-      redis.zcount(PRESENCE_ZKEY, nowMs - 15 * 60 * 1000, "+inf"),
-      redis.zcount(PRESENCE_ZKEY, nowMs - 60 * 60 * 1000, "+inf"),
+      redis.zcount(ZKEY, nowMs - 5 * 60 * 1000, "+inf"),
+      redis.zcount(ZKEY, nowMs - 15 * 60 * 1000, "+inf"),
+      redis.zcount(ZKEY, nowMs - 60 * 60 * 1000, "+inf"),
     ]);
 
     // Çıkarıcı bazlı sayaçlar (NewPipe / Backend / Bilinmiyor) — 5 dk, 15 dk, 1 sa
     const exPipe = redis.pipeline();
     EXTRACTORS.forEach(ex => {
-      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 5 * 60 * 1000, "+inf");
-      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 15 * 60 * 1000, "+inf");
-      exPipe.zcount(PRESENCE_EXTRACTOR_ZKEY(ex), nowMs - 60 * 60 * 1000, "+inf");
+      exPipe.zcount(EXKEY(ex), nowMs - 5 * 60 * 1000, "+inf");
+      exPipe.zcount(EXKEY(ex), nowMs - 15 * 60 * 1000, "+inf");
+      exPipe.zcount(EXKEY(ex), nowMs - 60 * 60 * 1000, "+inf");
     });
     const exRes = await exPipe.exec();
     const byExtractor = {};
@@ -4379,7 +4414,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     });
 
     // Pencere içindeki cihazlar (en yeni önce)
-    const uids = await redis.zrevrangebyscore(PRESENCE_ZKEY, "+inf", winFrom);
+    const uids = await redis.zrevrangebyscore(ZKEY, "+inf", winFrom);
     let users = [];
     const byCountryMap = {};
     const windowByExtractor = { newpipe: 0, backend: 0, unknown: 0 };
@@ -4420,7 +4455,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     for (let i = 59; i >= 0; i--) {
       const ms = nowMs - i * 60 * 1000;
       minutes.push(new Date(ms).toISOString().slice(11, 16));
-      tlPipe.pfcount(presenceMinKey(ms));
+      tlPipe.pfcount(MINKEY(ms));
     }
     const tlRes = await tlPipe.exec();
     const timeline = tlRes.map(([err, v], i) => ({ t: minutes[i], count: err ? 0 : (Number(v) || 0) }));
