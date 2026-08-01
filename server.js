@@ -1682,7 +1682,7 @@ app.use(async (req, res, next) => {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps", "/admin/app-credentials"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   const _adminKey = req.headers["x-app-key"];
   if (isAdminPath && _adminKey && (_adminKey === APP_SECRET || resolveAppFromKey(_adminKey))) {
@@ -1953,6 +1953,23 @@ function readCookie(req, name) {
   const raw = req.headers.cookie || "";
   const hit = raw.split(/;\s*/).find(c => c.startsWith(name + "="));
   return hit ? decodeURIComponent(hit.slice(name.length + 1)) : null;
+}
+// Sadece MASTER (süper admin) mı? Per-app key ile gelen isteklerde false.
+// İzole panel yöneticileri başka uygulamaların giriş bilgilerini GÖRMEMELİ.
+function isMasterRequest(req) {
+  if (req.headers["x-app-key"] === APP_SECRET) return true;
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    try {
+      const [u, p] = Buffer.from(authHeader.split(" ")[1], "base64").toString().split(":");
+      if (u === "admin" && p === ADMIN_PASS) return true;
+    } catch (e) {}
+  }
+  return false;
+}
+// Bir uygulamanın izole panel giriş bilgileri (yol + kullanıcı + şifre).
+function panelCredentials(appId) {
+  return { id: appId, panelPath: `/admin/${appId}/panel`, user: appId, pass: perAppPass(appId) };
 }
 // appId'ye göre veri dosyası yolu. default → kök, diğerleri → data/<appId>/
 function pathFor(appId, filename) {
@@ -3032,6 +3049,7 @@ app.get("/admin/apps", basicAuth, (req, res) => {
 // Uygulama ekle/güncelle + veri klasörünü tohumla
 app.post("/admin/apps", basicAuth, express.json(), async (req, res) => {
   try {
+    if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin uygulama ekleyebilir" });
     const { id, name, packageName, brandPrimary, policySlug, onesignalAppId, onesignalRestKey } = req.body || {};
     const slug = String(id || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
     if (!slug) return res.status(400).json({ error: "geçerli id zorunlu (a-z0-9_-)" });
@@ -3063,15 +3081,29 @@ app.post("/admin/apps", basicAuth, express.json(), async (req, res) => {
         seed.global = { enabled: true, mode: "youtube" };
         fs.writeFileSync(cfgPath, JSON.stringify(seed, null, 2));
       }
-      for (const f of ["announcements.json", "device_actions.json", "blockedChannels.json"]) {
+      for (const f of ["announcements.json", "device_actions.json", "blockedChannels.json", "feedbacks.json", "review_logs.json"]) {
         const p = pathFor(slug, f);
         if (!fs.existsSync(p)) fs.writeFileSync(p, "[]");
       }
     }
-    res.json({ ok: true, app: apps[slug] });
+    // Yeni/güncel uygulamanın izole panel giriş bilgileri — SADECE master'a döner.
+    const resp = { ok: true, app: apps[slug] };
+    if (slug !== "default" && isMasterRequest(req)) resp.credentials = panelCredentials(slug);
+    res.json(resp);
   } catch (e) {
     res.status(500).json({ error: "Apps write failed: " + e.message });
   }
+});
+
+// Tüm uygulamaların izole panel giriş bilgileri — SADECE master (süper panel).
+// İzole panel yöneticileri (per-app key) burayı göremez → 403.
+app.get("/admin/app-credentials", basicAuth, (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const apps = getApps();
+  const list = Object.keys(apps)
+    .filter(id => id !== "default")
+    .map(id => ({ ...panelCredentials(id), name: apps[id].name, packageName: apps[id].packageName || "" }));
+  res.json({ apps: list });
 });
 
 app.get("/config", (req, res) => {
