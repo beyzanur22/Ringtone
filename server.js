@@ -1682,7 +1682,7 @@ app.use(async (req, res, next) => {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps", "/admin/app-credentials"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps", "/admin/app-credentials", "/admin/users"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   const _adminKey = req.headers["x-app-key"];
   if (isAdminPath && _adminKey && (_adminKey === APP_SECRET || resolveAppFromKey(_adminKey))) {
@@ -1693,6 +1693,7 @@ app.use(async (req, res, next) => {
       req.path.startsWith("/content-filter") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
+      req.path === "/admin/login" || req.path === "/admin/logout" ||
       /^\/admin\/[a-z0-9_-]+\/panel/.test(req.path) ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
@@ -1971,6 +1972,88 @@ function isMasterRequest(req) {
 // Bir uygulamanın izole panel giriş bilgileri (yol + kullanıcı + şifre).
 function panelCredentials(appId) {
   return { id: appId, panelPath: `/admin/${appId}/panel`, user: appId, pass: perAppPass(appId) };
+}
+
+/* =========================================================================
+   KİŞİSEL PANEL GİRİŞİ — kullanıcı adı + şifre. Her kullanıcının "apps" kapsamı:
+     "all"            → süper (tüm uygulamalar, master key, dropdown açık)
+     ["ogzmusic", ..] → sadece o uygulama(lar) (o app'in key'i, kilitli)
+   Şifreler APP_SECRET ile HMAC'lenir. panel_users.json (gitignore) tutulur;
+   ilk açılışta varsayılanlarla tohumlanır — şifreleri panelden değiştir.
+========================================================================= */
+const PANEL_USERS_FILE = path.join(__dirname, "panel_users.json");
+let _cachedPanelUsers = null;
+function hashPw(pw) {
+  return crypto.createHmac("sha256", APP_SECRET).update("pw:" + String(pw)).digest("hex");
+}
+function getPanelUsers() {
+  if (_cachedPanelUsers) return _cachedPanelUsers;
+  try {
+    if (fs.existsSync(PANEL_USERS_FILE)) {
+      _cachedPanelUsers = JSON.parse(fs.readFileSync(PANEL_USERS_FILE, "utf-8"));
+      return _cachedPanelUsers;
+    }
+  } catch (e) {}
+  _cachedPanelUsers = {
+    beyza: { pass: hashPw("beyza2026"), apps: "all", super: true },
+    olcay: { pass: hashPw("olcay2026"), apps: "all", super: true },
+    oguz:  { pass: hashPw("oguz2026"),  apps: ["ogzmusic"] }
+  };
+  try { fs.writeFileSync(PANEL_USERS_FILE, JSON.stringify(_cachedPanelUsers, null, 2)); } catch (e) {}
+  return _cachedPanelUsers;
+}
+function savePanelUsers(obj) {
+  fs.writeFileSync(PANEL_USERS_FILE, JSON.stringify(obj, null, 2));
+  _cachedPanelUsers = obj;
+}
+function verifyPanelUser(username, password) {
+  const u = String(username || "").toLowerCase().trim();
+  const rec = getPanelUsers()[u];
+  if (!rec || rec.pass !== hashPw(password)) return null;
+  return { user: u, apps: rec.apps, super: !!rec.super };
+}
+// Oturum cookie'si (imzalı, 30 gün) — sadece kullanıcı adını taşır; yetki her seferinde dosyadan okunur.
+function signSession(username) {
+  const payload = username + "." + (Date.now() + 30 * 24 * 3600 * 1000);
+  const sig = crypto.createHmac("sha256", APP_SECRET).update("psess:" + payload).digest("hex").slice(0, 32);
+  return payload + "." + sig;
+}
+function verifySession(val) {
+  if (!val) return null;
+  const parts = String(val).split(".");
+  if (parts.length !== 3) return null;
+  const [user, exp, sig] = parts;
+  const expect = crypto.createHmac("sha256", APP_SECRET).update("psess:" + user + "." + exp).digest("hex").slice(0, 32);
+  if (sig !== expect || Date.now() > Number(exp)) return null;
+  const rec = getPanelUsers()[user];
+  if (!rec) return null;
+  return { user, apps: rec.apps, super: !!rec.super };
+}
+// Oturumdan panel enjeksiyonu: {appId, appKey}
+function sessionInjection(sess) {
+  if (!sess) return null;
+  if (sess.apps === "all" || sess.super) return { appId: "", appKey: APP_SECRET };
+  const list = Array.isArray(sess.apps) ? sess.apps : [];
+  if (list.length >= 1) return { appId: list[0], appKey: perAppKey(list[0]) };
+  return null;
+}
+// Google-benzeri giriş sayfası (sunucudan render — build gerekmez)
+function loginPageHtml() {
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Melodia Panel — Giriş</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0b12;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.box{background:#15151f;border:1px solid #2a2a35;border-radius:16px;padding:36px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+h1{font-size:22px;margin-bottom:4px;text-align:center;color:#a78bfa}.sub{font-size:13px;color:#64748b;text-align:center;margin-bottom:24px}
+label{font-size:12px;color:#94a3b8;display:block;margin:14px 0 6px}input{width:100%;padding:12px 14px;background:#0b0b12;border:1px solid #333;border-radius:10px;color:#fff;font-size:15px;outline:none}input:focus{border-color:#a78bfa}
+button{width:100%;margin-top:22px;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}button:hover{background:#6d28d9}
+.err{background:#2a1216;border:1px solid #5b2130;color:#f87171;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}</style></head><body>
+<div class="box"><h1>🎵 Melodia</h1><div class="sub">Panel Girişi</div><div class="err" id="err"></div>
+<form id="f"><label>Kullanıcı Adı</label><input name="u" autocomplete="username" autofocus>
+<label>Şifre</label><input name="p" type="password" autocomplete="current-password">
+<button type="submit">Giriş Yap</button></form></div>
+<script>document.getElementById('f').addEventListener('submit',async function(e){e.preventDefault();
+var r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({u:this.u.value,p:this.p.value})});
+if(r.ok){location.href='/admin/panel';}else{var d=document.getElementById('err');d.textContent='Kullanıcı adı veya şifre hatalı';d.style.display='block';}});</script>
+</body></html>`;
 }
 // appId'ye göre veri dosyası yolu. default → kök, diğerleri → data/<appId>/
 function pathFor(appId, filename) {
@@ -3105,6 +3188,36 @@ app.get("/admin/app-credentials", basicAuth, (req, res) => {
     .filter(id => id !== "default")
     .map(id => ({ ...panelCredentials(id), name: apps[id].name, packageName: apps[id].packageName || "" }));
   res.json({ apps: list });
+});
+
+// KİŞİSEL PANEL KULLANICILARI — sadece süper admin yönetir (şifre asla döndürülmez)
+app.get("/admin/users", basicAuth, (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const users = getPanelUsers();
+  res.json({ users: Object.keys(users).map(u => ({ username: u, apps: users[u].apps, super: !!users[u].super })) });
+});
+app.post("/admin/users", basicAuth, express.json(), (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const { username, password, apps, super: isSuper } = req.body || {};
+  const u = String(username || "").toLowerCase().trim().replace(/[^a-z0-9_]/g, "");
+  if (!u) return res.status(400).json({ error: "geçerli kullanıcı adı zorunlu (a-z0-9_)" });
+  const users = { ...getPanelUsers() };
+  const existing = users[u] || {};
+  if (!existing.pass && !password) return res.status(400).json({ error: "yeni kullanıcı için şifre zorunlu" });
+  const isAll = (apps === "all" || !!isSuper);
+  const scope = isAll ? "all" : (Array.isArray(apps) ? apps.filter(Boolean) : (existing.apps || []));
+  users[u] = { pass: password ? hashPw(password) : existing.pass, apps: scope, super: isAll };
+  savePanelUsers(users);
+  res.json({ ok: true, username: u, apps: users[u].apps, super: users[u].super });
+});
+app.delete("/admin/users/:username", basicAuth, (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const u = String(req.params.username || "").toLowerCase();
+  const users = { ...getPanelUsers() };
+  if (!users[u]) return res.status(404).json({ error: "kullanıcı yok" });
+  delete users[u];
+  savePanelUsers(users);
+  res.json({ ok: true });
 });
 
 app.get("/config", (req, res) => {
@@ -5299,6 +5412,7 @@ function panelAssetAuth(req, res, next) {
   }
   if (req.headers["x-app-key"] === APP_SECRET) return next();
   if (verifyPanelCookie(readCookie(req, "pnl"))) return next();
+  if (verifySession(readCookie(req, "psess"))) return next();   // kişisel giriş oturumu
   res.setHeader("WWW-Authenticate", 'Basic realm="Secure Area"');
   return res.status(401).send("Authentication required");
 }
@@ -5322,14 +5436,38 @@ function perAppPanelAuth(req, res, next) {
 // --- Statik varlıklar (önce kaydedilir; /admin/panel/* get'ten önce eşleşir) ---
 app.use("/admin/panel/static", panelAssetAuth, express.static(path.join(REACT_PANEL_DIR, "static")));
 
-// --- SÜPER PANEL (master) — mevcut davranış korunur; artık master key index'e enjekte edilir ---
-app.get(["/admin/panel", "/admin/panel/"], basicAuth, (req, res) => sendPanelIndex(res, "", APP_SECRET));
-app.get("/admin/panel/*", basicAuth, (req, res) => {
-  const rel = req.params[0] || "";
-  const fp = path.join(REACT_PANEL_DIR, rel);
-  if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
-  return sendPanelIndex(res, "", APP_SECRET);
+// --- KİŞİSEL GİRİŞ: kullanıcı adı+şifre → oturum cookie'si ---
+app.post("/admin/login", express.json(), (req, res) => {
+  const { u, p } = req.body || {};
+  const sess = verifyPanelUser(u, p);
+  if (!sess) return res.status(401).json({ ok: false });
+  res.setHeader("Set-Cookie", `psess=${encodeURIComponent(signSession(sess.user))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`);
+  res.json({ ok: true, user: sess.user });
 });
+app.get("/admin/logout", (req, res) => {
+  res.setHeader("Set-Cookie", "psess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+  res.redirect("/admin/panel");
+});
+
+// --- PANEL: oturum yoksa giriş sayfası; varsa kullanıcının yetkisine göre enjekte edilmiş panel ---
+function servePanelBySession(req, res, isSpa) {
+  const sess = verifySession(readCookie(req, "psess"));
+  if (!sess) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(loginPageHtml());
+  }
+  if (isSpa) {
+    const rel = req.params[0] || "";
+    const fp = path.join(REACT_PANEL_DIR, rel);
+    if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
+  }
+  const inj = sessionInjection(sess);
+  if (!inj) { res.setHeader("Content-Type", "text/html; charset=utf-8"); return res.send(loginPageHtml()); }
+  return sendPanelIndex(res, inj.appId, inj.appKey);
+}
+app.get(["/admin/panel", "/admin/panel/"], (req, res) => servePanelBySession(req, res, false));
+app.get("/admin/panel/*", (req, res) => servePanelBySession(req, res, true));
 
 // --- İZOLE PER-APP PANEL — ayrı giriş + kilitli appId + oturum cookie'si ---
 function _issuePanelCookie(res, appId) {
