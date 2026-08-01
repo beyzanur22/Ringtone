@@ -5092,6 +5092,18 @@ app.get("/download/mp4", async (req, res) => {
 // ==========================================
 // ADMIN ANASAYFA — tüm panellere tek noktadan erişim
 app.get("/admin", basicAuth, (req, res) => {
+  // Kayıtlı her uygulama (default hariç) için izole panel kartı — otomatik.
+  const _esc = (s) => String(s == null ? "" : s).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  const appCards = Object.values(getApps())
+    .filter(a => a && a.id && a.id !== "default")
+    .map(a => `
+    <a class="card" href="/admin/${_esc(a.id)}/panel" style="border-color:${_esc(a.brandPrimary || "#22c55e")}">
+      <div class="icon" style="background:#15271d">📱</div>
+      <div class="card-info">
+        <h3>${_esc(a.name || a.id)}</h3>
+        <p>${_esc(a.packageName || "")} · İzole panel</p>
+      </div>
+    </a>`).join("");
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -5236,9 +5248,9 @@ app.get("/admin", basicAuth, (req, res) => {
       <div class="icon" style="background:#2d1f4e">🎛️</div>
       <div class="card-info">
         <h3>React Panel</h3>
-        <p>Config, Popup & Kanal Yönetimi</p>
+        <p>Config, Popup & Kanal Yönetimi (Tümü)</p>
       </div>
-    </a>
+    </a>${appCards}
   </div>
 
   <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
