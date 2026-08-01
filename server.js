@@ -1587,7 +1587,7 @@ app.use(cors({
     }
   },
   methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token", "X-Extractor", "X-Android-Sdk", "X-App-Version", "X-App-Mode"],
+  allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-App-Id", "X-App-Package", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token", "X-Extractor", "X-Android-Sdk", "X-App-Version", "X-App-Mode"],
   credentials: false
 }));
 app.use(express.json({ limit: '1mb' }));
@@ -1896,6 +1896,16 @@ function resolveAppId(req) {
   // ?appId= veya X-App-Id header'ı yok sayılır (çapraz-uygulama erişimi engellenir).
   const bound = resolveAppFromKey(req.headers["x-app-key"]);
   if (bound) return bound;
+  // Uygulama kendi paket adını (applicationId) X-App-Package ile bildirir →
+  // apps.json'daki packageName ile eşle. Böylece yeni paket eklerken Android'de
+  // kod değişmez; sadece panelde app kaydı (packageName ile) yeterli olur.
+  const pkg = (req.headers["x-app-package"] || "").toString().trim();
+  if (pkg) {
+    const apps = getApps();
+    for (const id of Object.keys(apps)) {
+      if (apps[id] && apps[id].packageName && apps[id].packageName === pkg) return id;
+    }
+  }
   const raw = (req.headers["x-app-id"] || (req.query && req.query.appId) || "").toString();
   const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "");
   return getApps()[slug] ? slug : "default";
@@ -4012,26 +4022,29 @@ if (isPrimaryWorker) warmupTimer = setInterval(warmTop50, warmupIntervalMs);
 /* =========================
    FEEDBACK (Rating Funnel)
 ========================= */
-const FEEDBACK_FILE = path.join(__dirname, "feedbacks.json");
+const FEEDBACK_FILE = "feedbacks.json";  // pathFor ile per-app: default→kök, diğerleri→data/<appId>/
 
-function loadFeedbacks() {
+function loadFeedbacks(appId = "default") {
   try {
-    if (!fs.existsSync(FEEDBACK_FILE)) fs.writeFileSync(FEEDBACK_FILE, "[]");
-    return JSON.parse(fs.readFileSync(FEEDBACK_FILE, "utf-8"));
+    const file = pathFor(appId, FEEDBACK_FILE);
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch (e) {
     return [];
   }
 }
 
-function saveFeedbacks(data) {
-  fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(data, null, 2));
+function saveFeedbacks(data, appId = "default") {
+  ensureAppData(appId);
+  fs.writeFileSync(pathFor(appId, FEEDBACK_FILE), JSON.stringify(data, null, 2));
 }
 
 app.post("/feedback", express.json(), (req, res) => {
   const { rating, text, deviceId, country } = req.body;
   if (!rating) return res.status(400).json({ error: "rating zorunlu" });
 
-  const all = loadFeedbacks();
+  const appId = resolveAppId(req);
+  const all = loadFeedbacks(appId);
   all.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     rating: Number(rating),
@@ -4040,19 +4053,20 @@ app.post("/feedback", express.json(), (req, res) => {
     country: country || "",
     createdAt: new Date().toISOString()
   });
-  saveFeedbacks(all);
+  saveFeedbacks(all, appId);
   res.json({ ok: true });
 });
 
 app.get("/feedbacks", (req, res) => {
-  res.json(loadFeedbacks());
+  res.json(loadFeedbacks(resolveAppId(req)));
 });
 
 app.delete("/feedback/:id", (req, res) => {
-  const all = loadFeedbacks();
+  const appId = resolveAppId(req);
+  const all = loadFeedbacks(appId);
   const filtered = all.filter(f => f.id !== req.params.id);
   if (filtered.length === all.length) return res.status(404).json({ error: "Bulunamadı" });
-  saveFeedbacks(filtered);
+  saveFeedbacks(filtered, appId);
   res.json({ ok: true });
 });
 
@@ -4065,20 +4079,22 @@ app.delete("/feedback/:id", (req, res) => {
      flow_done    → akış bitti; durationMs kısa ise kart görünmemiş demektir
    Gerçek yıldız ortalaması yalnızca Play Console'da görülür.
 ========================= */
-const REVIEW_LOG_FILE = path.join(__dirname, "review_logs.json");
+const REVIEW_LOG_FILE = "review_logs.json";  // pathFor ile per-app
 const REVIEW_LOG_MAX = 2000;
 
-function loadReviewLogs() {
+function loadReviewLogs(appId = "default") {
   try {
-    if (!fs.existsSync(REVIEW_LOG_FILE)) fs.writeFileSync(REVIEW_LOG_FILE, "[]");
-    return JSON.parse(fs.readFileSync(REVIEW_LOG_FILE, "utf-8"));
+    const file = pathFor(appId, REVIEW_LOG_FILE);
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch (e) {
     return [];
   }
 }
 
-function saveReviewLogs(data) {
-  fs.writeFileSync(REVIEW_LOG_FILE, JSON.stringify(data.slice(0, REVIEW_LOG_MAX), null, 2));
+function saveReviewLogs(data, appId = "default") {
+  ensureAppData(appId);
+  fs.writeFileSync(pathFor(appId, REVIEW_LOG_FILE), JSON.stringify(data.slice(0, REVIEW_LOG_MAX), null, 2));
 }
 
 const REVIEW_EVENTS = ["popup_shown", "button_tap", "request_ok", "request_fail", "flow_done"];
@@ -4087,7 +4103,8 @@ app.post("/review-log", express.json(), (req, res) => {
   const { event, detail, errorCode, durationMs, deviceId, appVersion } = req.body;
   if (!REVIEW_EVENTS.includes(event)) return res.status(400).json({ error: "gecersiz event" });
 
-  const all = loadReviewLogs();
+  const appId = resolveAppId(req);
+  const all = loadReviewLogs(appId);
   all.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     event,
@@ -4101,12 +4118,12 @@ app.post("/review-log", express.json(), (req, res) => {
     ip: req.ip || "",
     createdAt: new Date().toISOString()
   });
-  saveReviewLogs(all);
+  saveReviewLogs(all, appId);
   res.json({ ok: true });
 });
 
 app.get("/admin/review-logs", basicAuth, (req, res) => {
-  const all = loadReviewLogs();
+  const all = loadReviewLogs(resolveAppId(req));
   const counts = { popup_shown: 0, button_tap: 0, request_ok: 0, request_fail: 0, flow_done: 0 };
   const errorCodes = {};
   // Google kartın gösterilip gösterilmediğini bildirmez. İstemci bunu pencere
@@ -4140,7 +4157,7 @@ app.get("/admin/review-logs", basicAuth, (req, res) => {
 });
 
 app.delete("/admin/review-logs", basicAuth, (req, res) => {
-  saveReviewLogs([]);
+  saveReviewLogs([], resolveAppId(req));
   res.json({ ok: true });
 });
 
