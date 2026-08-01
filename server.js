@@ -17,8 +17,10 @@ if (!ADMIN_PASS) {
   process.exit(1);
 }
 const basicAuth = (req, res, next) => {
-  // X-App-Key ile React admin panel erişimi
-  if (req.headers["x-app-key"] === APP_SECRET) {
+  // X-App-Key ile React admin panel erişimi (master VEYA uygulamaya özel key).
+  // resolveAppFromKey aşağıda function-declaration olarak tanımlı → hoist edilir.
+  const _xkey = req.headers["x-app-key"];
+  if (_xkey && (_xkey === APP_SECRET || resolveAppFromKey(_xkey))) {
     return next();
   }
   const authHeader = req.headers.authorization;
@@ -1682,7 +1684,8 @@ app.use(async (req, res, next) => {
   // Admin panel frontend (X-App-Key ile doğrulama)
   const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
-  if (isAdminPath && req.headers["x-app-key"] === APP_SECRET) {
+  const _adminKey = req.headers["x-app-key"];
+  if (isAdminPath && _adminKey && (_adminKey === APP_SECRET || resolveAppFromKey(_adminKey))) {
     return next();
   }
   // Admin panel'ler — basicAuth zaten kendi içlerinde kontrol ediyor
@@ -1690,6 +1693,7 @@ app.use(async (req, res, next) => {
       req.path.startsWith("/content-filter") ||
       req.path === "/playlist-cache" || req.path === "/admin/cache-playlist" || req.path === "/admin/playlist-progress" ||
       req.path === "/admin" || req.path.startsWith("/admin/panel") || req.path === "/converter" ||
+      /^\/admin\/[a-z0-9_-]+\/panel/.test(req.path) ||
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
@@ -1888,9 +1892,57 @@ function saveApps(data) {
 }
 // İstekten appId çöz. Sadece [a-z0-9_-] — path traversal engellenir.
 function resolveAppId(req) {
+  // Uygulamaya özel admin key ile gelen istek → appId KİLİTLİ.
+  // ?appId= veya X-App-Id header'ı yok sayılır (çapraz-uygulama erişimi engellenir).
+  const bound = resolveAppFromKey(req.headers["x-app-key"]);
+  if (bound) return bound;
   const raw = (req.headers["x-app-id"] || (req.query && req.query.appId) || "").toString();
   const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "");
   return getApps()[slug] ? slug : "default";
+}
+
+/* =========================================================================
+   ÇOK-PANELLİ İZOLASYON — uygulamaya özel admin kimliği + panel cookie'si
+   Her uygulamanın admin key'i ve panel şifresi master APP_SECRET'ten HMAC ile
+   TÜRETİLİR — git'e/dosyaya hiçbir sır yazılmaz, sunucudaki APP_SECRET yeter.
+   (function declaration → hoist edilir; yukarıdaki basicAuth/middleware çağırabilir.)
+========================================================================= */
+function perAppKey(appId) {
+  return crypto.createHmac("sha256", APP_SECRET).update("appkey:" + appId).digest("hex");
+}
+function perAppPass(appId) {
+  return crypto.createHmac("sha256", APP_SECRET).update("apppass:" + appId).digest("hex").slice(0, 14);
+}
+// Verilen X-App-Key hangi uygulamaya ait? default/master hariç → appId | null
+function resolveAppFromKey(key) {
+  if (!key || key === APP_SECRET) return null;
+  const apps = getApps();
+  for (const id of Object.keys(apps)) {
+    if (id === "default") continue;
+    if (key === perAppKey(id)) return id;
+  }
+  return null;
+}
+// İzole panel oturum cookie'si (imzalı, 12 saat) — statik varlık erişimini açar
+function signPanelCookie(appId) {
+  const payload = appId + "." + (Date.now() + 12 * 3600 * 1000);
+  const sig = crypto.createHmac("sha256", APP_SECRET).update("panelcookie:" + payload).digest("hex").slice(0, 32);
+  return payload + "." + sig;
+}
+function verifyPanelCookie(val) {
+  if (!val) return null;
+  const parts = String(val).split(".");
+  if (parts.length !== 3) return null;
+  const [appId, exp, sig] = parts;
+  const expect = crypto.createHmac("sha256", APP_SECRET).update("panelcookie:" + appId + "." + exp).digest("hex").slice(0, 32);
+  if (sig !== expect || Date.now() > Number(exp)) return null;
+  if (!getApps()[appId] || appId === "default") return null;
+  return appId;
+}
+function readCookie(req, name) {
+  const raw = req.headers.cookie || "";
+  const hit = raw.split(/;\s*/).find(c => c.startsWith(name + "="));
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : null;
 }
 // appId'ye göre veri dosyası yolu. default → kök, diğerleri → data/<appId>/
 function pathFor(appId, filename) {
@@ -2953,8 +3005,14 @@ app.get("/admin/media-stats", basicAuth, (req, res) => {
 /* =========================================================================
    ÇOK UYGULAMALI YÖNETİM — panel uygulama seçicisi buradan beslenir
 ========================================================================= */
-// Kayıtlı uygulamaları listele (panel dropdown'u)
+// Kayıtlı uygulamaları listele (panel dropdown'u).
+// Uygulamaya özel key ile gelinirse SADECE o uygulama döner (izolasyon).
 app.get("/admin/apps", basicAuth, (req, res) => {
+  const bound = resolveAppFromKey(req.headers["x-app-key"]);
+  if (bound) {
+    const apps = getApps();
+    return res.json({ [bound]: apps[bound] });
+  }
   res.json(getApps());
 });
 
@@ -5113,14 +5171,82 @@ app.get("/admin", basicAuth, (req, res) => {
 
 // React Admin Panel — static dosyaları servis et
 const REACT_PANEL_DIR = path.join(__dirname, "admin_panel");
-app.use("/admin/panel", basicAuth, express.static(REACT_PANEL_DIR));
-app.get("/admin/panel/*", basicAuth, (req, res) => {
+
+// index.html'i appId/appKey enjekte ederek servis et.
+// appId="" (süper panel) → dropdown açık, master key; appId dolu → izole/kilitli.
+function sendPanelIndex(res, appId, appKey) {
   const indexPath = path.join(REACT_PANEL_DIR, "index.html");
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send("React panel build bulunamadı. admin_panel/ klasörüne build dosyalarını koyun.");
+  if (!fs.existsSync(indexPath)) {
+    return res.status(404).send("React panel build bulunamadı. admin_panel/ klasörüne build dosyalarını koyun.");
   }
+  let html = fs.readFileSync(indexPath, "utf-8");
+  const inject = `<script>window.__APP_ID__=${JSON.stringify(appId || "")};window.__APP_KEY__=${JSON.stringify(appKey || "")};</script>`;
+  html = html.includes("</head>") ? html.replace("</head>", inject + "</head>") : inject + html;
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(html);
+}
+
+// Statik varlıklar (JS/CSS/chunk): master basicAuth VEYA master key VEYA geçerli izole-panel cookie'si.
+// Cookie, /admin/<appId>/panel girişinde set edilir → tarayıcı /admin/panel/static isteklerine de yollar.
+function panelAssetAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    try {
+      const [u, p] = Buffer.from(authHeader.split(" ")[1], "base64").toString().split(":");
+      if (u === "admin" && p === ADMIN_PASS) return next();
+    } catch (e) {}
+  }
+  if (req.headers["x-app-key"] === APP_SECRET) return next();
+  if (verifyPanelCookie(readCookie(req, "pnl"))) return next();
+  res.setHeader("WWW-Authenticate", 'Basic realm="Secure Area"');
+  return res.status(401).send("Authentication required");
+}
+
+// İzole panel girişi: kullanıcı=<appId>, şifre=perAppPass(appId) (master APP_SECRET'ten türetilir)
+function perAppPanelAuth(req, res, next) {
+  const appId = String(req.params.appId || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  if (!getApps()[appId] || appId === "default") return res.status(404).send("Bilinmeyen uygulama paneli");
+  const realm = appId + " panel";
+  const authHeader = req.headers.authorization;
+  if (authHeader) {
+    try {
+      const [u, p] = Buffer.from(authHeader.split(" ")[1], "base64").toString().split(":");
+      if (u === appId && p === perAppPass(appId)) { req._panelAppId = appId; return next(); }
+    } catch (e) {}
+  }
+  res.setHeader("WWW-Authenticate", `Basic realm="${realm}"`);
+  return res.status(401).send("Giriş gerekli");
+}
+
+// --- Statik varlıklar (önce kaydedilir; /admin/panel/* get'ten önce eşleşir) ---
+app.use("/admin/panel/static", panelAssetAuth, express.static(path.join(REACT_PANEL_DIR, "static")));
+
+// --- SÜPER PANEL (master) — mevcut davranış korunur; artık master key index'e enjekte edilir ---
+app.get(["/admin/panel", "/admin/panel/"], basicAuth, (req, res) => sendPanelIndex(res, "", APP_SECRET));
+app.get("/admin/panel/*", basicAuth, (req, res) => {
+  const rel = req.params[0] || "";
+  const fp = path.join(REACT_PANEL_DIR, rel);
+  if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
+  return sendPanelIndex(res, "", APP_SECRET);
+});
+
+// --- İZOLE PER-APP PANEL — ayrı giriş + kilitli appId + oturum cookie'si ---
+function _issuePanelCookie(res, appId) {
+  res.setHeader("Set-Cookie", `pnl=${encodeURIComponent(signPanelCookie(appId))}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=43200`);
+}
+app.get(["/admin/:appId/panel", "/admin/:appId/panel/"], perAppPanelAuth, (req, res) => {
+  const appId = req._panelAppId;
+  _issuePanelCookie(res, appId);
+  return sendPanelIndex(res, appId, perAppKey(appId));
+});
+app.get("/admin/:appId/panel/*", perAppPanelAuth, (req, res) => {
+  const appId = req._panelAppId;
+  const rel = req.params[0] || "";
+  const fp = path.join(REACT_PANEL_DIR, rel);
+  if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
+  _issuePanelCookie(res, appId);
+  return sendPanelIndex(res, appId, perAppKey(appId));
 });
 
 // ==========================================

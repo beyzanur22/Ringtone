@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Dünya Eşleşme Simülatörü</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background-color: #121316;
+      color: #ffffff;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* UI Overlay Layer */
+    .ui-overlay {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: 100vh;
+      width: 100%;
+      padding: 40px 20px 60px 20px;
+      pointer-events: none;
+    }
+
+    .header-title {
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+      font-weight: 700;
+      pointer-events: auto;
+    }
+
+    /* Bottom Info Card */
+    .match-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      background: rgba(20, 22, 28, 0.75);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 24px 36px;
+      border-radius: 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      pointer-events: auto;
+      max-width: 90%;
+      width: 440px;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Country Flags Badge Row */
+    .countries-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .country-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 8px 16px;
+      border-radius: 50px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .country-flag {
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .country-name {
+      color: #e0e0e0;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .arrow-icon {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 16px;
+      font-weight: 400;
+    }
+
+    /* Status Label */
+    .status-text {
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.3px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      background-color: #3b82f6;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #3b82f6;
+      animation: pulse 1.5s infinite ease-in-out;
+    }
+
+    .pulse-dot.success {
+      background-color: #10b981;
+      box-shadow: 0 0 15px #10b981;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(0.9);
+        opacity: 0.7;
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 1;
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+      }
+      100% {
+        transform: scale(0.9);
+        opacity: 0.7;
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+      }
+    }
+
+    /* Simulation Control Buttons */
+    .controls-panel {
+      position: absolute;
+      top: 30px;
+      right: 30px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: rgba(15, 17, 21, 0.85);
+      backdrop-filter: blur(12px);
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .controls-panel h4 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 4px;
+    }
+
+    .btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:hover {
+      background: #3b82f6;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ccc;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+  </style>
+
+  <!-- Three.js & GSAP -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+</head>
+<body>
+
+  <!-- Three.js Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- UI Controls for Testing -->
+  <div class="controls-panel">
+    <h4>Simülatör Kontrolleri</h4>
+    <button class="btn" onclick="triggerMatch('🇦🇹', 'Avusturya', 47.51, 14.55)">
+      <span>🇦🇹</span> Avusturya ile Eşleş
+    </button>
+    <button class="btn" onclick="triggerMatch('🇯🇵', 'Japonya', 36.20, 138.25)">
+      <span>🇯🇵</span> Japonya ile Eşleş
+    </button>
+    <button class="btn" onclick="triggerMatch('🇺🇸', 'ABD', 37.09, -95.71)">
+      <span>🇺🇸</span> ABD ile Eşleş
+    </button>
+    <button class="btn" onclick="triggerRandomMatch()">
+      🎲 Rastgele Ülke Bul
+    </button>
+    <button class="btn btn-secondary" onclick="resetToSearching()">
+      🔄 Aramaya Geri Dön
+    </button>
+  </div>
+
+  <!-- UI Overlay -->
+  <div class="ui-overlay">
+    <div class="header-title">Görüntülü Eşleşme</div>
+
+    <div class="match-card" id="matchCard">
+      <!-- Countries Flag Row -->
+      <div class="countries-row">
+        <div class="country-pill" id="userPill">
+          <span class="country-flag">🇹🇷</span>
+          <span class="country-name">Türkiye</span>
+        </div>
+        <span class="arrow-icon">↔</span>
+        <div class="country-pill" id="targetPill">
+          <span class="country-flag" id="targetFlag">❓</span>
+          <span class="country-name" id="targetName">Aranıyor...</span>
+        </div>
+      </div>
+
+      <!-- Status Text -->
+      <div class="status-text" id="statusLabel">
+        <span class="pulse-dot" id="statusDot"></span>
+        <span id="statusMessage">Sonraki eşleşmen bulunuyor</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ----------------------------------------------------
+    // 1. DATA & CONSTANTS
+    // ----------------------------------------------------
+    const USER_COUNTRY = { name: "Türkiye", flag: "🇹🇷", lat: 38.96, lon: 35.24 };
+
+    const SAMPLE_COUNTRIES = [
+      { flag: '🇦🇹', name: 'Avusturya', lat: 47.5162, lon: 14.5501 },
+      { flag: '🇯🇵', name: 'Japonya', lat: 36.2048, lon: 138.2529 },
+      { flag: '🇺🇸', name: 'ABD', lat: 37.0902, lon: -95.7129 },
+      { flag: '🇧🇷', name: 'Brezilya', lat: -14.2350, lon: -51.9253 },
+      { flag: '🇩🇪', name: 'Almanya', lat: 51.1657, lon: 10.4515 },
+      { flag: '🇫🇷', name: 'Fransa', lat: 46.2276, lon: 2.2137 },
+      { flag: '🇬🇧', name: 'İngiltere', lat: 55.3781, lon: -3.4360 },
+      { flag: '🇦🇺', name: 'Avustralya', lat: -25.2744, lon: 133.7751 },
+      { flag: '🇰🇷', name: 'Güney Kore', lat: 35.9078, lon: 127.7669 },
+      { flag: '🇮🇹', name: 'İtalya', lat: 41.8719, lon: 12.5674 },
+      { flag: '🇪🇸', name: 'İspanya', lat: 40.4637, lon: -3.7492 }
+    ];
+
+    // ----------------------------------------------------
+    // 2. THREE.JS SCENE SETUP
+    // ----------------------------------------------------
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x121316);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const SEARCH_CAMERA_Z = 6.2;
+    const MATCH_CAMERA_Z = 4.6;
+    camera.position.set(0, 0, SEARCH_CAMERA_Z);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    directionalLight.position.set(5, 3, 5);
+    scene.add(directionalLight);
+
+    const backLight = new THREE.DirectionalLight(0x3b82f6, 0.8);
+    backLight.position.set(-5, -3, -5);
+    scene.add(backLight);
+
+    // ----------------------------------------------------
+    // 3. GLOBE TEXTURE GENERATOR (Vibrant Political Map like screenshot)
+    // ----------------------------------------------------
+    function createEarthTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+
+      // Ocean Base Color (Deep blue)
+      ctx.fillStyle = '#2260a8';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Simple Canvas world map representation
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      for (let y = 0; y < canvas.height; y += 4) {
+        ctx.fillRect(0, y, canvas.width, 1);
+      }
+
+      // Draw continent landmass shapes
+      function drawContinent(points, color) {
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.strokeStyle = '#1b4980';
+        ctx.lineWidth = 3;
+        points.forEach((pt, i) => {
+          const x = (pt[0] + 180) * (canvas.width / 360);
+          const y = (90 - pt[1]) * (canvas.height / 180);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      // Europe / Eurasia
+      drawContinent([
+        [-10, 36], [0, 42], [15, 45], [30, 40], [35, 37], [45, 40], [60, 55], [100, 60], [140, 50],
+        [120, 30], [80, 25], [60, 25], [45, 15], [35, 15], [25, 35], [10, 36], [-10, 36]
+      ], '#f4a261');
+
+      // Turkey & Mediterranean
+      drawContinent([
+        [26, 42], [42, 42], [44, 36], [26, 36]
+      ], '#e76f51');
+
+      // Europe West
+      drawContinent([
+        [-10, 36], [5, 43], [15, 55], [25, 58], [15, 60], [-5, 50], [-10, 40]
+      ], '#2a9d8f');
+
+      // Africa
+      drawContinent([
+        [-17, 15], [12, 37], [33, 30], [51, 11], [40, -12], [20, -35], [15, -35], [-10, 5], [-17, 15]
+      ], '#e9c46a');
+
+      // Americas
+      drawContinent([
+        [-130, 50], [-80, 50], [-70, 15], [-90, 15], [-120, 35]
+      ], '#80ed99');
+      drawContinent([
+        [-80, 10], [-35, -5], [-40, -25], [-70, -55], [-75, -20], [-80, 10]
+      ], '#9c89b8');
+
+      // Asia East
+      drawContinent([
+        [70, 50], [120, 50], [140, 35], [100, 15], [80, 10], [70, 30]
+      ], '#ff99c8');
+
+      // Australia
+      drawContinent([
+        [113, -15], [153, -15], [150, -38], [115, -35]
+      ], '#a0c4ff');
+
+      const texture = new THREE.CanvasTexture(canvas);
+      return texture;
+    }
+
+    // ----------------------------------------------------
+    // 4. GLOBE & ATMOSPHERE CREATION
+    // ----------------------------------------------------
+    const GLOBE_RADIUS = 2.0;
+    const globeGeometry = new THREE.SphereGeometry(GLOBE_RADIUS, 64, 64);
+    const globeMaterial = new THREE.MeshPhongMaterial({
+      map: createEarthTexture(),
+      shininess: 15,
+      specular: new THREE.Color(0x333333)
+    });
+    const globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    scene.add(globe);
+
+    // Outer Atmosphere Glow Shader
+    const atmosphereShader = {
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.65 - dot(vNormal, vec3(0, 0, 1.0)), 2.5);
+          gl_FragColor = vec4(0.23, 0.51, 0.96, 1.0) * intensity;
+        }
+      `
+    };
+
+    const atmosphereMaterial = new THREE.ShaderMaterial({
+      vertexShader: atmosphereShader.vertexShader,
+      fragmentShader: atmosphereShader.fragmentShader,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      transparent: true
+    });
+
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(GLOBE_RADIUS * 1.18, 64, 64),
+      atmosphereMaterial
+    );
+    scene.add(atmosphere);
+
+    // ----------------------------------------------------
+    // 5. HELPER FUNCTIONS: LAT/LON TO 3D VECTOR
+    // ----------------------------------------------------
+    function latLonToVector3(lat, lon, radius) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      const x = -(radius * Math.sin(phi) * Math.cos(theta));
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+      const y = radius * Math.cos(phi);
+      return new THREE.Vector3(x, y, z);
+    }
+
+    // ----------------------------------------------------
+    // 6. PIN MARKER & CONNECTOR ARC
+    // ----------------------------------------------------
+    let activePin = null;
+    let activeArc = null;
+
+    function createGlowingPin(position, color = 0x10b981) {
+      if (activePin) scene.remove(activePin);
+
+      const pinGroup = new THREE.Group();
+
+      // Ring pulse mesh
+      const ringGeo = new THREE.RingGeometry(0.04, 0.08, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.lookAt(position.clone().multiplyScalar(2));
+      pinGroup.add(ring);
+
+      // Core dot
+      const dotGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const dot = new THREE.Mesh(dotGeo, dotMat);
+      pinGroup.add(dot);
+
+      pinGroup.position.copy(position);
+      scene.add(pinGroup);
+      activePin = pinGroup;
+
+      // Animate pulse ring
+      gsap.to(ring.scale, {
+        x: 2.2,
+        y: 2.2,
+        duration: 1.2,
+        repeat: -1,
+        yoyo: true,
+        ease: "power1.inOut"
+      });
+    }
+
+    function createArcLine(startVec, endVec) {
+      if (activeArc) scene.remove(activeArc);
+
+      // Midpoint pulled outward for arc height
+      const mid = new THREE.Vector3().addVectors(startVec, endVec).multiplyScalar(0.5);
+      const distance = startVec.distanceTo(endVec);
+      mid.normalize().multiplyScalar(GLOBE_RADIUS + distance * 0.25);
+
+      const curve = new THREE.QuadraticBezierCurve3(startVec, mid, endVec);
+      const points = curve.getPoints(50);
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+      const material = new THREE.LineBasicMaterial({
+        color: 0x3b82f6,
+        linewidth: 3,
+        transparent: true,
+        opacity: 0.8
+      });
+
+      const line = new THREE.Line(geometry, material);
+      scene.add(line);
+      activeArc = line;
+    }
+
+    // ----------------------------------------------------
+    // 7. STATE MANAGEMENT & ANIMATION LOGIC
+    // ----------------------------------------------------
+    let isSearching = true;
+    let autoRotateSpeed = 0.004;
+
+    function resetToSearching() {
+      isSearching = true;
+
+      if (activePin) { scene.remove(activePin); activePin = null; }
+      if (activeArc) { scene.remove(activeArc); activeArc = null; }
+
+      // Reset UI
+      document.getElementById('targetFlag').innerText = '❓';
+      document.getElementById('targetName').innerText = 'Aranıyor...';
+      document.getElementById('statusMessage').innerText = 'Sonraki eşleşmen bulunuyor';
+      
+      const dot = document.getElementById('statusDot');
+      dot.classList.remove('success');
+
+      // Zoom out camera smoothly back to search distance
+      gsap.to(camera.position, {
+        z: SEARCH_CAMERA_Z,
+        duration: 1.2,
+        ease: "power2.out"
+      });
+    }
+
+    function triggerMatch(flag, name, lat, lon) {
+      isSearching = false;
+
+      // Update UI Text
+      document.getElementById('targetFlag').innerText = flag;
+      document.getElementById('targetName').innerText = name;
+      document.getElementById('statusMessage').innerText = 'Eşleşme bulundu';
+
+      const dot = document.getElementById('statusDot');
+      dot.classList.add('success');
+
+      // Calculate Target Y rotation and X rotation for target country
+      const targetLonRad = -(lon + 90) * (Math.PI / 180);
+      const targetLatRad = (lat) * (Math.PI / 180) * 0.4;
+
+      // Smooth Rotation to Target Country
+      gsap.to(globe.rotation, {
+        y: targetLonRad,
+        x: targetLatRad,
+        duration: 1.8,
+        ease: "power3.inOut",
+        onComplete: () => {
+          // Add Pin at matched country
+          const targetVec = latLonToVector3(lat, lon, GLOBE_RADIUS * 1.01);
+          createGlowingPin(targetVec, 0x10b981);
+
+          // Add Arc from Turkey to Matched Country
+          const userVec = latLonToVector3(USER_COUNTRY.lat, USER_COUNTRY.lon, GLOBE_RADIUS * 1.01);
+          createArcLine(userVec, targetVec);
+        }
+      });
+
+      // Smooth Camera Zoom In
+      gsap.to(camera.position, {
+        z: MATCH_CAMERA_Z,
+        duration: 1.8,
+        ease: "power3.inOut"
+      });
+    }
+
+    function triggerRandomMatch() {
+      const randomCountry = SAMPLE_COUNTRIES[Math.floor(Math.random() * SAMPLE_COUNTRIES.length)];
+      triggerMatch(randomCountry.flag, randomCountry.name, randomCountry.lat, randomCountry.lon);
+    }
+
+    // ----------------------------------------------------
+    // 8. RENDER LOOP & RESIZE LISTENER
+    // ----------------------------------------------------
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Auto rotate when searching
+      if (isSearching) {
+        globe.rotation.y += autoRotateSpeed;
+        globe.rotation.x = 0.1;
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Handle Window Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

@@ -16,5 +16,14 @@
     "policySlug": "memo-music-privacy-policy",
     "onesignalAppId": "",
     "onesignalRestKey": ""
+  },
+  "ogzmusic": {
+    "id": "ogzmusic",
+    "name": "OGZ Music",
+    "packageName": "com.ogz.music",
+    "brandPrimary": "#1DB954",
+    "policySlug": "privacy-policy",
+    "onesignalAppId": "",
+    "onesignalRestKey": ""
   }
 }
