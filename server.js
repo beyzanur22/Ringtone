@@ -103,9 +103,10 @@ const http = require("http");
 const https = require("https");
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const express = require("express");
-// yt-dlp kaldırıldı — stream çözümleme artık API Provider + Youtubei.js ile yapılır
+const ytdlp = require("yt-dlp-exec");
+// PoToken: sistem yt-dlp binary'sini kullan (Docker'dan gelir)
+const YT_DLP_PATH = process.env.YT_DLP_PATH || "/usr/local/bin/yt-dlp";
 const cors = require("cors");
-const compression = require("compression");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -844,7 +845,10 @@ function logError(type, videoId, errorMessage) {
   fs.appendFile(path.join(__dirname, "error.log"), logLine, () => {});
 }
 
-// Circuit breaker kaldırıldı — yt-dlp artık kullanılmıyor
+let ytDlpFailCount = 0;
+let ytDlpCircuitBreakerUntil = 0;
+const CIRCUIT_BREAKER_THRESHOLD = 10;
+const CIRCUIT_BREAKER_TIMEOUT = 30 * 1000; // 30 sn (Çok daha kısa, hızlıca tekrar dener)
 let youtubeApiStatus = "ok";
 
 // Analytics & Stats
@@ -999,6 +1003,15 @@ function getAntiBotHeaders(ua) {
     "Accept-Language": "en-US,en;q=0.9"
   };
 }
+const randomJitter = async () => {
+  // Sadece yt-dlp çağrılarında kullanılır, 100-300ms arası minimal gecikme
+  const ms = Math.floor(Math.random() * 200) + 100;
+  await new Promise(resolve => setTimeout(resolve, ms));
+};
+
+// Fallback player client stratejisi: android_vr → default → android → web
+// android_vr: Cookie'siz çalışır, YouTube bot tespiti düşük (VR cihaz simülasyonu)
+const PLAYER_CLIENTS = ["android", "android_vr"];
 
 async function resolveWithYoutubei(videoId, type) {
   if (!yt) throw new Error("Youtubei initialized değil");
@@ -1018,12 +1031,318 @@ async function resolveWithYoutubei(videoId, type) {
   throw new Error("Youtubei uygun format bulamadı");
 }
 
+const { execFile, spawn } = require("child_process");
 
+// yt-dlp eşzamanlılık limiti — PM2 cluster'da 4 worker x 8 = 32 toplam process
+let activeYtdlpCount = 0;
+const MAX_YTDLP_CONCURRENT = 4;  // Worker başına 4 (4 worker = 16 toplam)
+const MAX_YTDLP_QUEUE = 150;     // Büyük kuyruk — bekletsin, düşürmesin
+const YTDLP_SLOT_TIMEOUT = 90000; // 90sn — kuyrukta sabırla beklesin
+const ytdlpWaitQueue = [];
+
+function acquireYtdlpSlot() {
+  return new Promise((resolve, reject) => {
+    if (activeYtdlpCount < MAX_YTDLP_CONCURRENT) {
+      activeYtdlpCount++;
+      resolve();
+    } else if (ytdlpWaitQueue.length >= MAX_YTDLP_QUEUE) {
+      reject(new Error("yt-dlp queue full, try again later"));
+    } else {
+      const timer = setTimeout(() => {
+        const idx = ytdlpWaitQueue.findIndex(item => item.resolve === resolve);
+        if (idx > -1) ytdlpWaitQueue.splice(idx, 1);
+        reject(new Error("yt-dlp slot timeout"));
+      }, YTDLP_SLOT_TIMEOUT);
+      ytdlpWaitQueue.push({ resolve: () => { clearTimeout(timer); resolve(); } });
+    }
+  });
+}
+
+function releaseYtdlpSlot() {
+  if (ytdlpWaitQueue.length > 0) {
+    const next = ytdlpWaitQueue.shift();
+    next.resolve(); // Yeni format: { resolve: fn }
+  } else {
+    activeYtdlpCount = Math.max(0, activeYtdlpCount - 1);
+  }
+}
 
 function ytdlpStream(videoId, type, req, res) {
   return new Promise(async (resolve, reject) => {
     await acquireYtdlpSlot();
-// yt-dlp fonksiyonları kaldırıldı — akışlar API Provider ve Youtubei.js üzerinden yürütülür
+    const ext = type === "audio" ? "m4a" : "mp4";
+    const format = type === "audio" ? "bestaudio[ext=m4a]/bestaudio" : "best[ext=mp4]/best";
+    const targetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+    const outputFile = path.join(targetDir, `${type}_${videoId}.${ext}`);
+    const tempFile = outputFile + ".pipe.tmp";
+
+    const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" :
+      fs.existsSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp") ? "/app/node_modules/yt-dlp-exec/bin/yt-dlp" : "yt-dlp";
+
+    const args = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-f", format,
+      "-o", "-",
+      "--no-playlist",
+      "--no-part",
+      "--no-mtime",
+      "--concurrent-fragments", "1",
+      "--remote-components", "ejs:github",
+      "--quiet", "--no-warnings"
+    ];
+
+    // Cookie Rotasyonu (Faz 1)
+    const streamCookie = getRandomCookie();
+    if (process.env.USE_COOKIES !== "false" && streamCookie) {
+      args.push("--cookies", streamCookie);
+    }
+    // Proxy Rotasyonu (Faz 1)
+    const streamProxy = getRandomProxy(videoId);
+    if (streamProxy) {
+      args.push("--proxy", streamProxy);
+    }
+
+    console.log(`[YTDL_STREAM] Başlatılıyor: ${videoId} (${type})`);
+
+    const ytdlpProc = spawn(ytdlpBin, args);
+
+    res.setHeader("Content-Type", type === "video" ? "video/mp4" : "audio/m4a");
+    if (type === "video") res.setHeader("Accept-Ranges", "bytes");
+
+    ytdlpProc.stdout.pipe(res);
+
+    const cacheWriter = fs.createWriteStream(tempFile);
+    ytdlpProc.stdout.pipe(cacheWriter);
+
+    ytdlpProc.stderr.on("data", (data) => {
+      const msg = data.toString();
+      if (msg.includes("ERROR")) console.error(`[YTDL_STREAM] Hata: ${msg}`);
+    });
+
+    let slotReleased = false;
+    function safeReleaseSlot() {
+      if (!slotReleased) { slotReleased = true; releaseYtdlpSlot(); }
+    }
+
+    ytdlpProc.on("close", (code) => {
+      safeReleaseSlot();
+      cacheWriter.end();
+      if (code === 0) {
+        console.log(`[YTDL_STREAM] Başarıyla tamamlandı: ${videoId}`);
+        if (fs.existsSync(tempFile)) {
+          const stats = fs.statSync(tempFile);
+          if (stats.size > (type === "video" ? 150 * 1024 : 20 * 1024)) {
+            fs.renameSync(tempFile, outputFile);
+          } else {
+            fs.unlinkSync(tempFile);
+          }
+        }
+        resolve();
+      } else {
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        if (!res.headersSent) res.status(500).send("Streaming failed");
+        reject(new Error(`yt-dlp exited with code ${code}`));
+      }
+    });
+
+    req.on("close", () => {
+      if (ytdlpProc && !ytdlpProc.killed) {
+        ytdlpProc.kill('SIGTERM');
+        setTimeout(() => { if (!ytdlpProc.killed) ytdlpProc.kill('SIGKILL'); }, 5000);
+      }
+      cacheWriter.end();
+      safeReleaseSlot(); // Client kopunca slot'u serbest bırak
+      setTimeout(() => {
+        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch(e) {}
+      }, 1000);
+    });
+  });
+}
+
+function ytdlpDirectDownload(videoId, type) {
+  return new Promise(async (resolve, reject) => {
+    await acquireYtdlpSlot();
+    const ext = type === "audio" ? "m4a" : "mp4";
+    // Video için: en iyi video+audio birleştir, yoksa hazır birleşik al
+    const format = type === "audio"
+      ? "bestaudio[ext=m4a]/bestaudio"
+      : "b[ext=mp4][height<=720]/best[ext=mp4]/b/best";
+    const dlTargetDir = type === "video" ? VIDEO_CACHE_DIR : CACHE_DIR;
+    const outputFile = path.join(dlTargetDir, `${type}_${videoId}.${ext}`);
+    const tempFile = path.join(dlTargetDir, `temp_${videoId}.${ext}`);
+
+    if (fs.existsSync(outputFile)) {
+      const stats = fs.statSync(outputFile);
+      const minSize = type === "video" ? 150 * 1024 : 20 * 1024;
+      if (stats.size >= minSize) {
+        console.log(`[YTDL_DIRECT] Cache hit: ${outputFile}`);
+        return resolve(outputFile);
+      }
+      fs.unlinkSync(outputFile);
+    }
+
+    const ytdlpBin = fs.existsSync("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" :
+      fs.existsSync("/app/node_modules/yt-dlp-exec/bin/yt-dlp") ? "/app/node_modules/yt-dlp-exec/bin/yt-dlp" : "yt-dlp";
+
+    const args = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      "-f", format,
+      "-o", tempFile,
+      "--no-playlist",
+      "--no-part",
+      "--no-mtime",
+      "--concurrent-fragments", "1",
+      "--retries", "3",
+      "--socket-timeout", "30",
+      "--remote-components", "ejs:github",
+      "--extractor-args", "youtube:player_client=android_vr"
+    ];
+
+    // Cookie Rotasyonu 
+    const dlCookie = getRandomCookie();
+    if (process.env.USE_COOKIES !== "false" && dlCookie) {
+      args.push("--cookies", dlCookie);
+    }
+
+    // Proxy Rotasyonu 
+    const dlProxy = getRandomProxy(videoId);
+
+    console.log("[PROXY_TEST]", maskProxyUrl(dlProxy));
+
+    if (dlProxy) {
+      args.push("--proxy", dlProxy);
+    }
+
+    console.log(`[YTDL_DIRECT] İndiriliyor: ${videoId} (${type})`);
+
+    const proc = execFile(ytdlpBin, args, {
+      timeout: 900000, // 15 dakika (büyük videolar için)
+      maxBuffer: 50 * 1024 * 1024
+    }, (error, stdout, stderr) => {
+      releaseYtdlpSlot();
+
+      if (error) {
+        console.error(`[YTDL_DIRECT] Hata: ${stderr || error.message}`);
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+        return reject(new Error(`yt-dlp direct download failed: ${error.message}`));
+      }
+
+      // Dosya boyutu kontrolü
+      if (!fs.existsSync(tempFile)) {
+        return reject(new Error("yt-dlp dosya oluşturamadı"));
+      }
+
+      const stats = fs.statSync(tempFile);
+      const minSize = type === "video" ? 100 * 1024 : 20 * 1024; // 100KB video, 20KB audio min
+
+      if (stats.size < minSize) {
+        fs.unlinkSync(tempFile);
+        return reject(new Error(`İndirilen dosya çok küçük (${(stats.size / 1024).toFixed(1)} KB) - bot detection`));
+      }
+
+      // Başarılı! Temp'ten asıl dosyaya taşı
+      fs.renameSync(tempFile, outputFile);
+      console.log(`[YTDL_DIRECT] Başarılı: ${outputFile} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+      resolve(outputFile);
+    });
+  });
+}
+
+async function resolveStreamUrl(videoUrl, format, ua, countryClient = null) {
+  if (Date.now() < ytDlpCircuitBreakerUntil) {
+    throw new Error("yt-dlp has been temporarily disabled due to consecutive failures. Try again later.");
+  }
+
+  let lastError = null;
+
+  let clientsToTry = ["android_vr", "android"];
+  if (countryClient && countryClient !== "default") {
+    clientsToTry = [countryClient, ...clientsToTry.filter(c => c !== countryClient)];
+  }
+
+  for (const client of clientsToTry) {
+    // İki deneme: önce proxy ile, proxy 402 verirse proxy'siz
+    for (const useProxy of [true, false]) {
+      let currentProxy = null;
+      try {
+        const opts = {
+          format: format,
+          getUrl: true,
+          addHeader: [
+            "referer:https://www.youtube.com/",
+            `user-agent:${ua}`
+          ]
+        };
+
+        // Cookie Rotasyonu — android_vr cookie'siz çalışır, göndermiyoruz
+        if (client !== "android_vr") {
+          const useCookies = process.env.USE_COOKIES !== "false";
+          const resolveCookie = getRandomCookie();
+          if (useCookies && resolveCookie) {
+            opts.cookies = resolveCookie;
+          }
+        }
+
+        // Proxy Rotasyonu — 402 aldıysa proxy'siz dene
+        if (useProxy) {
+          const vIdMatch = videoUrl.match(/v=([^&]+)/);
+          const vId = vIdMatch ? vIdMatch[1] : null;
+          const resolveProxy = getRandomProxy(vId);
+          if (resolveProxy) {
+            opts.proxy = resolveProxy;
+            currentProxy = resolveProxy; // Banlama ihtimali için kaydet
+          } else {
+            // Havuzda proxy yok — proxy'siz denemeye atla (null proxy ile çalışma!)
+            console.log(`[yt-dlp] Proxy havuzu boş, proxy'siz deneniyor...`);
+            continue;
+          }
+        } else {
+          console.log(`[yt-dlp] Proxy'siz deneniyor (proxy kotası bitmiş olabilir)`);
+        }
+
+        // "default" = yt-dlp kendi seçsin
+        if (client !== "default") {
+          opts.extractorArgs = `youtube:player_client=${client}`;
+        }
+
+        console.log(`[yt-dlp] Deneniyor: client=${client}, format=${format}${useProxy ? '' : ' (NO PROXY)'}`);
+        console.log("PROXY TEST:", maskProxyUrl(opts.proxy));
+        const result = await ytdlp(videoUrl, opts, { timeout: 30000, env: { ...process.env, PATH: '/usr/local/bin:' + (process.env.PATH || '') } });
+        const url = result.toString().trim();
+
+        if (url && url.startsWith("http")) {
+          console.log(`[yt-dlp] Başarılı: client=${client}${useProxy ? '' : ' (proxy-siz)'}`);
+          ytDlpFailCount = 0; // reset on success
+          stats.ytDlpSuccess++;
+          return url;
+        }
+      } catch (err) {
+        const errMsg = (err.stderr || err.message || '').toString();
+        // Proxy 402 (kota bitmiş) hatası → proxy'yi panelden otomatik banla ve proxy'siz tekrar dene
+        if (useProxy && (errMsg.includes('402') || errMsg.includes('Payment Required') || errMsg.includes('Unable to connect to proxy') || errMsg.includes('407') || errMsg.includes('Proxy Authentication Required') || errMsg.includes('429') || errMsg.includes('Sign in to confirm'))) {
+          console.warn(`[PROXY_UYARISI] 🚨 PROXY BANLANDI VEYA BİTTİ: ${maskProxyUrl(currentProxy)}`);
+          if (currentProxy) banProxy(currentProxy); // Panelde 6 saat banla
+          console.warn(`[yt-dlp] Proxy hatası (402/407/429). Proxy'siz deneniyor...`);
+          continue; // useProxy=false döngüsüne geç
+        }
+        console.warn(`[yt-dlp] client=${client} başarısız:`, err.stderr || err.message);
+        lastError = err;
+        break; // proxy'siz de deneme, bir sonraki client'a geç
+      }
+    }
+  }
+
+  ytDlpFailCount++;
+  if (ytDlpFailCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    const videoIdMatch = videoUrl.match(/v=([^&]+)/);
+    const vId = videoIdMatch ? videoIdMatch[1] : videoUrl;
+    logError("CIRCUIT_BREAKER", vId, `yt-dlp failed ${ytDlpFailCount} times. Circuit open for 5 mins.`);
+    ytDlpCircuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_TIMEOUT;
+  }
+
+  stats.ytDlpFail++;
+  throw lastError || new Error("Tüm player client'lar başarısız oldu");
+}
 
 // Dinamik + statik Piped instance listesi
 let PIPED_INSTANCES = [
@@ -1159,29 +1478,52 @@ async function tryInvidiousFallback(videoId, type) {
 
 async function resolveStreamUrlWithFallback(videoId, type, ua, countryClient, forceProxy = false) {
   // ═══ DAĞITIK WORKER DESTEĞİ ═══
+  // Bull worker varsa → işi worker'a gönder (yatay ölçekleme)
+  // Worker yoksa → eski lokal sistem devam eder
   if (bullWorkerAvailable) {
     try {
       const bullResult = await resolveViaBull(videoId, type, 1);
       if (bullResult) return bullResult;
+      // Bull başarısız → fallback: lokal çözümleme
       console.log(`[BULL_FALLBACK] ${videoId} worker'da çözülemedi, lokal deneniyor...`);
     } catch (e) {
       console.warn(`[BULL_FALLBACK] ${videoId} Bull hatası: ${e.message}`);
     }
   }
 
-  // Youtubei.js çözümleme
+  // SADECE ÇALIŞAN KAYNAKLAR: yt-dlp + Youtubei.js
+  const allPromises = [];
+
+  // KATMAN 1: yt-dlp (ANA KAYNAK — proxy + cookies ile çalışır)
+  allPromises.push(
+    (async () => {
+      const format = type === "audio" ? "bestaudio" : "best[ext=mp4][protocol^=http]/best[ext=mp4][protocol!=m3u8_native][protocol!=m3u8]/best[ext=mp4]/best";
+      const url = `https://www.youtube.com/watch?v=${videoId}`;
+      const result = await resolveStreamUrl(url, format, ua, countryClient);
+      if (result) return { source: "yt-dlp", url: result };
+      throw new Error("yt-dlp başarısız");
+    })()
+  );
+
+  // KATMAN 2: Youtubei.js (YEDEK — paralel çalışır)
+  allPromises.push(
+    (async () => {
+      const ytUrl = await resolveWithYoutubei(videoId, type);
+      if (ytUrl) return { source: "youtubei", url: ytUrl };
+      throw new Error("Youtubei başarısız");
+    })()
+  );
+
   try {
-    const ytUrl = await resolveWithYoutubei(videoId, type);
-    if (ytUrl) {
-      console.log(`[RESOLVE] --> YOUTUBEI kazandı: ${videoId}`);
-      stats.proxyFallbackSuccess++;
-      return ytUrl;
-    }
-  } catch (e) {
+    const winner = await Promise.any(allPromises);
+    console.log(`[RESOLVE] --> ${winner.source.toUpperCase()} kazandı (en hızlı): ${videoId}`);
+    stats.proxyFallbackSuccess++;
+    return winner.url;
+  } catch (allErr) {
     stats.proxyFallbackFail++;
-    logError("ALL_METHODS_FAIL", videoId, `Youtubei hatası: ${e.message}`);
+    logError("ALL_METHODS_FAIL", videoId, `Tüm yöntemler başarısız: ${allErr.message}`);
+    throw new Error("Tüm yöntemler başarısız oldu (Piped + Invidious + Cobalt + yt-dlp + Youtubei.js).");
   }
-  throw new Error("Tüm yöntemler başarısız oldu.");
 }
 
 const axiosClient = axios.create({
@@ -1248,7 +1590,6 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "X-Timestamp", "X-Signature", "X-App-Key", "X-App-Id", "X-App-Package", "X-Country", "X-Device-Id", "Authorization", "X-Stream-Token", "X-Extractor", "X-Android-Sdk", "X-App-Version", "X-App-Mode"],
   credentials: false
 }));
-app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 
 
