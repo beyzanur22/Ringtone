@@ -39,12 +39,12 @@ function loadDB() {
   }
 }
 
-function saveDB() {
+async function saveDB() {
   if (!isPrimaryWorker) return;
   try {
     const tmpFile = DB_FILE + ".tmp";
-    fs.writeFileSync(tmpFile, JSON.stringify(db, null, 2));
-    fs.renameSync(tmpFile, DB_FILE); // Atomik (kesintisiz) yer değiştirme
+    await fs.promises.writeFile(tmpFile, JSON.stringify(db, null, 2));
+    await fs.promises.rename(tmpFile, DB_FILE); // Atomik (kesintisiz) yer değiştirme
     dirty = false;
   } catch (err) {
     console.error(`[MEDIA_LIB] DB kaydetme hatası: ${err.message}`);
