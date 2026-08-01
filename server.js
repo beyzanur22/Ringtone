@@ -2557,19 +2557,22 @@ app.post("/admin/youtube", basicAuth, async (req, res) => {
 
 // ===== AUTO RINGTONE ADMIN =====
 app.get("/admin/auto-ringtone", basicAuth, (req, res) => {
-  const config = getCachedConfig();
+  const appId = resolveAppId(req);
+  const config = getCachedConfig(appId);
   const ar = config.autoRingtone || { enabled: false };
   res.json(ar);
 });
 
 app.post("/admin/auto-ringtone", basicAuth, (req, res) => {
   try {
-    const config = getCachedConfig();
+    const appId = resolveAppId(req);
+    const config = { ...getCachedConfig(appId) };
     if (!config.autoRingtone) config.autoRingtone = { enabled: false };
     if (req.body.enabled !== undefined) config.autoRingtone.enabled = !!req.body.enabled;
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    _cachedConfigByApp = {};
-    console.log(`[ADMIN] Auto-ringtone ${config.autoRingtone.enabled ? "açıldı" : "kapatıldı"}`);
+    ensureAppData(appId);
+    fs.writeFileSync(pathFor(appId, CONFIG_FILE), JSON.stringify(config, null, 2));
+    delete _cachedConfigByApp[appId];
+    console.log(`[ADMIN] Auto-ringtone (${appId}) ${config.autoRingtone.enabled ? "açıldı" : "kapatıldı"}`);
     res.json({ success: true, autoRingtone: config.autoRingtone });
   } catch (err) {
     res.status(500).json({ error: err.message });
