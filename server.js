@@ -5205,19 +5205,42 @@ app.get("/download/mp4", async (req, res) => {
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
 // ADMIN ANASAYFA — tüm panellere tek noktadan erişim
-app.get("/admin", basicAuth, (req, res) => {
-  // Kayıtlı her uygulama (default hariç) için izole panel kartı — otomatik.
+app.get("/admin", (req, res) => {
+  // KİŞİSEL GİRİŞ: oturum yoksa giriş sayfası
+  const sess = verifySession(readCookie(req, "psess"));
+  if (!sess) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    return res.send(loginPageHtml());
+  }
   const _esc = (s) => String(s == null ? "" : s).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
-  const appCards = Object.values(getApps())
-    .filter(a => a && a.id && a.id !== "default")
-    .map(a => `
-    <a class="card" href="/admin/${_esc(a.id)}/panel" style="border-color:${_esc(a.brandPrimary || "#22c55e")}">
+  const apps = getApps();
+  const isSuper = (sess.apps === "all" || sess.super);
+  // Kullanıcının görebileceği uygulamalar (süper → hepsi, değilse → yetkili olduğu)
+  const scopeIds = isSuper
+    ? Object.keys(apps).filter(id => id !== "default")
+    : (Array.isArray(sess.apps) ? sess.apps.filter(id => apps[id]) : []);
+  const appCards = scopeIds.map(id => {
+    const a = apps[id];
+    return `
+    <a class="card" href="/admin/${_esc(id)}/panel" style="border-color:${_esc(a.brandPrimary || "#22c55e")}">
       <div class="icon" style="background:#15271d">📱</div>
       <div class="card-info">
-        <h3>${_esc(a.name || a.id)}</h3>
-        <p>${_esc(a.packageName || "")} · İzole panel</p>
+        <h3>${_esc(a.name || id)}</h3>
+        <p>${_esc(a.packageName || "")} · Panel</p>
       </div>
-    </a>`).join("");
+    </a>`;
+  }).join("");
+  // Altyapı kartları — SADECE süper kullanıcılar (beyza/olcay) görür
+  const superCards = !isSuper ? "" : `
+    <a class="card" href="/cache-panel"><div class="icon" style="background:#1e293b">💾</div><div class="card-info"><h3>Cache Panel</h3><p>Media önbelleği yönetimi</p></div></a>
+    <a class="card" href="/proxy-panel"><div class="icon" style="background:#1e2a1e">🔁</div><div class="card-info"><h3>Proxy Panel</h3><p>Proxy havuzu ve ban yönetimi</p></div></a>
+    <a class="card" href="/playlist-cache"><div class="icon" style="background:#2a1e1e">🎶</div><div class="card-info"><h3>Playlist Cache</h3><p>Top 50 önbellekleme</p></div></a>
+    <a class="card" href="/converter"><div class="icon" style="background:#1e1e2a">🔄</div><div class="card-info"><h3>Converter</h3><p>MP3/MP4 dönüştürücü</p></div></a>
+    <a class="card" href="/content-filter"><div class="icon" style="background:#2a1a1a">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
+    <a class="card" href="/admin/stats"><div class="icon" style="background:#2a1e2a">📊</div><div class="card-info"><h3>İstatistikler</h3><p>Sunucu & API durumu</p></div></a>
+    <a class="card" href="/health"><div class="icon" style="background:#1e2a24">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
+    <a class="card" href="/admin/panel" style="border-color:#7c3aed"><div class="icon" style="background:#2d1f4e">🎛️</div><div class="card-info"><h3>React Panel</h3><p>Config, Popup & Kanal Yönetimi (Tümü)</p></div></a>`;
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -5307,64 +5330,10 @@ app.get("/admin", basicAuth, (req, res) => {
 <body>
   <div class="logo">🎵 Melodia</div>
   <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+  <div style="margin-bottom:32px;color:#94a3b8;font-size:14px">👤 <b style="color:#e2e8f0">${_esc(sess.user)}</b> · <a href="/admin/logout" style="color:#f87171;text-decoration:none">Çıkış Yap</a></div>
 
   <div class="grid">
-    <a class="card" href="/cache-panel">
-      <div class="icon" style="background:#1e293b">💾</div>
-      <div class="card-info">
-        <h3>Cache Panel</h3>
-        <p>Media önbelleği yönetimi</p>
-      </div>
-    </a>
-    <a class="card" href="/proxy-panel">
-      <div class="icon" style="background:#1e2a1e">🔁</div>
-      <div class="card-info">
-        <h3>Proxy Panel</h3>
-        <p>Proxy havuzu ve ban yönetimi</p>
-      </div>
-    </a>
-    <a class="card" href="/playlist-cache">
-      <div class="icon" style="background:#2a1e1e">🎶</div>
-      <div class="card-info">
-        <h3>Playlist Cache</h3>
-        <p>Top 50 önbellekleme</p>
-      </div>
-    </a>
-    <a class="card" href="/converter">
-      <div class="icon" style="background:#1e1e2a">🔄</div>
-      <div class="card-info">
-        <h3>Converter</h3>
-        <p>MP3/MP4 dönüştürücü</p>
-      </div>
-    </a>
-    <a class="card" href="/content-filter">
-      <div class="icon" style="background:#2a1a1a">🎚️</div>
-      <div class="card-info">
-        <h3>İçerik Filtresi</h3>
-        <p>Canlı yayın engeli & süre limiti</p>
-      </div>
-    </a>
-    <a class="card" href="/admin/stats">
-      <div class="icon" style="background:#2a1e2a">📊</div>
-      <div class="card-info">
-        <h3>İstatistikler</h3>
-        <p>Sunucu & API durumu</p>
-      </div>
-    </a>
-    <a class="card" href="/health">
-      <div class="icon" style="background:#1e2a24">❤️</div>
-      <div class="card-info">
-        <h3>Health Check</h3>
-        <p>Sistem sağlık durumu</p>
-      </div>
-    </a>
-    <a class="card" href="/admin/panel" style="border-color:#7c3aed">
-      <div class="icon" style="background:#2d1f4e">🎛️</div>
-      <div class="card-info">
-        <h3>React Panel</h3>
-        <p>Config, Popup & Kanal Yönetimi (Tümü)</p>
-      </div>
-    </a>${appCards}
+    ${superCards}${appCards}
   </div>
 
   <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
@@ -5473,19 +5442,29 @@ app.get("/admin/panel/*", (req, res) => servePanelBySession(req, res, true));
 function _issuePanelCookie(res, appId) {
   res.setHeader("Set-Cookie", `pnl=${encodeURIComponent(signPanelCookie(appId))}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=43200`);
 }
-app.get(["/admin/:appId/panel", "/admin/:appId/panel/"], perAppPanelAuth, (req, res) => {
-  const appId = req._panelAppId;
+// Per-app panel: önce kişisel oturum (o uygulamaya yetkiliyse), yoksa eski per-app basic auth
+function servePerAppPanel(req, res, isSpa) {
+  const appId = String(req.params.appId || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  if (!getApps()[appId] || appId === "default") return res.status(404).send("Bilinmeyen uygulama paneli");
+  const sess = verifySession(readCookie(req, "psess"));
+  let ok = !!(sess && (sess.apps === "all" || sess.super || (Array.isArray(sess.apps) && sess.apps.includes(appId))));
+  if (!ok) {
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      try { const [u, p] = Buffer.from(authHeader.split(" ")[1], "base64").toString().split(":"); if (u === appId && p === perAppPass(appId)) ok = true; } catch (e) {}
+    }
+    if (!ok) { res.setHeader("WWW-Authenticate", `Basic realm="${appId} panel"`); return res.status(401).send("Giriş gerekli"); }
+  }
+  if (isSpa) {
+    const rel = req.params[0] || "";
+    const fp = path.join(REACT_PANEL_DIR, rel);
+    if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
+  }
   _issuePanelCookie(res, appId);
   return sendPanelIndex(res, appId, perAppKey(appId));
-});
-app.get("/admin/:appId/panel/*", perAppPanelAuth, (req, res) => {
-  const appId = req._panelAppId;
-  const rel = req.params[0] || "";
-  const fp = path.join(REACT_PANEL_DIR, rel);
-  if (rel && !rel.includes("..") && fs.existsSync(fp) && fs.statSync(fp).isFile()) return res.sendFile(fp);
-  _issuePanelCookie(res, appId);
-  return sendPanelIndex(res, appId, perAppKey(appId));
-});
+}
+app.get(["/admin/:appId/panel", "/admin/:appId/panel/"], (req, res) => servePerAppPanel(req, res, false));
+app.get("/admin/:appId/panel/*", (req, res) => servePerAppPanel(req, res, true));
 
 // ==========================================
 // ADMIN_PASS ve basicAuth dosyanın başında tanımlı (satır ~15)
