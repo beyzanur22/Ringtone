@@ -2057,20 +2057,100 @@ function sessionInjection(sess) {
 }
 // Google-benzeri giriş sayfası (sunucudan render — build gerekmez)
 function loginPageHtml() {
-  return `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Melodia Panel — Giriş</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0b12;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.box{background:#15151f;border:1px solid #2a2a35;border-radius:16px;padding:36px 32px;width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
-h1{font-size:22px;margin-bottom:4px;text-align:center;color:#a78bfa}.sub{font-size:13px;color:#64748b;text-align:center;margin-bottom:24px}
-label{font-size:12px;color:#94a3b8;display:block;margin:14px 0 6px}input{width:100%;padding:12px 14px;background:#0b0b12;border:1px solid #333;border-radius:10px;color:#fff;font-size:15px;outline:none}input:focus{border-color:#a78bfa}
-button{width:100%;margin-top:22px;padding:12px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}button:hover{background:#6d28d9}
-.err{background:#2a1216;border:1px solid #5b2130;color:#f87171;padding:10px;border-radius:8px;font-size:13px;margin-bottom:12px;display:none}</style></head><body>
-<div class="box"><h1>🎵 Melodia</h1><div class="sub">Panel Girişi</div><div class="err" id="err"></div>
-<form id="f"><label>Kullanıcı Adı</label><input name="u" autocomplete="username" autofocus>
-<label>Şifre</label><input name="p" type="password" autocomplete="current-password">
-<button type="submit">Giriş Yap</button></form></div>
-<script>document.getElementById('f').addEventListener('submit',async function(e){e.preventDefault();
-var r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({u:this.u.value,p:this.p.value})});
-if(r.ok){location.href='/admin/panel';}else{var d=document.getElementById('err');d.textContent='Kullanıcı adı veya şifre hatalı';d.style.display='block';}});</script>
+  return `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0b12">
+<title>Melodia — Panel Girişi</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a11;--card:rgba(24,24,35,.72);--line:rgba(255,255,255,.08);--txt:#e8eaf2;--dim:#8b93a7;--accent:#a78bfa;--accent2:#7c3aed}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;overflow:hidden;position:relative}
+/* arka plan ışık lekeleri */
+.blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.5;pointer-events:none;z-index:0}
+.b1{width:420px;height:420px;background:#7c3aed;top:-140px;left:-120px;animation:f1 18s ease-in-out infinite}
+.b2{width:360px;height:360px;background:#2563eb;bottom:-130px;right:-110px;animation:f2 22s ease-in-out infinite}
+.b3{width:260px;height:260px;background:#db2777;top:45%;right:18%;opacity:.28;animation:f1 26s ease-in-out infinite reverse}
+@keyframes f1{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,50px)}}
+@keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-50px,-40px)}}
+.card{position:relative;z-index:1;width:100%;max-width:390px;background:var(--card);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border:1px solid var(--line);border-radius:22px;padding:40px 34px 32px;box-shadow:0 30px 80px rgba(0,0,0,.55);animation:in .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes in{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+.logo{font-size:44px;text-align:center;line-height:1;margin-bottom:14px;animation:beat 3.5s ease-in-out infinite}
+@keyframes beat{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+h1{font-size:27px;font-weight:800;text-align:center;letter-spacing:-.5px;background:linear-gradient(120deg,#c4b5fd,#a78bfa,#60a5fa);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.sub{font-size:13px;color:var(--dim);text-align:center;margin:6px 0 28px}
+.err{background:rgba(190,40,60,.14);border:1px solid rgba(248,113,113,.34);color:#fca5a5;padding:11px 14px;border-radius:12px;font-size:13px;margin-bottom:16px;display:none;text-align:center}
+.err.show{display:block;animation:shake .45s}
+@keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+label{font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:7px}
+.grp{margin-bottom:17px;position:relative}
+.ico{position:absolute;left:14px;top:38px;font-size:15px;opacity:.5;pointer-events:none}
+input{width:100%;padding:13px 14px 13px 42px;background:rgba(10,10,17,.75);border:1px solid var(--line);border-radius:13px;color:#fff;font-size:15px;outline:none;transition:border-color .18s,box-shadow .18s}
+input::placeholder{color:#4b5265}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(167,139,250,.16)}
+.eye{position:absolute;right:8px;top:31px;background:none;border:none;color:var(--dim);cursor:pointer;font-size:15px;padding:6px 8px;border-radius:8px;width:auto;margin:0}
+.eye:hover{color:var(--txt);background:rgba(255,255,255,.06)}
+button[type=submit]{width:100%;margin-top:9px;padding:14px;background:linear-gradient(120deg,var(--accent2),#6366f1);color:#fff;border:none;border-radius:13px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .2s,opacity .2s;box-shadow:0 8px 24px rgba(124,58,237,.34)}
+button[type=submit]:hover{transform:translateY(-1px);box-shadow:0 12px 30px rgba(124,58,237,.46)}
+button[type=submit]:active{transform:translateY(0)}
+button[type=submit]:disabled{opacity:.65;cursor:wait;transform:none}
+.foot{margin-top:24px;text-align:center;font-size:11.5px;color:#5a6175}
+@media(max-width:420px){.card{padding:32px 22px 26px;border-radius:18px}h1{font-size:24px}}
+</style></head><body>
+<div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+<div class="card" id="card">
+  <div class="logo">🎵</div>
+  <h1>Melodia</h1>
+  <div class="sub">Yönetim Paneli</div>
+  <div class="err" id="err"></div>
+  <form id="f" autocomplete="on">
+    <div class="grp">
+      <label for="u">Kullanıcı Adı</label>
+      <span class="ico">👤</span>
+      <input id="u" name="u" placeholder="kullanıcı adınız" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
+    </div>
+    <div class="grp">
+      <label for="p">Şifre</label>
+      <span class="ico">🔒</span>
+      <input id="p" name="p" type="password" placeholder="••••••••" autocomplete="current-password">
+      <button type="button" class="eye" id="eye" title="Şifreyi göster">👁</button>
+    </div>
+    <button type="submit" id="btn">Giriş Yap</button>
+  </form>
+  <div class="foot">music.cevapla.tv</div>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('f'),err=document.getElementById('err'),btn=document.getElementById('btn'),
+      card=document.getElementById('card'),eye=document.getElementById('eye'),p=document.getElementById('p');
+  eye.addEventListener('click',function(){
+    var show=p.type==='password';
+    p.type=show?'text':'password';
+    eye.textContent=show?'🙈':'👁';
+    p.focus();
+  });
+  function fail(msg){
+    err.textContent=msg;
+    err.classList.remove('show');
+    void err.offsetWidth;          // animasyonu yeniden tetikle
+    err.classList.add('show');
+    card.style.animation='none';void card.offsetWidth;card.style.animation='shake .45s';
+    btn.disabled=false;btn.textContent='Giriş Yap';
+  }
+  f.addEventListener('submit',function(e){
+    e.preventDefault();
+    var u=f.u.value.trim(),pw=f.p.value;
+    if(!u||!pw){fail('Kullanıcı adı ve şifre gerekli');return;}
+    btn.disabled=true;btn.textContent='Giriş yapılıyor...';
+    fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({u:u,p:pw})})
+      .then(function(r){
+        if(r.ok){btn.textContent='✓ Giriş başarılı';location.reload();}
+        else{fail('Kullanıcı adı veya şifre hatalı');}
+      })
+      .catch(function(){fail('Sunucuya ulaşılamadı — bağlantını kontrol et');});
+  });
+})();
+</script>
 </body></html>`;
 }
 // appId'ye göre veri dosyası yolu. default → kök, diğerleri → data/<appId>/
