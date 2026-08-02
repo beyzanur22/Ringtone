@@ -20,7 +20,13 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 5000,
-        MEDIA_DIR: "/app/media"
+        MEDIA_DIR: "/app/media",
+        // Node'un dosya I/O havuzu varsayılan 4 thread. Cache'ten dosya sunmak,
+        // disk temizliği ve indirme yazımı hep bu havuzu paylaşır → yoğunlukta
+        // istekler sıraya girip yavaşlıyordu. 32'ye çıkarınca darboğaz kalkar.
+        UV_THREADPOOL_SIZE: 32,
+        // Cache'te 4 gün dinlenmeyen dosya silinir (eski: 24 saat).
+        CACHE_MAX_IDLE_HOURS: 96
       }
     },
 

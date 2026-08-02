@@ -646,8 +646,9 @@ const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /
 });
 const MAX_CACHE_SIZE = 125 * 1024 * 1024 * 1024; // 125GB — Contabo VPS (145GB disk), 20GB sisteme kalır
 
-// 24 saattir DİNLENMEYEN cache dosyaları otomatik silinir. .env'de CACHE_MAX_IDLE_HOURS ile değiştirilir.
-const CACHE_MAX_IDLE_MS = (parseInt(process.env.CACHE_MAX_IDLE_HOURS) || 24) * 60 * 60 * 1000;
+// 4 GÜN (96 saat) dinlenmeyen cache dosyaları otomatik silinir. .env'de CACHE_MAX_IDLE_HOURS ile değiştirilir.
+// Not: Süre uzadıkça disk daha dolu kalır ama cache isabet oranı artar → şarkılar daha hızlı açılır.
+const CACHE_MAX_IDLE_MS = (parseInt(process.env.CACHE_MAX_IDLE_HOURS) || 96) * 60 * 60 * 1000;
 
 // Cache dosyası dinlendiğinde "son erişim" zamanını GÜNCELLE (mtime = şimdi).
 // Böylece 24 saat boyunca hiç dinlenmeyen dosyalar checkDiskSpaceAndCleanup ile silinir,
@@ -655,6 +656,15 @@ const CACHE_MAX_IDLE_MS = (parseInt(process.env.CACHE_MAX_IDLE_HOURS) || 24) * 6
 function touchCache(filePath) {
   const nowDate = new Date();
   fs.promises.utimes(filePath, nowDate, nowDate).catch(() => {});
+}
+
+// Dosya varsa stat'ını, yoksa null döner — ASENKRON.
+// Hot path'te (şarkı açılırken) fs.existsSync + fs.statSync kullanılıyordu; bunlar
+// event loop'u bloke ettiği için yoğun anlarda TÜM istekler sıraya giriyordu.
+// Tek asenkron çağrı hem "var mı" hem "boyut" sorusunu cevaplar.
+async function statOrNull(filePath) {
+  if (!filePath) return null;
+  try { return await fs.promises.stat(filePath); } catch (_) { return null; }
 }
 
 // Async disk temizleme — event loop'u bloke etmez
@@ -667,19 +677,24 @@ async function checkDiskSpaceAndCleanup() {
     for (const dir of allDirs) {
       try { await fs.promises.access(dir); } catch { continue; }
       const entries = await fs.promises.readdir(dir);
-      for (const f of entries) {
-        const p = path.join(dir, f);
-        try {
-          const stat = await fs.promises.stat(p);
-          allFiles.push({ path: p, stat, name: f });
-        } catch (_) { /* dosya silinmiş olabilir */ }
+      // stat'ları 64'lük gruplar halinde PARALEL al. Eskiden tek tek await ediliyordu:
+      // binlerce dosyada bu, dosya sunan istekleri bekletiyordu.
+      for (let i = 0; i < entries.length; i += 64) {
+        const chunk = entries.slice(i, i + 64);
+        const stats = await Promise.all(chunk.map(async f => {
+          const p = path.join(dir, f);
+          try { return { path: p, stat: await fs.promises.stat(p), name: f }; }
+          catch (_) { return null; }   // dosya silinmiş olabilir
+        }));
+        for (const s of stats) if (s) allFiles.push(s);
       }
+    }
 
-      // Temp dosyaları temizle
-      for (const file of allFiles) {
-        if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
-          try { await fs.promises.unlink(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
-        }
+    // Temp dosyaları temizle — TÜM klasörler tarandıktan SONRA bir kez.
+    // (Eskiden klasör döngüsünün içindeydi → aynı dosyalar iki kez taranıyordu.)
+    for (const file of allFiles) {
+      if ((file.path.endsWith('.tmp') || file.path.endsWith('.ytdl') || file.path.includes('.part') || file.path.includes('.fallback')) && (now - file.stat.mtimeMs > 10 * 60 * 1000)) {
+        try { await fs.promises.unlink(file.path); console.log(`[DISK_CLEANUP] Eski temp silindi: ${file.path}`); } catch (e) { }
       }
     }
 
@@ -718,7 +733,10 @@ async function checkDiskSpaceAndCleanup() {
     }
   } catch (err) { console.error(`[DISK_CLEANUP] Hata: ${err.message}`); }
 }
-if (isPrimaryWorker) setInterval(checkDiskSpaceAndCleanup, 60 * 1000);
+// Temizlik 60 SANİYEDE BİR değil, 10 DAKİKADA BİR. Binlerce dosyanın stat'ını
+// her dakika almak, dosya sunan isteklerle aynı I/O havuzunu tüketip kasmaya yol
+// açıyordu. Disk 125GB limitli ve dolma hızı düşük — 10 dakika fazlasıyla yeterli.
+if (isPrimaryWorker) setInterval(checkDiskSpaceAndCleanup, 10 * 60 * 1000);
 const downloadingFiles = new Set();
 
 // 403 durumunda yeni stream URL almak için helper
@@ -3401,6 +3419,33 @@ app.post("/send-notification", basicAuth, async (req, res) => {
 
 // TOP 50
 
+/* YANIT KÜÇÜLTME — mobilde açılışı hızlandırır, APK güncellemesi GEREKMEZ.
+   Android fetchTop50() sadece şunları okur:
+     id, snippet.title, snippet.channelTitle,
+     snippet.thumbnails.(high|medium|default).url, contentDetails.duration
+   YouTube ise ayrıca description, localized (başlık+açıklama tekrarı), tags,
+   statistics ve 5 boy küçük resim gönderiyor. Ölçüm: 121 KB yanıtın 106 KB'ı
+   uygulamanın hiç bakmadığı alanlar (%88). Kesilince telefon çok daha az veri
+   indirip parse ediyor.
+   NOT: channelId KALIR — engelli kanal filtresi onu kullanıyor. */
+function slimTop50(items) {
+  if (!Array.isArray(items)) return items;
+  return items.map(it => {
+    if (!it || typeof it !== "object") return it;
+    const sn = it.snippet || {};
+    const th = sn.thumbnails || {};
+    const slimTh = {};
+    for (const k of ["high", "medium", "default"]) if (th[k]) slimTh[k] = th[k];
+    const out = {
+      id: it.id,
+      snippet: { title: sn.title, channelTitle: sn.channelTitle, channelId: sn.channelId, thumbnails: slimTh }
+    };
+    const dur = (it.contentDetails || {}).duration;
+    if (dur) out.contentDetails = { duration: dur };
+    return out;
+  });
+}
+
 app.get("/top50", async (req, res) => {
   // Ülke tespiti: Cloudflare header > Android X-Country header > fallback US
   const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "US";
@@ -3415,7 +3460,7 @@ app.get("/top50", async (req, res) => {
     const cached = await cacheGet(cacheKey);
     if (cached) {
       const filtered = Array.isArray(cached) ? filterBlockedChannels(cached, country) : cached;
-      return res.json({ source: "cache", region, data: filtered });
+      return res.json({ source: "cache", region, data: slimTop50(filtered) });
     }
 
     let items;
@@ -3452,6 +3497,8 @@ app.get("/top50", async (req, res) => {
       }
     }
 
+    // Cache'e de küçültülmüş hâli yazılır → Redis belleği de ~%88 azalır.
+    items = slimTop50(items);
     await cacheSet(cacheKey, items, CACHE_DURATION);
 
     // Top50 prewarm İPTAL: her /top50 isteğinde 15 şarkının MP3'ünü arka planda
@@ -3461,7 +3508,7 @@ app.get("/top50", async (req, res) => {
     // prewarmTop10(items);
 
     res.setHeader("Cache-Control", `public, max-age=${CACHE_DURATION}`);
-    res.json({ source: "youtube", region, data: items });
+    res.json({ source: "youtube", region, data: slimTop50(items) });
   } catch (error) {
     logError("TOP50", null, `region=${region} ${error.message}`);
     console.error(`TOP50 ERROR [${region}]:`, error.message);
@@ -3756,10 +3803,11 @@ app.get("/stream", async (req, res) => {
     const mediaTrack = mediaLib.getReadyTrack(videoId, extStr === "m4a" ? "m4a" : "mp4");
     if (mediaTrack && mediaTrack.files) {
       const mediaFile = mediaTrack.files[extStr === "m4a" ? "m4a" : "mp4"];
-      if (mediaFile && fs.existsSync(mediaFile)) {
+      const mediaStat = await statOrNull(mediaFile);
+      if (mediaStat) {
         console.log(`[MEDIA_LIB_HIT] 🎵 Kendi diskimizden sunuluyor: ${videoId}`);
         mediaLib.recordAccess(videoId);
-        const fSize = fs.statSync(mediaFile).size;
+        const fSize = mediaStat.size;
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/mp4");
         res.setHeader("Content-Length", fSize);
         res.setHeader("Accept-Ranges", "bytes");
@@ -3772,13 +3820,17 @@ app.get("/stream", async (req, res) => {
 
     // KATMAN 0: DISK CACHE (Anlık — ağ gecikmesi yok)
     // İki format kontrol: "audio_videoId.m4a" (downloadToCache) ve "videoId.m4a" (FFmpeg)
-    const diskFile = fs.existsSync(localFile) ? localFile : (fs.existsSync(altFile) ? altFile : (mp3File && fs.existsSync(mp3File) ? mp3File : null));
+    // Üç olası dosya adını ASENKRON dene — ilk bulunanın stat'ı zaten elimizde olur.
+    let diskFile = null, stats = null;
+    for (const cand of [localFile, altFile, mp3File]) {
+      const st = await statOrNull(cand);
+      if (st) { diskFile = cand; stats = st; break; }
+    }
     if (diskFile) {
-      const stats = fs.statSync(diskFile);
       const minSize = typeStr === "video" ? 100 * 1024 : 20 * 1024;
       if (stats.size < minSize) {
         console.warn(`[DISK_CACHE_ERR] Bozuk dosya, siliniyor: ${diskFile}`);
-        fs.unlinkSync(diskFile);
+        await fs.promises.unlink(diskFile).catch(() => {});
       } else {
         console.log(`[DISK_CACHE_HIT]  Diskten anında sunuluyor: ${videoId} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         touchCache(diskFile); // dinlendi → 24sa idle sayacını sıfırla
@@ -4150,7 +4202,8 @@ async function warmTop50() {
         }
       });
       trackYoutubeApiCall();
-      const items = filterBlockedChannels(response.data.items);
+      // Isıtmada da küçültülmüş hâli cache'lenir (yanıt %88 küçülür, Redis belleği de).
+      const items = slimTop50(filterBlockedChannels(response.data.items));
       await cacheSet(`top50:${region}`, items, CACHE_DURATION);
       console.log(`[WARMUP] Top50 ${region} cache hazır.`);
 
