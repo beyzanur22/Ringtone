@@ -4396,6 +4396,10 @@ app.delete("/admin/review-logs", basicAuth, (req, res) => {
 const LOGIN_IPS_MAX = 500;              // en fazla 500 IP tutulur (en eskisi düşer)
 const LOGIN_IPS_ZKEY = "login:ips:z";   // sorted set: member=ip, score=lastSeen(ms)
 const loginIpKey = (ip) => `login:ip:${ip}`;
+/* UYGULAMA BAŞINA İZOLASYON — her paket kendi giriş IP'lerini görür.
+   default/boş → eski global anahtarlar (mevcut veri korunur, süper panel hepsini görür). */
+const loginIpsZKeyApp = (appId) => appId && appId !== "default" ? `login:ips:z:app:${appId}` : LOGIN_IPS_ZKEY;
+const loginIpKeyApp = (ip, appId) => appId && appId !== "default" ? `login:ip:app:${appId}:${ip}` : loginIpKey(ip);
 
 async function recordLoginIp(req, endpoint) {
   try {
@@ -4403,7 +4407,10 @@ async function recordLoginIp(req, endpoint) {
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "?";
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
-    const key = loginIpKey(ip);
+    // Uygulama kendi paket adını X-App-Package ile bildirir → kendi listesine yazılır
+    const appId = resolveAppId(req);
+    const zkey = loginIpsZKeyApp(appId);
+    const key = loginIpKeyApp(ip, appId);
 
     const pipe = redis.pipeline();
     pipe.hincrby(key, "count", 1);
@@ -4413,18 +4420,18 @@ async function recordLoginIp(req, endpoint) {
     pipe.hsetnx(key, "firstSeen", nowIso);
     pipe.hsetnx(key, "id", nowMs.toString(36) + Math.random().toString(36).slice(2, 6));
     pipe.hsetnx(key, "ip", ip);
-    pipe.zadd(LOGIN_IPS_ZKEY, nowMs, ip);
+    pipe.zadd(zkey, nowMs, ip);
     await pipe.exec();
 
     // 500 sınırı: fazlaysa en eski kayıtları at (yalnızca primary worker yapar)
     if (isPrimaryWorker) {
-      const total = await redis.zcard(LOGIN_IPS_ZKEY);
+      const total = await redis.zcard(zkey);
       if (total > LOGIN_IPS_MAX) {
-        const stale = await redis.zrange(LOGIN_IPS_ZKEY, 0, total - LOGIN_IPS_MAX - 1);
+        const stale = await redis.zrange(zkey, 0, total - LOGIN_IPS_MAX - 1);
         if (stale.length) {
           const delPipe = redis.pipeline();
-          stale.forEach(sip => delPipe.del(loginIpKey(sip)));
-          delPipe.zremrangebyrank(LOGIN_IPS_ZKEY, 0, stale.length - 1);
+          stale.forEach(sip => delPipe.del(loginIpKeyApp(sip, appId)));
+          delPipe.zremrangebyrank(zkey, 0, stale.length - 1);
           await delPipe.exec();
         }
       }
@@ -4436,10 +4443,13 @@ async function recordLoginIp(req, endpoint) {
 
 app.get("/admin/login-ips", basicAuth, async (req, res) => {
   try {
-    const ips = await redis.zrevrange(LOGIN_IPS_ZKEY, 0, -1); // en yeni önce
+    // İzole panelden gelindiyse SADECE o uygulamanın IP'leri; master ise global liste
+    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const zkey = loginIpsZKeyApp(boundApp);
+    const ips = await redis.zrevrange(zkey, 0, -1); // en yeni önce
     if (!ips.length) return res.json({ total: 0, ips: [] });
     const pipe = redis.pipeline();
-    ips.forEach(ip => pipe.hgetall(loginIpKey(ip)));
+    ips.forEach(ip => pipe.hgetall(loginIpKeyApp(ip, boundApp)));
     const results = await pipe.exec();
     const list = results
       .map(([err, h]) => (err || !h || !h.ip) ? null : { ...h, count: Number(h.count) || 0 })
@@ -4453,10 +4463,13 @@ app.get("/admin/login-ips", basicAuth, async (req, res) => {
 
 app.delete("/admin/login-ips", basicAuth, async (req, res) => {
   try {
-    const ips = await redis.zrange(LOGIN_IPS_ZKEY, 0, -1);
+    // Sadece kendi uygulamasının listesini temizler — diğer uygulamalara dokunmaz
+    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const zkey = loginIpsZKeyApp(boundApp);
+    const ips = await redis.zrange(zkey, 0, -1);
     const pipe = redis.pipeline();
-    ips.forEach(ip => pipe.del(loginIpKey(ip)));
-    pipe.del(LOGIN_IPS_ZKEY);
+    ips.forEach(ip => pipe.del(loginIpKeyApp(ip, boundApp)));
+    pipe.del(zkey);
     await pipe.exec();
     console.log(`[LOGIN_IPS] Liste temizlendi (${ips.length} kayıt, istek IP: ${req.ip})`);
     res.json({ ok: true, cleared: ips.length });
