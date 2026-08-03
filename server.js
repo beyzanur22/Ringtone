@@ -1682,7 +1682,7 @@ app.use(async (req, res, next) => {
   // CORS preflight — OPTIONS isteklerini her zaman geçir
   if (req.method === "OPTIONS") return next();
   // Canlı kullanıcı sayacı — uygulamadan gelen her istek burada işaretlenir (fire&forget)
-  recordPresence(req);
+  recordPresence(req).catch(() => {});   // fire&forget — isteği asla bloklamaz
   // Tamamen açık endpoint'ler (minimum tutuldu — güvenlik için)
   if (req.path === "/health" || (req.path === "/config" && req.method === "GET") || req.path === "/auth/token" ||
       (req.path === "/blocked-channels" && req.method === "GET") ||
@@ -1987,6 +1987,18 @@ function isMasterRequest(req) {
   }
   return false;
 }
+// active-users / login-ips gibi presence & IP kayıtları için KAPSAM çöz:
+//   • per-app key  → o uygulama (kilitli, ?appId yok sayılır — çapraz erişim yok)
+//   • master/admin → ?appId= verilmişse o uygulama; yoksa null (GLOBAL, tüm app'ler)
+// resolveAppId'den farkı: master + appId yok → "default" DEĞİL, null (global) döner.
+// Böylece süper panelde dropdown'dan app seçince presence/IP o app'e daralır.
+function resolveScopeApp(req) {
+  const bound = resolveAppFromKey(req.headers["x-app-key"]);
+  if (bound) return bound;
+  if (!isMasterRequest(req)) return null;
+  const raw = ((req.query && req.query.appId) || "").toString().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return (raw && raw !== "default" && getApps()[raw]) ? raw : null;
+}
 // Bir uygulamanın izole panel giriş bilgileri (yol + kullanıcı + şifre).
 function panelCredentials(appId) {
   return { id: appId, panelPath: `/admin/${appId}/panel`, user: appId, pass: perAppPass(appId) };
@@ -2144,8 +2156,12 @@ button[type=submit]:disabled{opacity:.65;cursor:wait;transform:none}
     fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({u:u,p:pw})})
       .then(function(r){
-        if(r.ok){btn.textContent='✓ Giriş başarılı';location.reload();}
-        else{fail('Kullanıcı adı veya şifre hatalı');}
+        // Giriş sonrası HER ZAMAN kart ekranına (/admin) git — panele oradan tıklanarak girilir.
+        if(r.ok){btn.textContent='✓ Giriş başarılı';location.href='/admin';return;}
+        // 401 = gerçekten yanlış şifre. Diğer kodlar sunucu/bağlantı sorunudur;
+        // ikisini karıştırmak "şifrem doğru ama kabul etmiyor" sanısına yol açıyordu.
+        if(r.status===401){fail('Kullanıcı adı veya şifre hatalı');}
+        else{fail('Sunucuya bağlanılamadı (HTTP '+r.status+')');}
       })
       .catch(function(){fail('Sunucuya ulaşılamadı — bağlantını kontrol et');});
   });
@@ -4524,7 +4540,7 @@ async function recordLoginIp(req, endpoint) {
 app.get("/admin/login-ips", basicAuth, async (req, res) => {
   try {
     // İzole panelden gelindiyse SADECE o uygulamanın IP'leri; master ise global liste
-    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const boundApp = resolveScopeApp(req);
     const zkey = loginIpsZKeyApp(boundApp);
     const ips = await redis.zrevrange(zkey, 0, -1); // en yeni önce
     if (!ips.length) return res.json({ total: 0, ips: [] });
@@ -4544,7 +4560,7 @@ app.get("/admin/login-ips", basicAuth, async (req, res) => {
 app.delete("/admin/login-ips", basicAuth, async (req, res) => {
   try {
     // Sadece kendi uygulamasının listesini temizler — diğer uygulamalara dokunmaz
-    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const boundApp = resolveScopeApp(req);
     const zkey = loginIpsZKeyApp(boundApp);
     const ips = await redis.zrange(zkey, 0, -1);
     const pipe = redis.pipeline();
@@ -4602,6 +4618,23 @@ function normalizeExtractor(req) {
   return "unknown";
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   IP → (cihaz, uygulama) HAFIZASI  —  canlı kullanıcı izolasyonu
+
+   Sorun: ExoPlayer'ın /stream ve /stream/video istekleri OkHttp interceptor'ını
+   ATLAR (DefaultHttpDataSource), bu yüzden X-App-Package / X-Device-Id TAŞIMAZ.
+   Kullanıcı müzik dinlerken akan tek trafik bu olduğundan presence "default"
+   havuzuna yazılıyor, izole panelde (ogzmusic/memomusic) canlı kullanıcı hep
+   boş görünüyordu — giriş IP'leri ise kalıcı liste olduğu için görünüyordu.
+
+   Çözüm (APK değişmeden): kimlik taşıyan isteklerde (/config, /search, /top50)
+   IP → "uid|appId" eşlemesini hatırla; kimliksiz istekte (stream) aynı IP'den
+   son bilinen cihaz+uygulamayı kullan. uid'i de devraldığımız için aynı cihaz
+   mükerrer sayılmaz. Eşleme yoksa eski davranış korunur (regresyon yok).
+   ───────────────────────────────────────────────────────────────────────── */
+const APP_BY_IP_TTL = 7200;                       // 2 saat
+const appByIpKey = (ip) => `app:byip:${ip}`;
+
 function presenceUid(req) {
   const dev = req.headers["x-device-id"];
   if (typeof dev === "string" && dev.length >= 6) return "d:" + dev.slice(0, 64);
@@ -4625,10 +4658,10 @@ function isPresenceCountable(req) {
   return true;
 }
 
-function recordPresence(req) {
+async function recordPresence(req) {
   try {
     if (!isPresenceCountable(req)) return;
-    const uid = presenceUid(req);
+    let uid = presenceUid(req);
     const nowMs = Date.now();
 
     // Throttle — aynı cihaz 30 sn içinde tekrar yazılmaz (yoğun trafikte Redis'i korur)
@@ -4643,6 +4676,28 @@ function recordPresence(req) {
 
     const ip = req.ip || "?";
     const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "?";
+
+    // ── Uygulama kimliği: header varsa KESİN, yoksa IP hafızasından devral ──
+    let appId = resolveAppId(req);
+    const hasAppIdentity = !!(req.headers["x-app-package"] || req.headers["x-app-id"]);
+    const hasDeviceId = typeof req.headers["x-device-id"] === "string" && req.headers["x-device-id"].length >= 6;
+    if (hasAppIdentity && hasDeviceId) {
+      // Kimliği kesin bilinen istek → bu IP'nin cihaz+uygulamasını hatırla.
+      // "default" (Musica) da yazılır; böylece Musica kullanıcısı IP paylaşsa bile
+      // yanlışlıkla başka bir uygulamaya sayılmaz.
+      redis.set(appByIpKey(ip), uid + "|" + appId, "EX", APP_BY_IP_TTL).catch(() => {});
+    } else if (!hasAppIdentity) {
+      // Kimliksiz istek (ExoPlayer /stream) → aynı IP'den son bilineni kullan
+      const rec = await redis.get(appByIpKey(ip)).catch(() => null);
+      if (rec) {
+        const sep = rec.indexOf("|");
+        const mUid = sep > 0 ? rec.slice(0, sep) : "";
+        const mApp = sep > 0 ? rec.slice(sep + 1) : "";
+        if (mUid) uid = mUid;                               // mükerrer cihaz sayımını önler
+        if (mApp && getApps()[mApp]) appId = mApp;
+      }
+    }
+
     const key = presenceKey(uid);
     const minKey = presenceMinKey(nowMs);
 
@@ -4670,8 +4725,7 @@ function recordPresence(req) {
     pipe.expire(minKey, 7200);
 
     // İZOLE PANEL: non-default uygulama trafiğini ayrıca per-app havuza yaz.
-    // appId, uygulamanın gönderdiği X-App-Id header'ından gelir (yoksa "default").
-    const appId = resolveAppId(req);
+    // appId yukarıda çözüldü: header'dan (kesin) veya IP hafızasından (stream).
     if (appId && appId !== "default") {
       pipe.hset(key, "appId", appId);
       pipe.zadd(presenceZKeyApp(appId), nowMs, uid);
@@ -4719,7 +4773,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
 
     // İZOLE PANEL kapsamı: per-app key ile gelindiyse SADECE o uygulama;
     // master key (süper panel) ile gelindiyse null → GLOBAL (tüm uygulamalar).
-    const boundApp = resolveAppFromKey(req.headers["x-app-key"]);
+    const boundApp = resolveScopeApp(req);
     const ZKEY = presenceZKeyApp(boundApp);
     const EXKEY = (ex) => presenceExtractorZKeyApp(ex, boundApp);
     const MINKEY = (ms) => presenceMinKeyApp(ms, boundApp);

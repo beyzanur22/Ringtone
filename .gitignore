@@ -21,3 +21,14 @@ NewPipeExtractor-fork/
 temp_repo/
 .claude/worktrees/
 .claude/settings.local.json
+admin_panel/
+
+# ═══ RUNTIME AYAR DOSYALARI — GIT'E GİRMEZ ═══
+# Bunlar panelden yazılır. Git'te takipli kalırlarsa deploy (pull/checkout/reset)
+# sunucudaki gerçek ayarları repo'daki eski/boş sürümle EZER → ülke ayarları,
+# uygulama kayıtları ve reklam ayarları kaybolur. Bkz. 2026-08-01 config.json olayı.
+config.json
+apps.json
+blockedChannels.json
+proxy_data.json
+data/

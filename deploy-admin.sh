@@ -27,9 +27,17 @@ if [ ! -d "$ADMIN_REPO_DIR/.git" ]; then
     echo "📥 Repo klonlanıyor: $REPO_URL"
     git clone "$REPO_URL" "$ADMIN_REPO_DIR"
 else
-    echo "📥 Git pull yapılıyor..."
+    echo "📥 Git fetch + origin'e hizalanıyor..."
     cd "$ADMIN_REPO_DIR"
-    git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || echo "⚠️  Pull başarısız, mevcut ile devam ediliyor"
+    # ÖNEMLİ: Eskiden pull başarısız olsa bile build devam ediyordu → sunucudaki
+    # bayat kodla build alınıp "yeni hash" üretiliyor, ama içerik eskiydi (multi-app
+    # düzeltmesi canlıya hiç çıkmadı). Artık senkron olamazsak DURUYORUZ.
+    BRANCH="$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')"
+    BRANCH="${BRANCH:-main}"
+    git fetch origin "$BRANCH" || { echo "❌ git fetch başarısız — deploy durduruldu (eski kodla build alınmayacak)"; exit 1; }
+    # Sunucuda elle yapılmış değişiklikler origin'i gölgelemesin
+    git reset --hard "origin/$BRANCH" || { echo "❌ origin/$BRANCH'e hizalanamadı — deploy durduruldu"; exit 1; }
+    echo "   HEAD: $(git log --oneline -1)"
 fi
 
 cd "$ADMIN_REPO_DIR"
@@ -41,6 +49,17 @@ npm install --production=false 2>&1 | tail -5
 # 3) Build al
 echo "🔨 npm run build..."
 npm run build 2>&1 | tail -10
+
+# 3.5) DOĞRULAMA — build gerçekten çok-uygulamalı kodu içeriyor mu?
+# window.__APP_KEY__ okunmuyorsa panel master anahtarla çalışıyor demektir →
+# tüm istekler "default"a düşer, izole panel (ogzmusic/memomusic) çalışmaz.
+if ! grep -rq "__APP_KEY__" "$ADMIN_REPO_DIR/build/static/js/" 2>/dev/null; then
+    echo "❌ Build doğrulaması BAŞARISIZ: __APP_KEY__ bulunamadı!"
+    echo "   Bu build izole panelleri bozar (her istek 'default'a gider)."
+    echo "   Mevcut panel korunuyor, deploy iptal edildi."
+    exit 1
+fi
+echo "✅ Build doğrulandı (çok-uygulamalı kod mevcut)"
 
 # 4) Build dosyalarını kopyala
 if [ -d "$ADMIN_REPO_DIR/build" ]; then
