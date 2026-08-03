@@ -2183,13 +2183,29 @@ function ensureAppData(appId) {
 // Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir.
 // Config artık uygulama başına cache'lenir: appId -> config nesnesi.
 let _cachedConfigByApp = {};
+let _configMtimeByApp = {};   // appId -> config dosyasının son okunan mtime'ı
 let _cachedBlockedChannels = null;
 
+/* CLUSTER TUTARLILIĞI (kalıcı fix — 2026-08-03):
+   pm2 4 worker çalıştırıyor, her birinin AYRI bellek cache'i var. Eskiden bir
+   worker config yazınca yalnız KENDİ cache'ini temizliyordu; diğer 3 worker
+   60 sn boyunca eski değeri sunuyordu. Panelden art arda kaydetme yapıldığında
+   eski cache'li worker tüm config'i geri yazıp az önce girilen ayarı (ör. TR
+   ülke) EZİYORDU → "ayarlar kaydolmuyor" bunun sonucuydu.
+   Çözüm: tek sunucuda tüm worker'lar aynı diski paylaşır. Config'i dosya
+   mtime'ına bağladık — bir worker yazınca mtime değişir, diğerleri BİR SONRAKİ
+   okumada anında diskten tazeler. Cross-worker mesajlaşmaya gerek yok. */
 function getCachedConfig(appId = "default") {
-  if (_cachedConfigByApp[appId]) return _cachedConfigByApp[appId];
+  const fp = pathFor(appId, CONFIG_FILE);
+  let mtime = 0;
+  try { mtime = fs.statSync(fp).mtimeMs; } catch (e) {}
+  // Cache geçerli SADECE dosya o günden beri değişmediyse
+  if (_cachedConfigByApp[appId] && _configMtimeByApp[appId] === mtime) {
+    return _cachedConfigByApp[appId];
+  }
   let cfg;
   try {
-    cfg = JSON.parse(fs.readFileSync(pathFor(appId, CONFIG_FILE), "utf-8"));
+    cfg = JSON.parse(fs.readFileSync(fp, "utf-8"));
   } catch (e) { cfg = {}; }
   // ringtoneAsns: bu ASN'lerden gelen cihazlar ulke/global ayarina bakilmadan
   // dogrudan zil sesi moduna gider. Eski config.json'larda alan yok -> bos dizi.
@@ -2206,6 +2222,7 @@ function getCachedConfig(appId = "default") {
     cf.maxDurationMinutes = Number.isFinite(m) && m > 0 ? m : 35;
   }
   _cachedConfigByApp[appId] = cfg;
+  _configMtimeByApp[appId] = mtime;
   return cfg;
 }
 
