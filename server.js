@@ -1613,15 +1613,8 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use((req, res, next) => {
   stats.totalRequests++;
-  /* GÜRÜLTÜLÜ POLLING'İ LOGLAMA — /popup/active ve /device-action/active her
-     cihaz tarafından sürekli yoklanıyor; log hacminin büyük kısmı bunlardı ve
-     her satır stdout→PM2 log dosyası yazımı demek. Sayaç (totalRequests) yine
-     artıyor, sadece satır basılmıyor. LOG_POLLING=1 ile geri açılabilir. */
-  const _isPolling = req.path === "/popup/active" || req.path === "/device-action/active";
-  if (!_isPolling || process.env.LOG_POLLING === "1") {
-    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-    console.log(`[REQ] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${req.ip} | Country: ${country}`);
-  }
+  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+  console.log(`[REQ] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${req.ip} | Country: ${country}`);
   next();
 });
 
@@ -2187,30 +2180,6 @@ function ensureAppData(appId) {
   try { fs.mkdirSync(path.join(__dirname, "data", appId), { recursive: true }); } catch (e) {}
 }
 
-/* MTIME TABANLI JSON CACHE — getCachedConfig ile aynı desen, tek fark: birden
-   fazla dosya türü için ortak.
-   NEDEN: /popup/active ve /device-action/active uygulamanın EN YOĞUN iki
-   endpoint'i (her cihaz sürekli yokluyor) ve her istekte fs.existsSync +
-   fs.readFileSync + JSON.parse yapıyorlardı. Bu çağrılar THREADPOOL KULLANMAZ,
-   doğrudan event loop'u durdururlar — UV_THREADPOOL_SIZE=32 ayarının bunlara
-   hiçbir etkisi yok. Event loop bloklanınca axios'un socket timer'ı geç işleniyor
-   ve provider'a giden istekler "timeout of 12000ms exceeded" / "aborted" ile
-   düşüyordu; yani provider yavaş sanılıyordu, aslında biz takılıydık.
-   Dosya diskten SADECE mtime değiştiğinde okunur; panel yazınca (save*)
-   mtime değişir → tüm worker'lar bir sonraki okumada anında tazelenir. */
-const _jsonFileCache = new Map();   // tam yol -> { mt, data }
-function readJsonCached(file, fallback) {
-  let mt = 0;
-  try { mt = fs.statSync(file).mtimeMs; } catch (e) { return fallback; }
-  const hit = _jsonFileCache.get(file);
-  if (hit && hit.mt === mt) return hit.data;
-  try {
-    const data = JSON.parse(fs.readFileSync(file, "utf-8"));
-    _jsonFileCache.set(file, { mt, data });
-    return data;
-  } catch (e) { return fallback; }
-}
-
 // Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir.
 // Config artık uygulama başına cache'lenir: appId -> config nesnesi.
 let _cachedConfigByApp = {};
@@ -2298,8 +2267,7 @@ const DEFAULT_API_PROVIDERS = {
   ],
   apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
   baseUrl: "https://bazocam.net",
-  // counterTtlDays: istek sayacının kaç gün hatırlanacağı (bkz. getCounterTtlSeconds)
-  smartCache: { enabled: true, minRequests: 3, counterTtlDays: 7 }
+  smartCache: { enabled: true, minRequests: 3 }
 };
 
 if (!fs.existsSync(CONFIG_FILE)) {
@@ -2343,61 +2311,13 @@ function getApiProviderConfig() {
 }
 
 // Akıllı Cache: İstek sayacı — sadece N+ istek gelen şarkılar cache'lenir
-/* Sayacın ömrü (TTL) — panelden ayarlanır: smartCache.counterTtlDays
-   NEDEN DEĞİŞTİ: eskiden sabit 86400 sn (24 saat) idi. Sayaç ilk çalmadan 24 saat
-   sonra ölüyordu; yani bir şarkının cache'lenmesi için "ilk dinlemeden itibaren
-   24 saat içinde 3 kez" dinlenmesi gerekiyordu. Günde bir kez dinlenen şarkı 3'e
-   HİÇ ulaşamıyor, her seferinde provider'a gidiyordu.
-   7 güne çıkarınca "hafta içinde 3 kez" dinlenenler de cache'leniyor → provider'a
-   giden istek düşer, açılış hızlanır. Disk buna fazlasıyla müsait (%37 dolu). */
-function getCounterTtlSeconds() {
-  try {
-    const days = Number(getApiProviderConfig().smartCache?.counterTtlDays);
-    if (Number.isFinite(days) && days > 0) return Math.round(days * 86400);
-  } catch {}
-  return 7 * 86400; // varsayılan 7 gün
-}
-
 async function incrementRequestCount(videoId) {
   try {
     const key = `req_count:${videoId}`;
     const count = await redis.incr(key);
-    if (count === 1) await redis.expire(key, getCounterTtlSeconds());
+    if (count === 1) await redis.expire(key, 86400); // 24 saat TTL
     return count;
   } catch { return 1; }
-}
-
-/* PANEL İSTATİSTİKLERİ — "kaç kere / ne zaman istek geldi"
-   incrementRequestCount'tan AYRI tutuluyor, çünkü o cache'leme eşiği için
-   sadece cache'te BULUNAMAYAN istekleri sayar (doğru davranış, dokunmadım).
-   Panelde ise gerçek toplam lazım — cache'ten servis edilenler dahil.
-   Bu yüzden bu fonksiyon /stream'in en başında, cache kontrollerinden ÖNCE
-   çağrılır. Fire&forget: isteği asla bloklamaz, hata fırlatmaz. */
-function recordRequestStats(videoId, kind = "audio", meta = null) {
-  if (!videoId) return;
-  try {
-    const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const p = redis.pipeline()
-      .incr(`req_total:${videoId}`)                       // ömür boyu (TTL yok)
-      .incr(`req_day:${videoId}:${day}`)
-      .expire(`req_day:${videoId}:${day}`, 48 * 3600)     // kendi kendine silinir
-      .set(`req_last:${videoId}`, Date.now())
-      .set(`req_kind:${videoId}`, kind);
-
-    /* BAŞLIK/SANATÇI — uygulama bunları zaten /stream'e query olarak gönderiyor
-       (title, uploader). Panelde şarkı adı görebilmek için saklıyoruz.
-       NEDEN media_db DEĞİL: mediaLib.upsertTrack kaydı olmayan şarkıya
-       status:"processing" yazıyor; bu da isProcessing() üzerinden ön-ısıtmayı
-       ve cache mantığını etkiler. Sırf başlık uğruna o semantiği bozmamak için
-       ayrı bir Redis anahtarında tutuyoruz. */
-    if (meta && (meta.title || meta.artist)) {
-      p.set(`meta:${videoId}`, JSON.stringify({
-        t: (meta.title || "").toString().slice(0, 200),
-        a: (meta.artist || "").toString().slice(0, 120)
-      }));
-    }
-    p.exec().catch(() => {});
-  } catch { /* istatistik hiçbir zaman isteği bozmasın */ }
 }
 
 async function shouldCache(videoId) {
@@ -2452,21 +2372,16 @@ function validateMediaStream(srcStream, kind) {
       } else {
         if (head.length >= 8 && head.slice(4, 8).toString("latin1") === "ftyp") return ok();
       }
-      /* Geçerli imza yok → bu bir medya dosyası değil.
-         Eşiği 12→240 byte yaptık: 12 byte'ta reddedince logda sadece
-         "<br />.<b>Fatal " görünüyordu ve provider'ın PHP hatasının GERÇEK
-         metni (hangi dosya, hangi satır, ne hatası) kesiliyordu. Karar aynı
-         (yine reddediliyor), sadece hata mesajı teşhis edilebilir oluyor.
-         Gövde 240 byte'tan kısaysa onEnd zaten devreye girer. */
-      if (head.length >= 240) {
-        const preview = head.slice(0, 240).toString("latin1").replace(/[^ -~]/g, ".");
+      // Geçerli imza yok; karar vermek için yeterli byte geldiyse reddet
+      if (head.length >= 12) {
+        const preview = head.slice(0, 16).toString("latin1").replace(/[^ -~]/g, ".");
         return fail(`Geçersiz medya yanıtı (${kind}): "${preview}"`);
       }
     };
     const onData = (chunk) => { head = Buffer.concat([head, chunk]); check(); };
     const onEnd = () => {
       check();
-      const preview = head.toString("latin1").replace(/[^ -~]/g, ".").slice(0, 240);
+      const preview = head.toString("latin1").slice(0, 40);
       fail(`API yanıtı çok küçük/bozuk (${head.length} byte): "${preview}"`);
     };
     const onErr = (e) => fail(e.message);
@@ -2574,8 +2489,17 @@ function buildProviderUrl(provider, type, params) {
                   timeout'unun altında kalır) ki hata da, başarı da yerine ulaşsın.
      background → prewarm / pre-resolve / indirme. Kimse beklemiyor, dönüşüme
                   bol zaman tanınır (eski davranış korunur). */
+/* DÜZELTME: foreground timeout 12 sn ÇOK KISAYDI.
+   Sahada "timeout of 12000ms exceeded" hataları alındı — provider 12 saniyede
+   ilk baytı gönderemediği her şarkı, ESKİDEN BAŞARILI OLACAKKEN patladı
+   (eski değer 120 sn idi). İstemci bütçesi ExoPlayer'ın read timeout'u = 30 sn.
+   Bu yüzden tek denemeye 24 sn veriyoruz: provider'a mümkün olan en uzun süreyi
+   tanırken yanıt hâlâ istemciye yetişiyor.
+   Deneme sayısı 2→1: bu provider'da hatalar ya çökme (aborted/PHP fatal) ya da
+   yavaşlık. İkisinde de ikinci deneme aynı işi baştan kuyruğa sokmaktan başka
+   bir şey yapmıyor, üstelik toplam süreyi istemci bütçesinin üstüne çıkarıyor. */
 const API_BUDGET = {
-  foreground: { attempts: 2, delays: [4000], timeout: 12000 },
+  foreground: { attempts: 1, delays: [], timeout: 24000 },
   background: { attempts: 3, delays: [15000, 20000], timeout: 120000 }
 };
 
@@ -2619,17 +2543,10 @@ async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
   if (providers.length === 0) {
     throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
   }
-  /* İSTEMCİ KOPTU MU? — safePipe, res kapanınca kaynağı destroy ediyor; axios
-     bunu "aborted" diye raporluyor ve retry döngüsü 4 sn bekleyip AYNI isteği
-     provider'a tekrar gönderiyordu. Kimsenin beklemediği bir yanıt için
-     provider'ı ikinci kez yormanın anlamı yok: yoğunlukta bu, 502 selini
-     büyüten geri besleme döngüsüydü. Her denemeden önce kontrol ediyoruz. */
-  const aborted = () => typeof opts.isAborted === "function" && opts.isAborted();
   let lastErr;
   for (const provider of providers) { // her gelen apiyi sırayla dene
     const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
     for (let attempt = 1; attempt <= budget.attempts; attempt++) {
-      if (aborted()) throw new Error("İstemci bağlantıyı kapattı — istek iptal edildi");
       try {
         console.log(`[API_PROVIDER:${provider.id}] MP3 stream: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${budget.attempts}`);
 
@@ -2679,12 +2596,10 @@ async function apiStreamMp4(videoId, quality = 720, opts = {}) {
   if (providers.length === 0) {
     throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
   }
-  const aborted = () => typeof opts.isAborted === "function" && opts.isAborted(); // bkz. apiStreamMp3
   let lastErr;
   for (const provider of providers) {
     const url = buildProviderUrl(provider, "mp4", { id: videoId, quality });
     for (let attempt = 1; attempt <= budget.attempts; attempt++) {
-      if (aborted()) throw new Error("İstemci bağlantıyı kapattı — istek iptal edildi");
       try {
         console.log(`[API_PROVIDER:${provider.id}] MP4 stream: ${videoId} (${quality}p) — deneme ${attempt}/${budget.attempts}`);
 
@@ -4185,17 +4100,6 @@ app.get("/stream", async (req, res) => {
   const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
   const cacheKey = `ongoing:${typeStr}:${videoId}`;
 
-  /* İSTEMCİ KOPMA TAKİBİ — kullanıcı şarkıyı atladığında/ağı düştüğünde
-     bağlantı kapanır. Bu bayrak provider retry döngüsüne geçirilir; kimsenin
-     beklemediği bir yanıt için bazocam'a ikinci istek atılmasını engeller. */
-  let clientGone = false;
-  req.on("close", () => { clientGone = true; });
-  const isAborted = () => clientGone || res.writableEnded || res.destroyed;
-
-  // Panel istatistikleri — cache kontrollerinden ÖNCE, ki cache'ten servis edilen
-  // dinlemeler de sayılsın. Fire&forget, isteği yavaşlatmaz.
-  recordRequestStats(videoId, typeStr, { title: req.query.title, artist: req.query.uploader });
-
   //  KİLİT MEKANİZMASI: Eğer bu şarkı şu an çözümleniyorsa, mevcut işlemi bekle
   if (ongoingResolutions.has(cacheKey)) {
     console.log(`[DEBOUNCE] +++ ${videoId} zaten çözümleniyor, bekletiliyor...`);
@@ -4299,14 +4203,7 @@ app.get("/stream", async (req, res) => {
 
     //  KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
     try {
-      /* DÜZELTME: okuma anahtarı ses için "audio/<id>.m4a" idi, oysa TÜM ses
-         yüklemeleri "audio/<id>.mp3" yazıyor (prewarm, akıllı cache, disk-hit
-         yedeklemesi — bkz. uploadToR2 çağrıları). Yani R2'ye yazılan hiçbir ses
-         dosyası GERİ OKUNAMIYORDU → R2 katmanı da kalıcı %0 hit.
-         Ses için önce .mp3'ü, bulunamazsa eski .m4a anahtarını deniyoruz
-         (geriye uyumluluk: eski kayıtlar m4a olarak durabilir). */
-      let r2Data = await getR2Stream(typeStr === "audio" ? `audio/${videoId}.mp3` : r2Key);
-      if (!r2Data && typeStr === "audio") r2Data = await getR2Stream(r2Key);
+      const r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
         console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId}`);
         if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
@@ -4323,7 +4220,7 @@ app.get("/stream", async (req, res) => {
     // Cache katmanlarında bulunamadıysa, API'den direkt MP3 stream et
     try {
       console.log(`[STREAM] API Provider ile stream deneniyor: ${videoId}`);
-      const apiResult = await apiStreamMp3(videoId, 320, { isAborted });
+      const apiResult = await apiStreamMp3(videoId, 320);
 
       res.setHeader("Content-Type", apiResult.contentType || "audio/mpeg");
       if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
@@ -4377,16 +4274,6 @@ app.get("/stream", async (req, res) => {
            bellek şişmesi demek. pipe() en yavaş hedefe göre otomatik fren yapar. */
         apiResult.stream.pipe(userStream);
         apiResult.stream.pipe(diskStream);
-        /* DÜZELTME: diskStream buraya kadar oluşturuluyor, besleniyor ama
-           writer'a HİÇ bağlanmıyordu (video dalındaki diskStream.pipe(writer)
-           karşılığı eksikti). Sonucu zincirlemeydi:
-             1) cacheFile 0 byte açılıp hiç yazılmıyor, hiç kapanmıyordu (fd sızıntısı),
-             2) bir sonraki istek dosyayı bulup 20KB altı diye siliyordu
-                → [DISK_CACHE_ERR] döngüsü, ses disk cache'i kalıcı olarak %0 hit,
-             3) writer 'finish' hiç tetiklenmediği için endFlight() çağrılmıyor,
-                tek-uçuş kilidi 2 dk sweeper'a kadar asılı kalıyor → aynı şarkıyı
-                isteyen herkes handler başındaki Promise.race'te 20 sn bekliyordu. */
-        diskStream.pipe(writer);
         apiResult.stream.on("error", (err) => {
           userStream.destroy(err);
           diskStream.destroy(err);
@@ -4402,8 +4289,6 @@ app.get("/stream", async (req, res) => {
       }
       return;
     } catch (apiErr) {
-      // İstemci zaten gitmişse ne loglamaya ne de kapalı sokete yazmaya gerek var.
-      if (isAborted()) return;
       console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
       if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
       return;
@@ -4440,16 +4325,9 @@ app.get("/stream", async (req, res) => {
 
 // VIDEO STREAM (MP4) - Yüksek Hızlı Doğrudan Aktarım (Proxy Stream)
 app.get("/stream/video", async (req, res) => {
-  // İstemci kopma takibi — /stream ile aynı gerekçe (bkz. apiStreamMp3 içindeki not).
-  let clientGone = false;
-  req.on("close", () => { clientGone = true; });
-  const isAborted = () => clientGone || res.writableEnded || res.destroyed;
   try {
     const { videoId } = req.query;
     if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
-
-    // Panel istatistikleri (izleme tarafı) — fire&forget
-    recordRequestStats(videoId, "video");
 
     // DRM FAZ 2: Stream token doğrulaması
     const streamToken = req.query.token || req.headers["x-stream-token"];
@@ -4571,7 +4449,7 @@ app.get("/stream/video", async (req, res) => {
     // ★ KATMAN 2: API PROVIDER (bazocam MP4) — proxy/yt-dlp'ye gerek kalmadan video stream
     try {
       console.log(`[VIDEO_API] API Provider ile video stream deneniyor: ${videoId}`);
-      const apiResult = await apiStreamMp4(videoId, 720, { isAborted });
+      const apiResult = await apiStreamMp4(videoId, 720);
       if (apiResult && apiResult.stream) {
         console.log(`[VIDEO_API_HIT] ✅ Video API Provider'dan sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
@@ -6391,7 +6269,7 @@ const CACHE_PANEL_TEMPLATE = path.join(__dirname, "cache_panel.html");
 app.get("/cache-panel", basicAuth, (req, res) => {
   let html = fs.readFileSync(CACHE_PANEL_TEMPLATE, "utf-8");
   const stats = mediaLib.getStats();
-  // NOT: getAllTracks() burada artık kullanılmıyor — liste /cache-panel/data'dan gelir.
+  const tracks = mediaLib.getAllTracks({ sortBy: "lastAccessed" });
 
   let tempCount = 0;
   try { if (fs.existsSync(CACHE_DIR)) tempCount = fs.readdirSync(CACHE_DIR).length; } catch (e) { }
@@ -6459,7 +6337,9 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%VIDEO_CACHE_SIZE%%", videoCacheSize);
   html = html.replace("%%VIDEO_CACHE_COUNT%%", videoCacheCount);
 
-  // Gerçek disk boyutu (mediaLib değil — o cache'in ancak ~%27'sini biliyor)
+  html = html.replace("%%TOTAL_CACHE%%", stats.readyTracks);
+  html = html.replace("%%TOTAL_REQUESTS%%", stats.totalProcessed + stats.totalFailed);
+  // Gerçek disk boyutunu hesapla (mediaLib yerine)
   let realCacheMB = stats.totalDiskMB;
   try {
     const audioBytes = require("child_process").execSync(`du -sb ${CACHE_DIR} 2>/dev/null | cut -f1`).toString().trim();
@@ -6470,304 +6350,47 @@ app.get("/cache-panel", basicAuth, (req, res) => {
   html = html.replace("%%TEMP_FILES%%", tempCount);
   html = html.replace(/%%ADMIN_PASS%%/g, "");
 
-  /* Şarkı listesi artık SUNUCUDA üretilmiyor.
-     Eskiden media_db'deki her kayıt için satır HTML'i basılıyordu; hem yanlış
-     kaynaktı (diskin ~%27'si) hem de binlerce satırı tek sayfaya gömmek
-     tarayıcıyı kilitliyordu. Liste artık /cache-panel/data'dan sayfalı olarak
-     çekiliyor (bkz. cache_panel.html içindeki loadData). */
+  function buildRowHtml(t, idx) {
+    const totalSize = (t.fileSize?.m4a || 0) + (t.fileSize?.mp3 || 0) + (t.fileSize?.mp4 || 0);
+    const sizeMB = (totalSize / 1024 / 1024).toFixed(1);
+    const date = t.processedAt ? new Date(t.processedAt).toLocaleString("tr-TR") : "—";
+    const quality = t.files.mp4 ? "MP4" : t.files.mp3 ? "192 kbps" : "128 kbps";
+    const reqPct = Math.min(100, (t.accessCount || 0) * 10);
+    return `<tr data-requests="${t.accessCount || 0}" data-size="${sizeMB}" data-date="${t.processedAt || ''}">
+      <td>${idx + 1}</td>
+      <td><div class="track-info"><span class="track-title">${t.title}</span><span class="track-id">${t.videoId}</span></div></td>
+      <td><span class="badge-quality">${quality}</span></td>
+      <td><div class="request-bar"><div class="request-fill" style="width:${reqPct}%"></div></div><span class="req-count">${t.accessCount || 0}</span></td>
+      <td>${sizeMB} MB</td>
+      <td>${date}</td>
+      <td><button class="btn btn-sm btn-outline-danger" onclick="deleteItem('${t.videoId}')">Sil</button></td>
+    </tr>`;
+  }
+
+  const audioTracks = tracks.filter(t => (t.category || (t.files.mp4 ? "watching" : "listening")) === "listening");
+  const videoTracks = tracks.filter(t => (t.category || (t.files.mp4 ? "watching" : "listening")) === "watching");
+
+  const audioListHtml = audioTracks.map((t, i) => buildRowHtml(t, i)).join("");
+  const videoListHtml = videoTracks.map((t, i) => buildRowHtml(t, i)).join("");
+
+  html = html.replace("%%AUDIO_LIST%%", audioListHtml);
+  html = html.replace("%%VIDEO_LIST%%", videoListHtml);
+  html = html.replace("%%AUDIO_EMPTY%%", audioTracks.length === 0 ? '<div style="padding:30px;text-align:center;color:#8e8e8e">Henüz dinleme cache\'i yok.</div>' : "");
+  html = html.replace("%%VIDEO_EMPTY%%", videoTracks.length === 0 ? '<div style="padding:30px;text-align:center;color:#8e8e8e">Henüz izleme cache\'i yok.</div>' : "");
 
   res.send(html);
 });
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   CACHE PANELİ — VERİ KAYNAĞI: DİSK
-   Panel eskiden mediaLib.getAllTracks() (media_db.json) okuyordu. Ama cache'i
-   asıl dolduran /stream akıllı-cache dalı media_db'ye HİÇ kayıt atmıyor; oraya
-   yazan prewarmTop10 ise iki çağrı yerinde de yorum satırı. Sonuç: sahada
-   media_db 1145 şarkı/5.5 GB biliyorken diskte 20.6 GB vardı — yani cache'in
-   ~%73'ü panelde görünmüyor ve panelden silinemiyordu.
-   Çözüm: tek doğru kaynak DİSK. media_db yalnızca başlık için yedek olarak
-   kullanılıyor.
-   ═══════════════════════════════════════════════════════════════════════════ */
-let _cacheScan = { at: 0, rows: [] };
-const CACHE_SCAN_TTL_MS = 10 * 60 * 1000;   // 10 dk — "Yenile" zorla tazeler
-
-/* ⚠️ PERFORMANS — BURASI BİR KEZ SUNUCUYU YAVAŞLATTI, AYNI HATAYI YAPMA.
-   İlk sürüm listedeki HER dosya için fs.stat çağırıyordu (binlerce çağrı).
-   fs.* çağrıları libuv threadpool'unda çalışır (UV_THREADPOOL_SIZE=32) ve
-   dns.lookup() DE AYNI HAVUZU KULLANIR. Binlerce stat kuyruğa girince
-   bazocam'a/googleapis'e gidecek isteklerin DNS'i arkada bekledi →
-   arama sürünmeye başladı, indirmeler bağlantı kuramayıp başarısız oldu.
-   ŞİMDİ: liste sadece readdir ile çıkarılıyor (dizin başına tek çağrı),
-   stat YALNIZCA ekranda görünen ~100 satır için yapılıyor (statRows).
-   Sıralama da mümkün olan her yerde Redis sayaçlarından yapılıyor ki
-   diske hiç dokunulmasın. */
-async function listCacheEntries(force = false) {
-  if (!force && _cacheScan.at && Date.now() - _cacheScan.at < CACHE_SCAN_TTL_MS) {
-    return _cacheScan.rows;
-  }
-  // Aynı videoId birden çok uzantıyla durabilir (audio_X.mp3 + X.m4a) → tek satırda birleştir
-  const merged = new Map();
-  const sources = [
-    { dir: CACHE_DIR, kind: "audio", exts: [".mp3", ".m4a"] },
-    { dir: VIDEO_CACHE_DIR, kind: "video", exts: [".mp4"] }
-  ];
-
-  for (const { dir, kind, exts } of sources) {
-    let names = [];
-    try { names = await fs.promises.readdir(dir); } catch { continue; }   // dizin başına TEK çağrı
-    for (const name of names) {
-      const ext = path.extname(name).toLowerCase();
-      if (!exts.includes(ext)) continue;
-      // Bilinen önekleri at: audio_<id>.mp3 / video_<id>.mp4 / <id>.m4a
-      const videoId = path.basename(name, ext).replace(/^(audio_|video_)/, "");
-      if (!isValidVideoId(videoId)) continue;
-
-      const key = `${kind}:${videoId}`;
-      const prev = merged.get(key);
-      const full = path.join(dir, name);
-      if (prev) prev.files.push(full);
-      else merged.set(key, { videoId, kind, ext: ext.slice(1), files: [full] });
-    }
-  }
-
-  _cacheScan = { at: Date.now(), rows: Array.from(merged.values()) };
-  return _cacheScan.rows;
-}
-
-/* Boyut ve tarihleri SADECE verilen satırlar için doldur (normalde 100 satır).
-   statOrNull zaten hatada null döner; dosya silinmişse satır 0/– görünür. */
-async function statRows(rows) {
-  await Promise.all(rows.map(async (r) => {
-    if (r.sizeBytes !== undefined) return;     // zaten dolduruldu
-    let size = 0, first = 0, last = 0;
-    for (const f of r.files) {
-      const st = await statOrNull(f);
-      if (!st || !st.isFile()) continue;
-      size += st.size;
-      const born = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;   // bazı FS'lerde birthtime 0
-      if (!first || born < first) first = born;
-      if (st.mtimeMs > last) last = st.mtimeMs;
-    }
-    r.sizeBytes = size; r.firstCachedAt = first; r.lastPlayedAt = last;
-  }));
-}
-
-/* BAŞLIK TAMAMLAMA — YouTube oEmbed
-   Diskteki eski cache dosyalarında sadece videoId var; başlık hiçbir yerde
-   saklanmamıştı. oEmbed anahtar ve kota istemeyen açık bir uç:
-     https://www.youtube.com/oembed?url=...&format=json → { title, author_name }
-   Panelde bir sayfa açıldığında YALNIZCA o sayfadaki eksik başlıklar çekilir —
-   4000 şarkı için toplu istek YOK. Sonuç meta:<id>'ye KALICI yazılır, yani her
-   şarkı için ömürde bir kez sorulur.
-   Video silinmişse oEmbed 401/404 döner → "dead" işaretlenip 30 gün saklanır ki
-   her sayfa açılışında tekrar tekrar denenmesin. */
-/* Paralellik bilerek DÜŞÜK. Her giden HTTP isteği yeni bağlantıda dns.lookup()
-   yapar ve o da fs ile aynı libuv threadpool'unu kullanır. 8 paralel + binlerce
-   stat birleşince bazocam'a giden isteklerin DNS'i bekledi, indirmeler koptu.
-   3 paralel bu baskıyı hissedilmez kılıyor; yetişmeyen başlık zaten bir sonraki
-   sayfa açılışında tamamlanıyor (sonuç kalıcı olarak Redis'e yazılıyor). */
-const OEMBED_CONCURRENCY = 3;
-const OEMBED_BUDGET_MS = 2500;   // sayfa yanıtını bekletmemek için üst sınır
-
-async function fetchYoutubeMeta(videoId) {
-  const url = "https://www.youtube.com/oembed?url=" +
-    encodeURIComponent("https://www.youtube.com/watch?v=" + videoId) + "&format=json";
-  const r = await axiosClient.get(url, {
-    timeout: 4000,
-    validateStatus: (s) => s === 200 || s === 401 || s === 403 || s === 404
-  });
-  if (r.status !== 200) return { dead: true };
-  const d = r.data || {};
-  return { t: String(d.title || "").slice(0, 200), a: String(d.author_name || "").slice(0, 120) };
-}
-
-async function backfillTitles(pageRows) {
-  const todo = pageRows.filter(r => r._noMeta);
-  if (todo.length === 0) return;
-  const deadline = Date.now() + OEMBED_BUDGET_MS;
-  let i = 0;
-  const worker = async () => {
-    while (i < todo.length && Date.now() < deadline) {
-      const r = todo[i++];
-      try {
-        const m = await fetchYoutubeMeta(r.videoId);
-        if (m.dead) {
-          r.dead = true;
-          await redis.set(`meta:${r.videoId}`, JSON.stringify({ t: "", a: "", d: 1 }), "EX", 30 * 86400);
-        } else {
-          r.title = m.t; r.artist = m.a;
-          await redis.set(`meta:${r.videoId}`, JSON.stringify({ t: m.t, a: m.a }));
-        }
-      } catch { /* ağ hatası — bir dahaki açılışta tekrar denenir */ }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(OEMBED_CONCURRENCY, todo.length) }, worker)
-  );
-}
-
-// Çok sayıda anahtarı parça parça MGET et (tek seferde 4000 anahtar göndermemek için)
-async function mgetChunked(keys) {
-  const out = [];
-  for (let i = 0; i < keys.length; i += 1000) {
-    try { out.push(...await redis.mget(keys.slice(i, i + 1000))); }
-    catch { out.push(...new Array(Math.min(1000, keys.length - i)).fill(null)); }
-  }
-  return out;
-}
-
-app.get("/cache-panel/data", basicAuth, async (req, res) => {
-  try {
-    const q = (req.query.q || "").toString().toLowerCase().trim();
-    const sort = (req.query.sort || "last").toString();
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(200, Math.max(10, parseInt(req.query.limit) || 100));
-    const kindFilter = (req.query.kind || "all").toString();
-
-    // Sadece dosya adları — disk stat'ı YOK (bkz. listCacheEntries üstündeki uyarı)
-    let rows = (await listCacheEntries(req.query.refresh === "1")).map(r => ({ ...r }));
-
-    const grandTotal = rows.length;
-
-    // Başlık/sanatçı: önce Redis meta (uygulamanın gönderdiği), yoksa media_db
-    const dbMap = new Map();
-    try { for (const t of mediaLib.getAllTracks()) dbMap.set(t.videoId, t); } catch {}
-    const metaVals = await mgetChunked(rows.map(r => `meta:${r.videoId}`));
-    const totalVals = await mgetChunked(rows.map(r => `req_total:${r.videoId}`));
-    const day = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const dayVals = await mgetChunked(rows.map(r => `req_day:${r.videoId}:${day}`));
-    const lastVals = await mgetChunked(rows.map(r => `req_last:${r.videoId}`));
-
-    rows = rows.map((r, i) => {
-      let title = "", artist = "", dead = false;
-      // metaVals[i] null ise bu şarkı için hiç meta sorulmamış → backfill adayı
-      const noMeta = !metaVals[i];
-      try {
-        const m = metaVals[i] && JSON.parse(metaVals[i]);
-        if (m) { title = m.t || ""; artist = m.a || ""; dead = !!m.d; }
-      } catch {}
-      const db = dbMap.get(r.videoId);
-      if (!title && db && db.title && db.title !== "Unknown") title = db.title;
-      if (!artist && db && db.artist && db.artist !== "Unknown") artist = db.artist;
-      return {
-        videoId: r.videoId,
-        kind: r.kind,
-        ext: r.ext,
-        files: r.files,          // statRows için (yanıttan önce siliniyor)
-        title,
-        artist,
-        dead,
-        _noMeta: noMeta,
-        today: parseInt(dayVals[i] || "0", 10),
-        total: parseInt(totalVals[i] || "0", 10),
-        // Sıralama Redis'ten — diske dokunmadan. Boyut/tarihler statRows ile sonra.
-        lastRequestAt: Number(lastVals[i]) || 0
-      };
-    });
-
-    if (kindFilter === "audio" || kindFilter === "video") {
-      rows = rows.filter(r => r.kind === kindFilter);
-    }
-    if (q) {
-      rows = rows.filter(r =>
-        r.videoId.toLowerCase().includes(q) ||
-        r.title.toLowerCase().includes(q) ||
-        r.artist.toLowerCase().includes(q));
-    }
-
-    /* Boyut/ilk-cache sıralaması TÜM satırların stat'ını gerektirir — pahalı.
-       Kullanıcı bilerek seçerse yapılır; varsayılan sıralamalar (son istek,
-       toplam, bugün, başlık) tamamen Redis'ten geldiği için diske dokunmaz. */
-    const needsAllStats = (sort === "size" || sort === "first");
-    if (needsAllStats) await statRows(rows);
-
-    const sorters = {
-      last:  (a, b) => b.lastRequestAt - a.lastRequestAt,
-      first: (a, b) => (b.firstCachedAt || 0) - (a.firstCachedAt || 0),
-      size:  (a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0),
-      total: (a, b) => b.total - a.total,
-      today: (a, b) => b.today - a.today,
-      title: (a, b) => (a.title || a.videoId).localeCompare(b.title || b.videoId, "tr")
-    };
-    rows.sort(sorters[sort] || sorters.last);
-
-    const filtered = rows.length;
-    const start = (page - 1) * limit;
-    const pageRows = rows.slice(start, start + limit);
-
-    // Disk erişimi SADECE burada: görünen ~100 satır
-    await statRows(pageRows);
-    // Başlığı olmayanları YouTube'dan tamamla — yine sadece bu sayfadakiler
-    await backfillTitles(pageRows);
-
-    let pageBytes = 0;
-    for (const r of pageRows) {
-      pageBytes += r.sizeBytes || 0;
-      r.sizeMB = +((r.sizeBytes || 0) / 1048576).toFixed(2);
-      r.firstCachedAt = Math.round(r.firstCachedAt || 0);
-      // req_last yoksa dosyanın mtime'ına düş (touchCache her dinlemede günceller)
-      if (!r.lastRequestAt) r.lastRequestAt = Math.round(r.lastPlayedAt || 0);
-      delete r.files; delete r.sizeBytes; delete r.lastPlayedAt; delete r._noMeta;
-    }
-
-    res.json({
-      rows: pageRows,
-      page, limit,
-      filtered,
-      pageMB: +(pageBytes / 1048576).toFixed(1),
-      grandTotal,
-      scannedAt: _cacheScan.at
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 app.post("/cache-panel/action", express.json(), basicAuth, (req, res) => {
   const { action, videoId, pass } = req.body;
+  if (pass !== ADMIN_PASS) return res.status(403).json({ error: "Şifre hatalı" });
 
-  /* TEK ŞARKI SİLME — şifre kontrolü kaldırıldı, sebebi:
-     Şablon %%ADMIN_PASS%%'i BOŞ string ile değiştiriyordu, yani "Sil" butonu
-     pass:"" gönderiyor ve ADMIN_PASS doluysa her seferinde 403 alıyordu — buton
-     sahada çalışmıyordu. Endpoint zaten basicAuth arkasında (panele girebilen
-     yönetici). Toplu silme (clear_all) yıkıcı olduğu için şifre kontrolünü
-     KORUYOR. */
   if (action === "delete" && videoId) {
-    if (!isValidVideoId(videoId)) return res.status(400).json({ error: "Geçersiz videoId" });
-    // Dosya bazlı sil: media_db'de kaydı olmayan (cache'in ~%73'ü) şarkılar da silinsin
-    let deleted = 0;
-    for (const dir of [CACHE_DIR, VIDEO_CACHE_DIR]) {
-      for (const base of [`audio_${videoId}`, `video_${videoId}`, videoId]) {
-        for (const e of [".mp3", ".m4a", ".mp4"]) {
-          const p = path.join(dir, base + e);
-          try { if (fs.existsSync(p)) { fs.unlinkSync(p); deleted++; } } catch {}
-        }
-      }
-    }
-    try { mediaLib.removeTrack(videoId); } catch {}   // varsa indeksten de düş
-    _cacheScan.at = 0;                                 // taramayı tazele
-    return res.json({ ok: true, deleted });
+    mediaLib.removeTrack(videoId);
+    return res.json({ ok: true });
   } else if (action === "clear_all") {
-    if (pass !== ADMIN_PASS) return res.status(403).json({ error: "Şifre hatalı" });
-    /* Diskten de sil. mediaLib.clearAllTracks() yalnızca media_db'de kaydı olan
-       dosyaları siliyordu (cache'in ~%27'si); geri kalan GB'larca dosya diskte
-       kalıyordu. Panel artık diski gösterdiği için buton da diski temizlemeli. */
-    let deleted = 0;
-    for (const dir of [CACHE_DIR, VIDEO_CACHE_DIR]) {
-      let names = [];
-      try { names = fs.readdirSync(dir); } catch { continue; }
-      for (const name of names) {
-        const ext = path.extname(name).toLowerCase();
-        if (![".mp3", ".m4a", ".mp4"].includes(ext)) continue;
-        const vid = path.basename(name, ext).replace(/^(audio_|video_)/, "");
-        if (!isValidVideoId(vid)) continue;   // temp/thumb gibi dosyalara dokunma
-        try { fs.unlinkSync(path.join(dir, name)); deleted++; } catch {}
-      }
-    }
-    try { mediaLib.clearAllTracks(); } catch {}
-    _cacheScan.at = 0;
-    return res.json({ ok: true, deleted });
+    mediaLib.clearAllTracks();
+    return res.json({ ok: true });
   }
 
   res.status(400).json({ error: "Geçersiz işlem" });
@@ -6785,14 +6408,12 @@ const ANNOUNCEMENTS_FILE = path.join(__dirname, "announcements.json");
 
 function loadAnnouncements(appId = "default") {
   const file = pathFor(appId, "announcements.json");
-  // Dosya kurulumu SADECE ilk kez (henüz cache girdisi yokken) kontrol edilir;
-  // sonraki her istek tek bir statSync ile cache'ten döner. /popup/active
-  // en yoğun endpoint — burada senkron okuma yapmak event loop'u durduruyordu.
-  if (!_jsonFileCache.has(file) && !fs.existsSync(file)) {
-    try { ensureAppData(appId); fs.writeFileSync(file, "[]"); } catch (e) { return []; }
+  try {
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch (e) {
+    return [];
   }
-  const data = readJsonCached(file, []);
-  return Array.isArray(data) ? data : [];
 }
 
 function saveAnnouncements(data, appId = "default") {
@@ -6889,12 +6510,12 @@ const DEVICE_ACTIONS_FILE = path.join(__dirname, "device_actions.json");
 
 function loadDeviceActions(appId = "default") {
   const file = pathFor(appId, "device_actions.json");
-  // Bkz. loadAnnouncements — /device-action/active de aynı polling hacminde.
-  if (!_jsonFileCache.has(file) && !fs.existsSync(file)) {
-    try { ensureAppData(appId); fs.writeFileSync(file, "[]"); } catch (e) { return []; }
+  try {
+    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch (e) {
+    return [];
   }
-  const data = readJsonCached(file, []);
-  return Array.isArray(data) ? data : [];
 }
 
 function saveDeviceActions(data, appId = "default") {
