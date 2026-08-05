@@ -288,8 +288,8 @@ function render(d) {
   const to = Math.min(d.page * d.limit, d.filtered);
 
   $('listMeta').textContent =
-    from + '-' + to + ' / ' + d.filtered + ' şarkı · toplam ' + d.filteredMB + ' MB' +
-    (d.filtered !== d.grandTotal ? '  (tüm cache: ' + d.grandTotal + ' şarkı / ' + d.grandMB + ' MB)' : '');
+    from + '-' + to + ' / ' + d.filtered + ' şarkı · bu sayfa ' + d.pageMB + ' MB' +
+    (d.filtered !== d.grandTotal ? '  (tüm cache: ' + d.grandTotal + ' şarkı)' : '');
 
   $('statCount').textContent = d.grandTotal;
   $('statRequests').textContent = d.rows.reduce((a, r) => a + r.today, 0);

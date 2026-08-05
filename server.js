@@ -1613,8 +1613,15 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use((req, res, next) => {
   stats.totalRequests++;
-  const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
-  console.log(`[REQ] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${req.ip} | Country: ${country}`);
+  /* GÜRÜLTÜLÜ POLLING'İ LOGLAMA — /popup/active ve /device-action/active her
+     cihaz tarafından sürekli yoklanıyor; log hacminin büyük kısmı bunlardı ve
+     her satır stdout→PM2 log dosyası yazımı demek. Sayaç (totalRequests) yine
+     artıyor, sadece satır basılmıyor. LOG_POLLING=1 ile geri açılabilir. */
+  const _isPolling = req.path === "/popup/active" || req.path === "/device-action/active";
+  if (!_isPolling || process.env.LOG_POLLING === "1") {
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
+    console.log(`[REQ] ${new Date().toISOString()} | ${req.method} ${req.originalUrl} | IP: ${req.ip} | Country: ${country}`);
+  }
   next();
 });
 
@@ -2180,6 +2187,30 @@ function ensureAppData(appId) {
   try { fs.mkdirSync(path.join(__dirname, "data", appId), { recursive: true }); } catch (e) {}
 }
 
+/* MTIME TABANLI JSON CACHE — getCachedConfig ile aynı desen, tek fark: birden
+   fazla dosya türü için ortak.
+   NEDEN: /popup/active ve /device-action/active uygulamanın EN YOĞUN iki
+   endpoint'i (her cihaz sürekli yokluyor) ve her istekte fs.existsSync +
+   fs.readFileSync + JSON.parse yapıyorlardı. Bu çağrılar THREADPOOL KULLANMAZ,
+   doğrudan event loop'u durdururlar — UV_THREADPOOL_SIZE=32 ayarının bunlara
+   hiçbir etkisi yok. Event loop bloklanınca axios'un socket timer'ı geç işleniyor
+   ve provider'a giden istekler "timeout of 12000ms exceeded" / "aborted" ile
+   düşüyordu; yani provider yavaş sanılıyordu, aslında biz takılıydık.
+   Dosya diskten SADECE mtime değiştiğinde okunur; panel yazınca (save*)
+   mtime değişir → tüm worker'lar bir sonraki okumada anında tazelenir. */
+const _jsonFileCache = new Map();   // tam yol -> { mt, data }
+function readJsonCached(file, fallback) {
+  let mt = 0;
+  try { mt = fs.statSync(file).mtimeMs; } catch (e) { return fallback; }
+  const hit = _jsonFileCache.get(file);
+  if (hit && hit.mt === mt) return hit.data;
+  try {
+    const data = JSON.parse(fs.readFileSync(file, "utf-8"));
+    _jsonFileCache.set(file, { mt, data });
+    return data;
+  } catch (e) { return fallback; }
+}
+
 // Config ve blocked channels bellekte tutulur, 60 saniyede bir yenilenir.
 // Config artık uygulama başına cache'lenir: appId -> config nesnesi.
 let _cachedConfigByApp = {};
@@ -2588,10 +2619,17 @@ async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
   if (providers.length === 0) {
     throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
   }
+  /* İSTEMCİ KOPTU MU? — safePipe, res kapanınca kaynağı destroy ediyor; axios
+     bunu "aborted" diye raporluyor ve retry döngüsü 4 sn bekleyip AYNI isteği
+     provider'a tekrar gönderiyordu. Kimsenin beklemediği bir yanıt için
+     provider'ı ikinci kez yormanın anlamı yok: yoğunlukta bu, 502 selini
+     büyüten geri besleme döngüsüydü. Her denemeden önce kontrol ediyoruz. */
+  const aborted = () => typeof opts.isAborted === "function" && opts.isAborted();
   let lastErr;
   for (const provider of providers) { // her gelen apiyi sırayla dene
     const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
     for (let attempt = 1; attempt <= budget.attempts; attempt++) {
+      if (aborted()) throw new Error("İstemci bağlantıyı kapattı — istek iptal edildi");
       try {
         console.log(`[API_PROVIDER:${provider.id}] MP3 stream: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${budget.attempts}`);
 
@@ -2641,10 +2679,12 @@ async function apiStreamMp4(videoId, quality = 720, opts = {}) {
   if (providers.length === 0) {
     throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
   }
+  const aborted = () => typeof opts.isAborted === "function" && opts.isAborted(); // bkz. apiStreamMp3
   let lastErr;
   for (const provider of providers) {
     const url = buildProviderUrl(provider, "mp4", { id: videoId, quality });
     for (let attempt = 1; attempt <= budget.attempts; attempt++) {
+      if (aborted()) throw new Error("İstemci bağlantıyı kapattı — istek iptal edildi");
       try {
         console.log(`[API_PROVIDER:${provider.id}] MP4 stream: ${videoId} (${quality}p) — deneme ${attempt}/${budget.attempts}`);
 
@@ -4145,6 +4185,13 @@ app.get("/stream", async (req, res) => {
   const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
   const cacheKey = `ongoing:${typeStr}:${videoId}`;
 
+  /* İSTEMCİ KOPMA TAKİBİ — kullanıcı şarkıyı atladığında/ağı düştüğünde
+     bağlantı kapanır. Bu bayrak provider retry döngüsüne geçirilir; kimsenin
+     beklemediği bir yanıt için bazocam'a ikinci istek atılmasını engeller. */
+  let clientGone = false;
+  req.on("close", () => { clientGone = true; });
+  const isAborted = () => clientGone || res.writableEnded || res.destroyed;
+
   // Panel istatistikleri — cache kontrollerinden ÖNCE, ki cache'ten servis edilen
   // dinlemeler de sayılsın. Fire&forget, isteği yavaşlatmaz.
   recordRequestStats(videoId, typeStr, { title: req.query.title, artist: req.query.uploader });
@@ -4252,7 +4299,14 @@ app.get("/stream", async (req, res) => {
 
     //  KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
     try {
-      const r2Data = await getR2Stream(r2Key);
+      /* DÜZELTME: okuma anahtarı ses için "audio/<id>.m4a" idi, oysa TÜM ses
+         yüklemeleri "audio/<id>.mp3" yazıyor (prewarm, akıllı cache, disk-hit
+         yedeklemesi — bkz. uploadToR2 çağrıları). Yani R2'ye yazılan hiçbir ses
+         dosyası GERİ OKUNAMIYORDU → R2 katmanı da kalıcı %0 hit.
+         Ses için önce .mp3'ü, bulunamazsa eski .m4a anahtarını deniyoruz
+         (geriye uyumluluk: eski kayıtlar m4a olarak durabilir). */
+      let r2Data = await getR2Stream(typeStr === "audio" ? `audio/${videoId}.mp3` : r2Key);
+      if (!r2Data && typeStr === "audio") r2Data = await getR2Stream(r2Key);
       if (r2Data && r2Data.stream) {
         console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId}`);
         if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
@@ -4269,7 +4323,7 @@ app.get("/stream", async (req, res) => {
     // Cache katmanlarında bulunamadıysa, API'den direkt MP3 stream et
     try {
       console.log(`[STREAM] API Provider ile stream deneniyor: ${videoId}`);
-      const apiResult = await apiStreamMp3(videoId, 320);
+      const apiResult = await apiStreamMp3(videoId, 320, { isAborted });
 
       res.setHeader("Content-Type", apiResult.contentType || "audio/mpeg");
       if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
@@ -4323,6 +4377,16 @@ app.get("/stream", async (req, res) => {
            bellek şişmesi demek. pipe() en yavaş hedefe göre otomatik fren yapar. */
         apiResult.stream.pipe(userStream);
         apiResult.stream.pipe(diskStream);
+        /* DÜZELTME: diskStream buraya kadar oluşturuluyor, besleniyor ama
+           writer'a HİÇ bağlanmıyordu (video dalındaki diskStream.pipe(writer)
+           karşılığı eksikti). Sonucu zincirlemeydi:
+             1) cacheFile 0 byte açılıp hiç yazılmıyor, hiç kapanmıyordu (fd sızıntısı),
+             2) bir sonraki istek dosyayı bulup 20KB altı diye siliyordu
+                → [DISK_CACHE_ERR] döngüsü, ses disk cache'i kalıcı olarak %0 hit,
+             3) writer 'finish' hiç tetiklenmediği için endFlight() çağrılmıyor,
+                tek-uçuş kilidi 2 dk sweeper'a kadar asılı kalıyor → aynı şarkıyı
+                isteyen herkes handler başındaki Promise.race'te 20 sn bekliyordu. */
+        diskStream.pipe(writer);
         apiResult.stream.on("error", (err) => {
           userStream.destroy(err);
           diskStream.destroy(err);
@@ -4338,6 +4402,8 @@ app.get("/stream", async (req, res) => {
       }
       return;
     } catch (apiErr) {
+      // İstemci zaten gitmişse ne loglamaya ne de kapalı sokete yazmaya gerek var.
+      if (isAborted()) return;
       console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
       if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
       return;
@@ -4374,6 +4440,10 @@ app.get("/stream", async (req, res) => {
 
 // VIDEO STREAM (MP4) - Yüksek Hızlı Doğrudan Aktarım (Proxy Stream)
 app.get("/stream/video", async (req, res) => {
+  // İstemci kopma takibi — /stream ile aynı gerekçe (bkz. apiStreamMp3 içindeki not).
+  let clientGone = false;
+  req.on("close", () => { clientGone = true; });
+  const isAborted = () => clientGone || res.writableEnded || res.destroyed;
   try {
     const { videoId } = req.query;
     if (!videoId || !isValidVideoId(videoId)) return res.status(400).json({ error: "Invalid or missing videoId" });
@@ -4501,7 +4571,7 @@ app.get("/stream/video", async (req, res) => {
     // ★ KATMAN 2: API PROVIDER (bazocam MP4) — proxy/yt-dlp'ye gerek kalmadan video stream
     try {
       console.log(`[VIDEO_API] API Provider ile video stream deneniyor: ${videoId}`);
-      const apiResult = await apiStreamMp4(videoId, 720);
+      const apiResult = await apiStreamMp4(videoId, 720, { isAborted });
       if (apiResult && apiResult.stream) {
         console.log(`[VIDEO_API_HIT] ✅ Video API Provider'dan sunuluyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
@@ -6715,12 +6785,14 @@ const ANNOUNCEMENTS_FILE = path.join(__dirname, "announcements.json");
 
 function loadAnnouncements(appId = "default") {
   const file = pathFor(appId, "announcements.json");
-  try {
-    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
-    return JSON.parse(fs.readFileSync(file, "utf-8"));
-  } catch (e) {
-    return [];
+  // Dosya kurulumu SADECE ilk kez (henüz cache girdisi yokken) kontrol edilir;
+  // sonraki her istek tek bir statSync ile cache'ten döner. /popup/active
+  // en yoğun endpoint — burada senkron okuma yapmak event loop'u durduruyordu.
+  if (!_jsonFileCache.has(file) && !fs.existsSync(file)) {
+    try { ensureAppData(appId); fs.writeFileSync(file, "[]"); } catch (e) { return []; }
   }
+  const data = readJsonCached(file, []);
+  return Array.isArray(data) ? data : [];
 }
 
 function saveAnnouncements(data, appId = "default") {
@@ -6817,12 +6889,12 @@ const DEVICE_ACTIONS_FILE = path.join(__dirname, "device_actions.json");
 
 function loadDeviceActions(appId = "default") {
   const file = pathFor(appId, "device_actions.json");
-  try {
-    if (!fs.existsSync(file)) { ensureAppData(appId); fs.writeFileSync(file, "[]"); }
-    return JSON.parse(fs.readFileSync(file, "utf-8"));
-  } catch (e) {
-    return [];
+  // Bkz. loadAnnouncements — /device-action/active de aynı polling hacminde.
+  if (!_jsonFileCache.has(file) && !fs.existsSync(file)) {
+    try { ensureAppData(appId); fs.writeFileSync(file, "[]"); } catch (e) { return []; }
   }
+  const data = readJsonCached(file, []);
+  return Array.isArray(data) ? data : [];
 }
 
 function saveDeviceActions(data, appId = "default") {
