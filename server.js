@@ -6420,9 +6420,19 @@ app.get("/cache-panel", basicAuth, (req, res) => {
    kullanılıyor.
    ═══════════════════════════════════════════════════════════════════════════ */
 let _cacheScan = { at: 0, rows: [] };
-const CACHE_SCAN_TTL_MS = 30 * 1000;   // 30 sn — "Yenile" zorla tazeler
+const CACHE_SCAN_TTL_MS = 10 * 60 * 1000;   // 10 dk — "Yenile" zorla tazeler
 
-async function scanCacheFiles(force = false) {
+/* ⚠️ PERFORMANS — BURASI BİR KEZ SUNUCUYU YAVAŞLATTI, AYNI HATAYI YAPMA.
+   İlk sürüm listedeki HER dosya için fs.stat çağırıyordu (binlerce çağrı).
+   fs.* çağrıları libuv threadpool'unda çalışır (UV_THREADPOOL_SIZE=32) ve
+   dns.lookup() DE AYNI HAVUZU KULLANIR. Binlerce stat kuyruğa girince
+   bazocam'a/googleapis'e gidecek isteklerin DNS'i arkada bekledi →
+   arama sürünmeye başladı, indirmeler bağlantı kuramayıp başarısız oldu.
+   ŞİMDİ: liste sadece readdir ile çıkarılıyor (dizin başına tek çağrı),
+   stat YALNIZCA ekranda görünen ~100 satır için yapılıyor (statRows).
+   Sıralama da mümkün olan her yerde Redis sayaçlarından yapılıyor ki
+   diske hiç dokunulmasın. */
+async function listCacheEntries(force = false) {
   if (!force && _cacheScan.at && Date.now() - _cacheScan.at < CACHE_SCAN_TTL_MS) {
     return _cacheScan.rows;
   }
@@ -6435,7 +6445,7 @@ async function scanCacheFiles(force = false) {
 
   for (const { dir, kind, exts } of sources) {
     let names = [];
-    try { names = await fs.promises.readdir(dir); } catch { continue; }
+    try { names = await fs.promises.readdir(dir); } catch { continue; }   // dizin başına TEK çağrı
     for (const name of names) {
       const ext = path.extname(name).toLowerCase();
       if (!exts.includes(ext)) continue;
@@ -6443,30 +6453,34 @@ async function scanCacheFiles(force = false) {
       const videoId = path.basename(name, ext).replace(/^(audio_|video_)/, "");
       if (!isValidVideoId(videoId)) continue;
 
-      const full = path.join(dir, name);
-      const st = await statOrNull(full);
-      if (!st || !st.isFile()) continue;
-
       const key = `${kind}:${videoId}`;
       const prev = merged.get(key);
-      // birthtime bazı dosya sistemlerinde 0 döner → mtime'a düş
-      const born = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
-      if (prev) {
-        prev.sizeBytes += st.size;
-        prev.files.push(full);
-        if (born < prev.firstCachedAt) prev.firstCachedAt = born;
-        if (st.mtimeMs > prev.lastPlayedAt) prev.lastPlayedAt = st.mtimeMs;
-      } else {
-        merged.set(key, {
-          videoId, kind, ext: ext.slice(1), files: [full],
-          sizeBytes: st.size, firstCachedAt: born, lastPlayedAt: st.mtimeMs
-        });
-      }
+      const full = path.join(dir, name);
+      if (prev) prev.files.push(full);
+      else merged.set(key, { videoId, kind, ext: ext.slice(1), files: [full] });
     }
   }
 
   _cacheScan = { at: Date.now(), rows: Array.from(merged.values()) };
   return _cacheScan.rows;
+}
+
+/* Boyut ve tarihleri SADECE verilen satırlar için doldur (normalde 100 satır).
+   statOrNull zaten hatada null döner; dosya silinmişse satır 0/– görünür. */
+async function statRows(rows) {
+  await Promise.all(rows.map(async (r) => {
+    if (r.sizeBytes !== undefined) return;     // zaten dolduruldu
+    let size = 0, first = 0, last = 0;
+    for (const f of r.files) {
+      const st = await statOrNull(f);
+      if (!st || !st.isFile()) continue;
+      size += st.size;
+      const born = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;   // bazı FS'lerde birthtime 0
+      if (!first || born < first) first = born;
+      if (st.mtimeMs > last) last = st.mtimeMs;
+    }
+    r.sizeBytes = size; r.firstCachedAt = first; r.lastPlayedAt = last;
+  }));
 }
 
 /* BAŞLIK TAMAMLAMA — YouTube oEmbed
@@ -6478,8 +6492,13 @@ async function scanCacheFiles(force = false) {
    şarkı için ömürde bir kez sorulur.
    Video silinmişse oEmbed 401/404 döner → "dead" işaretlenip 30 gün saklanır ki
    her sayfa açılışında tekrar tekrar denenmesin. */
-const OEMBED_CONCURRENCY = 8;
-const OEMBED_BUDGET_MS = 4000;   // sayfa yanıtını bekletmemek için üst sınır
+/* Paralellik bilerek DÜŞÜK. Her giden HTTP isteği yeni bağlantıda dns.lookup()
+   yapar ve o da fs ile aynı libuv threadpool'unu kullanır. 8 paralel + binlerce
+   stat birleşince bazocam'a giden isteklerin DNS'i bekledi, indirmeler koptu.
+   3 paralel bu baskıyı hissedilmez kılıyor; yetişmeyen başlık zaten bir sonraki
+   sayfa açılışında tamamlanıyor (sonuç kalıcı olarak Redis'e yazılıyor). */
+const OEMBED_CONCURRENCY = 3;
+const OEMBED_BUDGET_MS = 2500;   // sayfa yanıtını bekletmemek için üst sınır
 
 async function fetchYoutubeMeta(videoId) {
   const url = "https://www.youtube.com/oembed?url=" +
@@ -6536,11 +6555,10 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
     const limit = Math.min(200, Math.max(10, parseInt(req.query.limit) || 100));
     const kindFilter = (req.query.kind || "all").toString();
 
-    let rows = await scanCacheFiles(req.query.refresh === "1");
+    // Sadece dosya adları — disk stat'ı YOK (bkz. listCacheEntries üstündeki uyarı)
+    let rows = (await listCacheEntries(req.query.refresh === "1")).map(r => ({ ...r }));
 
-    // Filtreden ÖNCEKİ genel toplamlar (başlıktaki "toplam X MB" için)
     const grandTotal = rows.length;
-    const grandBytes = rows.reduce((a, r) => a + r.sizeBytes, 0);
 
     // Başlık/sanatçı: önce Redis meta (uygulamanın gönderdiği), yoksa media_db
     const dbMap = new Map();
@@ -6562,21 +6580,19 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
       const db = dbMap.get(r.videoId);
       if (!title && db && db.title && db.title !== "Unknown") title = db.title;
       if (!artist && db && db.artist && db.artist !== "Unknown") artist = db.artist;
-      // req_last yoksa dosyanın mtime'ı (touchCache her dinlemede günceller)
-      const lastReq = Number(lastVals[i]) || r.lastPlayedAt;
       return {
         videoId: r.videoId,
         kind: r.kind,
         ext: r.ext,
+        files: r.files,          // statRows için (yanıttan önce siliniyor)
         title,
         artist,
         dead,
         _noMeta: noMeta,
-        sizeMB: +(r.sizeBytes / 1048576).toFixed(2),
         today: parseInt(dayVals[i] || "0", 10),
         total: parseInt(totalVals[i] || "0", 10),
-        firstCachedAt: Math.round(r.firstCachedAt),
-        lastRequestAt: Math.round(lastReq)
+        // Sıralama Redis'ten — diske dokunmadan. Boyut/tarihler statRows ile sonra.
+        lastRequestAt: Number(lastVals[i]) || 0
       };
     });
 
@@ -6590,10 +6606,16 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
         r.artist.toLowerCase().includes(q));
     }
 
+    /* Boyut/ilk-cache sıralaması TÜM satırların stat'ını gerektirir — pahalı.
+       Kullanıcı bilerek seçerse yapılır; varsayılan sıralamalar (son istek,
+       toplam, bugün, başlık) tamamen Redis'ten geldiği için diske dokunmaz. */
+    const needsAllStats = (sort === "size" || sort === "first");
+    if (needsAllStats) await statRows(rows);
+
     const sorters = {
       last:  (a, b) => b.lastRequestAt - a.lastRequestAt,
-      first: (a, b) => b.firstCachedAt - a.firstCachedAt,
-      size:  (a, b) => b.sizeMB - a.sizeMB,
+      first: (a, b) => (b.firstCachedAt || 0) - (a.firstCachedAt || 0),
+      size:  (a, b) => (b.sizeBytes || 0) - (a.sizeBytes || 0),
       total: (a, b) => b.total - a.total,
       today: (a, b) => b.today - a.today,
       title: (a, b) => (a.title || a.videoId).localeCompare(b.title || b.videoId, "tr")
@@ -6601,20 +6623,30 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
     rows.sort(sorters[sort] || sorters.last);
 
     const filtered = rows.length;
-    const filteredBytes = rows.reduce((a, r) => a + r.sizeMB, 0);
     const start = (page - 1) * limit;
-
-    // Başlığı olmayanları YouTube'dan tamamla — sadece bu sayfadakiler, bütçeli
     const pageRows = rows.slice(start, start + limit);
+
+    // Disk erişimi SADECE burada: görünen ~100 satır
+    await statRows(pageRows);
+    // Başlığı olmayanları YouTube'dan tamamla — yine sadece bu sayfadakiler
     await backfillTitles(pageRows);
+
+    let pageBytes = 0;
+    for (const r of pageRows) {
+      pageBytes += r.sizeBytes || 0;
+      r.sizeMB = +((r.sizeBytes || 0) / 1048576).toFixed(2);
+      r.firstCachedAt = Math.round(r.firstCachedAt || 0);
+      // req_last yoksa dosyanın mtime'ına düş (touchCache her dinlemede günceller)
+      if (!r.lastRequestAt) r.lastRequestAt = Math.round(r.lastPlayedAt || 0);
+      delete r.files; delete r.sizeBytes; delete r.lastPlayedAt; delete r._noMeta;
+    }
 
     res.json({
       rows: pageRows,
       page, limit,
       filtered,
-      filteredMB: +filteredBytes.toFixed(1),
+      pageMB: +(pageBytes / 1048576).toFixed(1),
       grandTotal,
-      grandMB: +(grandBytes / 1048576).toFixed(1),
       scannedAt: _cacheScan.at
     });
   } catch (e) {
