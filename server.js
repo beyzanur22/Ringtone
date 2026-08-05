@@ -2489,17 +2489,20 @@ function buildProviderUrl(provider, type, params) {
                   timeout'unun altında kalır) ki hata da, başarı da yerine ulaşsın.
      background → prewarm / pre-resolve / indirme. Kimse beklemiyor, dönüşüme
                   bol zaman tanınır (eski davranış korunur). */
-/* DÜZELTME: foreground timeout 12 sn ÇOK KISAYDI.
-   Sahada "timeout of 12000ms exceeded" hataları alındı — provider 12 saniyede
-   ilk baytı gönderemediği her şarkı, ESKİDEN BAŞARILI OLACAKKEN patladı
-   (eski değer 120 sn idi). İstemci bütçesi ExoPlayer'ın read timeout'u = 30 sn.
-   Bu yüzden tek denemeye 24 sn veriyoruz: provider'a mümkün olan en uzun süreyi
-   tanırken yanıt hâlâ istemciye yetişiyor.
-   Deneme sayısı 2→1: bu provider'da hatalar ya çökme (aborted/PHP fatal) ya da
-   yavaşlık. İkisinde de ikinci deneme aynı işi baştan kuyruğa sokmaktan başka
-   bir şey yapmıyor, üstelik toplam süreyi istemci bütçesinin üstüne çıkarıyor. */
+/* ⚠️ foreground timeout'u DÜŞÜRME — 12 sn denendi ve şarkıların çalmamasına yol açtı.
+   Sahadan kanıt (2026-08-05 19:36, GtSRKwDCaZM): AYNI şarkı aynı saniyelerde iki
+   yoldan istendi. İndirme yolu (120 sn bütçe) 20. saniyede BAŞARDI (cache=MISS),
+   çalma yolu (12 sn bütçe) iki denemede de "timeout of 12000ms exceeded" aldı.
+   H3tEZUTzzHI'de de birebir aynı tablo. Yani provider, cache'inde olmayan şarkı
+   için 15-25 sn istiyor; 12 sn onu beklemeden kesiyordu.
+   Ayrıca kesilen aktarım diske yarım dosya bırakıyor ve bir sonraki istekte
+   "[DISK_CACHE_ERR] Bozuk dosya" ile siliniyordu — cache de dolmuyordu.
+   ÜST SINIR: ExoPlayer read timeout'u 30 sn (MusicService.kt). 25 sn onun altında
+   kalır, yani yanıt her hâlükârda istemciye yetişir.
+   attempts: 1 — ikinci deneme aynı işi baştan kuyruğa sokuyor ve toplamı 30 sn'nin
+   üstüne çıkarıyor; provider yavaşsa da çökmüşse de faydası yok. */
 const API_BUDGET = {
-  foreground: { attempts: 1, delays: [], timeout: 24000 },
+  foreground: { attempts: 1, delays: [], timeout: 25000 },
   background: { attempts: 3, delays: [15000, 20000], timeout: 120000 }
 };
 
