@@ -2723,7 +2723,7 @@ app.post("/admin/smart-cache", basicAuth, async (req, res) => {
 
 // ========== ADMIN: YouTube & Top50 Yönetim Endpoint'leri ==========
 
-let warmupIntervalMs = 50 * 60 * 1000; // varsayılan 50dk
+let warmupIntervalMs = 6 * 60 * 60 * 1000; // varsayılan 6 saat (yük azaltma: eskiden 50dk — Top50 gün içinde pek değişmez)
 let warmupTimer = null;
 let youtubeApiCallCount = 0; // sunucu başladığından beri yapılan API çağrı sayısı
 
@@ -2892,7 +2892,7 @@ app.use("/download", streamLimiter);
    YOUTUBE API SETUP
 ========================= */
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-const CACHE_DURATION = 60 * 60; // 1 saat (saniye cinsinden)
+const CACHE_DURATION = 8 * 60 * 60; // 8 saat (yük azaltma: eskiden 1 saat) — warmup 6 saatte bir olduğu için cache hep sıcak kalır, soğuk-miss yaşanmaz
 const STREAM_CACHE_DURATION = 5.5 * 60 * 60; // 5.5 saat (YouTube URL max 6 saat, cache'i son ana kadar kullan)
 const SEARCH_CACHE_DURATION = parseInt(process.env.SEARCH_CACHE_TTL || "3600"); // config'den yönetilebilir
 
@@ -4297,8 +4297,9 @@ const WARM_REGIONS = { get list() { return Array.from(activeRegions); } };
    Çözüm: bölgeler Redis'te ortak sorted set'te (skor = son görülme zamanı).
    Sorted set aynı zamanda listeyi sınırlı tutar — rastgele/VPN ülkeleri zamanla düşer,
    YouTube kotası şişmez. */
-const REGIONS_ZKEY = "top50:active_regions";
-const WARM_REGION_LIMIT = 25;   // en son görülen bu kadar ülke ısıtılır
+const REGIONS_ZKEY = "top50:active_regions";        // skor = ülkeden gelen TOPLAM istek sayısı (hacim önceliği)
+const REGIONS_SEEN_HKEY = "top50:region_lastseen";  // ülke → son görülme zamanı (7 gün inaktif prune için)
+const WARM_REGION_LIMIT = 10;   // en ÇOK istek gelen bu kadar ülke ısıtılır (yük azaltma: eskiden 25)
 
 function trackActiveRegion(country) {
   if (!country || country === "UNKNOWN" || country.length !== 2) return;
@@ -4308,21 +4309,34 @@ function trackActiveRegion(country) {
     activeRegions.add(region);
     console.log(`[AUTO_REGION] 🌍 Yeni ülke algılandı: ${region} — Top50 ısıtmaya eklendi (toplam: ${activeRegions.size})`);
   }
-  // Tüm worker'ların gördüğü ülkeler burada birleşir (fire&forget — isteği asla bozmaz)
-  try { redis.zadd(REGIONS_ZKEY, Date.now(), region).catch(() => {}); } catch (e) {}
+  // Tüm worker'ların gördüğü ülkeler burada birleşir (fire&forget — isteği asla bozmaz).
+  // ÖNCELİK = HACİM: her istekte sayaç +1 → en çok istek gelen ülkeler warmup'ta öne geçer.
+  // Son görülme zamanı ayrı hash'te tutulur (7 gün inaktif ülkeleri düşürmek için).
+  try {
+    redis.zincrby(REGIONS_ZKEY, 1, region).catch(() => {});
+    redis.hset(REGIONS_SEEN_HKEY, region, Date.now()).catch(() => {});
+  } catch (e) {}
 }
 
 async function warmTop50() {
   // Ortak listeyi Redis'ten al → diğer worker'ların gördüğü ülkeler de ısıtılır.
-  // En son görülen WARM_REGION_LIMIT ülke ile sınırlı (kota koruması).
-  let regions = WARM_REGIONS.list;
+  // En ÇOK istek gelen WARM_REGION_LIMIT ülke ile sınırlı (hacim önceliği + kota koruması).
+  let regions = WARM_REGIONS.list; // Redis yoksa fallback: yerel görülen ülkeler (TR/US tabanı dahil)
   try {
+    // En ÇOK istek gelen ülkeler önce (skor = toplam istek sayısı, ZREVRANGE azalan sırada döner).
     const shared = await redis.zrevrange(REGIONS_ZKEY, 0, WARM_REGION_LIMIT - 1);
     if (Array.isArray(shared) && shared.length) {
-      regions = Array.from(new Set([...regions, ...shared])).slice(0, WARM_REGION_LIMIT);
+      regions = shared; // tamamen hacme göre öncelik
     }
-    // 7 günden beri görülmeyen ülkeleri listeden düşür
-    await redis.zremrangebyscore(REGIONS_ZKEY, 0, Date.now() - 7 * 24 * 3600 * 1000).catch(() => {});
+    // 7 günden beri HİÇ istek gelmeyen ülkeleri hem sayaç setinden hem son-görülme hash'inden düşür
+    // (skor artık zaman değil sayaç olduğu için eski zremrangebyscore mantığı yerine son-görülme hash'i kullanılır).
+    const seen = await redis.hgetall(REGIONS_SEEN_HKEY);
+    const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+    const stale = Object.entries(seen || {}).filter(([, ts]) => Number(ts) < cutoff).map(([r]) => r);
+    if (stale.length) {
+      await redis.zrem(REGIONS_ZKEY, ...stale).catch(() => {});
+      await redis.hdel(REGIONS_SEEN_HKEY, ...stale).catch(() => {});
+    }
   } catch (e) { /* Redis yoksa yerel liste ile devam */ }
   console.log(`[WARMUP] ${regions.length} aktif ülke ısıtılacak: ${regions.join(", ")}`);
   for (const region of regions) {
