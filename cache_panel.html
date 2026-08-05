@@ -6,14 +6,16 @@
 <title>Cache Yönetimi | Ringtone Master</title>
 <style>
 :root {
-  --bg: #f8f7f2;
-  --card-bg: #ffffff;
-  --text: #4a4a4a;
-  --text-muted: #8e8e8e;
+  /* Koyu tema — beyaz zemin göz yorduğu için siyaha çalan gri paleti */
+  --bg: #121418;         /* sayfa zemini */
+  --card-bg: #1b1e24;    /* kartlar / tablo */
+  --raised: #232730;     /* input, buton, satır vurgusu */
+  --text: #e6e8ec;
+  --text-muted: #9299a5;
   --accent: #d4a373;
-  --danger: #e63946;
+  --danger: #ef4444;
   --success: #10b981;
-  --border: #e2e2e2;
+  --border: #2b2f39;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:40px 20px}
@@ -37,24 +39,25 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 /* Filters */
 .filters-bar{background:var(--card-bg);padding:15px 25px;border-radius:12px;border:1px solid var(--border);margin-bottom:20px;display:flex;gap:15px;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,0.02)}
 .search-wrapper{flex:1;position:relative;display:flex;align-items:center}
-.search-input{width:100%;padding:10px 15px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#f9f9f9}
+.search-input{width:100%;padding:10px 15px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--raised);color:var(--text)}
+.search-input::placeholder{color:var(--text-muted)}
 .search-icon{position:absolute;left:15px;color:var(--text-muted)}
-select{padding:10px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;cursor:pointer;color:var(--text)}
-.btn-filter{background:#000;color:#fff;padding:10px 25px}
+select{padding:10px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--raised);cursor:pointer;color:var(--text)}
+.btn-filter{background:var(--accent);color:#1b1e24;padding:10px 25px;font-weight:700}
 
 /* Table */
 .section{background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:15px 20px;font-size:12px;text-transform:uppercase;color:var(--text-muted);font-weight:700;background:#fafafa;border-bottom:1px solid var(--border)}
+th{text-align:left;padding:15px 20px;font-size:12px;text-transform:uppercase;color:var(--text-muted);font-weight:700;background:#171a20;border-bottom:1px solid var(--border)}
 td{padding:18px 20px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#fcfcfc}
+tr:hover td{background:var(--raised)}
 
 .track-info{display:flex;flex-direction:column;gap:4px}
 .track-title{font-weight:600;color:var(--text);display:block}
 .track-id{font-size:12px;color:var(--text-muted);font-family:monospace}
-.badge-quality{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #fde68a}
-.request-bar{width:100px;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;display:inline-block;margin-right:8px}
+.badge-quality{background:#3a2f14;color:#fcd34d;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #6b5518}
+.request-bar{width:100px;height:6px;background:var(--raised);border-radius:3px;overflow:hidden;display:inline-block;margin-right:8px}
 .request-fill{height:100%;background:var(--accent);border-radius:3px}
 .req-count{font-weight:700;font-size:13px}
 
@@ -66,19 +69,20 @@ tr:hover td{background:#fcfcfc}
 .cache-table td{padding:12px 20px;font-size:13px}
 
 /* Liste üst bilgisi + sayfalama */
-.list-meta{padding:12px 20px;font-size:13px;color:var(--text-muted);border-bottom:1px solid var(--border);background:#fafafa}
+.list-meta{padding:12px 20px;font-size:13px;color:var(--text-muted);border-bottom:1px solid var(--border);background:#171a20}
 .pager{display:flex;gap:8px;align-items:center;justify-content:center;padding:15px;border-top:1px solid var(--border);flex-wrap:wrap}
-.pager button{padding:6px 14px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text)}
-.pager button:hover:not(:disabled){background:#f3f3f3}
+.pager button{padding:6px 14px;border:1px solid var(--border);background:var(--raised);border-radius:6px;cursor:pointer;font-size:13px;color:var(--text)}
+.pager button:hover:not(:disabled){background:#2f343f}
 .pager button:disabled{opacity:.4;cursor:default}
 .pager .cur{font-weight:700;color:var(--text)}
 
 /* Tür etiketi */
 .badge-kind{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
-.kind-audio{background:#f0f9ff;color:#1e40af;border:1px solid #bfdbfe}
-.kind-video{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.kind-audio{background:#16283f;color:#93c5fd;border:1px solid #1e4976}
+.kind-video{background:#3a1d1d;color:#fca5a5;border:1px solid #7f2b2b}
 .num{font-weight:700;text-align:center}
 .dim{color:var(--text-muted)}
+.badge-dead{background:#3a1d1d;color:#fca5a5;border:1px solid #7f2b2b;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-left:6px;vertical-align:middle}
 
 /* Server Status */
 .server-section{margin-bottom:30px}
@@ -86,7 +90,7 @@ tr:hover td{background:#fcfcfc}
 .server-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
 .server-card{background:var(--card-bg);padding:20px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
 .server-card h3{font-size:14px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;display:flex;align-items:center;gap:8px}
-.progress-bar{width:100%;height:10px;background:#f0f0f0;border-radius:5px;overflow:hidden;margin:8px 0}
+.progress-bar{width:100%;height:10px;background:var(--raised);border-radius:5px;overflow:hidden;margin:8px 0}
 .progress-fill{height:100%;border-radius:5px;transition:width 0.3s}
 .progress-fill.green{background:#10b981}
 .progress-fill.yellow{background:#f59e0b}
@@ -94,7 +98,7 @@ tr:hover td{background:#fcfcfc}
 .server-detail{display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-top:4px}
 .server-detail span:last-child{font-weight:700;color:var(--text)}
 .cache-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.cache-item{background:#f9f9f9;padding:12px;border-radius:10px;text-align:center}
+.cache-item{background:var(--raised);padding:12px;border-radius:10px;text-align:center}
 .cache-item .icon{font-size:24px}
 .cache-item .size{font-size:18px;font-weight:800;color:var(--text)}
 .cache-item .desc{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px}
@@ -157,7 +161,7 @@ tr:hover td{background:#fcfcfc}
         <h3>⚡ Redis (Geçici Cache)</h3>
         <div class="server-detail"><span>Bellek Kullanımı</span><span>%%REDIS_USED%%</span></div>
         <div class="server-detail"><span>Toplam Anahtar</span><span>%%REDIS_KEYS%%</span></div>
-        <div style="margin-top:12px;padding:10px;background:#f0fdf4;border-radius:8px;font-size:12px;color:#166534">
+        <div style="margin-top:12px;padding:10px;background:#12261c;border-radius:8px;font-size:12px;color:#86efac">
           ℹ️ Redis sadece URL ve metadata tutar, dosya kaydetmez. Sunucu RAM'inden yer kullanır.
         </div>
       </div>
@@ -293,7 +297,9 @@ function render(d) {
   $('cacheBody').innerHTML = d.rows.map(r => `
     <tr>
       <td><div class="track-info">
-        <span class="track-title">${esc(r.title || '—')}</span>
+        <span class="track-title">${esc(r.title || '—')}
+          ${r.dead ? '<span class="badge-dead" title="Video YouTube&#39;dan kaldırılmış">silinmiş</span>' : ''}
+        </span>
         <span class="track-id">${esc(r.videoId)}</span>
       </div></td>
       <td class="${r.artist ? '' : 'dim'}">${esc(r.artist || '—')}</td>
@@ -310,7 +316,7 @@ function render(d) {
     </tr>`).join('');
 
   $('emptyState').innerHTML = d.filtered === 0
-    ? '<div style="padding:40px;text-align:center;color:#8e8e8e">Eşleşen kayıt yok.</div>' : '';
+    ? '<div style="padding:40px;text-align:center;color:#9299a5">Eşleşen kayıt yok.</div>' : '';
 
   const pages = Math.max(1, Math.ceil(d.filtered / d.limit));
   $('pager').innerHTML =

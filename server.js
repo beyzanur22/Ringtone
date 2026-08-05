@@ -2421,16 +2421,21 @@ function validateMediaStream(srcStream, kind) {
       } else {
         if (head.length >= 8 && head.slice(4, 8).toString("latin1") === "ftyp") return ok();
       }
-      // Geçerli imza yok; karar vermek için yeterli byte geldiyse reddet
-      if (head.length >= 12) {
-        const preview = head.slice(0, 16).toString("latin1").replace(/[^ -~]/g, ".");
+      /* Geçerli imza yok → bu bir medya dosyası değil.
+         Eşiği 12→240 byte yaptık: 12 byte'ta reddedince logda sadece
+         "<br />.<b>Fatal " görünüyordu ve provider'ın PHP hatasının GERÇEK
+         metni (hangi dosya, hangi satır, ne hatası) kesiliyordu. Karar aynı
+         (yine reddediliyor), sadece hata mesajı teşhis edilebilir oluyor.
+         Gövde 240 byte'tan kısaysa onEnd zaten devreye girer. */
+      if (head.length >= 240) {
+        const preview = head.slice(0, 240).toString("latin1").replace(/[^ -~]/g, ".");
         return fail(`Geçersiz medya yanıtı (${kind}): "${preview}"`);
       }
     };
     const onData = (chunk) => { head = Buffer.concat([head, chunk]); check(); };
     const onEnd = () => {
       check();
-      const preview = head.toString("latin1").slice(0, 40);
+      const preview = head.toString("latin1").replace(/[^ -~]/g, ".").slice(0, 240);
       fail(`API yanıtı çok küçük/bozuk (${head.length} byte): "${preview}"`);
     };
     const onErr = (e) => fail(e.message);
@@ -6464,6 +6469,55 @@ async function scanCacheFiles(force = false) {
   return _cacheScan.rows;
 }
 
+/* BAŞLIK TAMAMLAMA — YouTube oEmbed
+   Diskteki eski cache dosyalarında sadece videoId var; başlık hiçbir yerde
+   saklanmamıştı. oEmbed anahtar ve kota istemeyen açık bir uç:
+     https://www.youtube.com/oembed?url=...&format=json → { title, author_name }
+   Panelde bir sayfa açıldığında YALNIZCA o sayfadaki eksik başlıklar çekilir —
+   4000 şarkı için toplu istek YOK. Sonuç meta:<id>'ye KALICI yazılır, yani her
+   şarkı için ömürde bir kez sorulur.
+   Video silinmişse oEmbed 401/404 döner → "dead" işaretlenip 30 gün saklanır ki
+   her sayfa açılışında tekrar tekrar denenmesin. */
+const OEMBED_CONCURRENCY = 8;
+const OEMBED_BUDGET_MS = 4000;   // sayfa yanıtını bekletmemek için üst sınır
+
+async function fetchYoutubeMeta(videoId) {
+  const url = "https://www.youtube.com/oembed?url=" +
+    encodeURIComponent("https://www.youtube.com/watch?v=" + videoId) + "&format=json";
+  const r = await axiosClient.get(url, {
+    timeout: 4000,
+    validateStatus: (s) => s === 200 || s === 401 || s === 403 || s === 404
+  });
+  if (r.status !== 200) return { dead: true };
+  const d = r.data || {};
+  return { t: String(d.title || "").slice(0, 200), a: String(d.author_name || "").slice(0, 120) };
+}
+
+async function backfillTitles(pageRows) {
+  const todo = pageRows.filter(r => r._noMeta);
+  if (todo.length === 0) return;
+  const deadline = Date.now() + OEMBED_BUDGET_MS;
+  let i = 0;
+  const worker = async () => {
+    while (i < todo.length && Date.now() < deadline) {
+      const r = todo[i++];
+      try {
+        const m = await fetchYoutubeMeta(r.videoId);
+        if (m.dead) {
+          r.dead = true;
+          await redis.set(`meta:${r.videoId}`, JSON.stringify({ t: "", a: "", d: 1 }), "EX", 30 * 86400);
+        } else {
+          r.title = m.t; r.artist = m.a;
+          await redis.set(`meta:${r.videoId}`, JSON.stringify({ t: m.t, a: m.a }));
+        }
+      } catch { /* ağ hatası — bir dahaki açılışta tekrar denenir */ }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(OEMBED_CONCURRENCY, todo.length) }, worker)
+  );
+}
+
 // Çok sayıda anahtarı parça parça MGET et (tek seferde 4000 anahtar göndermemek için)
 async function mgetChunked(keys) {
   const out = [];
@@ -6498,8 +6552,13 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
     const lastVals = await mgetChunked(rows.map(r => `req_last:${r.videoId}`));
 
     rows = rows.map((r, i) => {
-      let title = "", artist = "";
-      try { const m = metaVals[i] && JSON.parse(metaVals[i]); if (m) { title = m.t || ""; artist = m.a || ""; } } catch {}
+      let title = "", artist = "", dead = false;
+      // metaVals[i] null ise bu şarkı için hiç meta sorulmamış → backfill adayı
+      const noMeta = !metaVals[i];
+      try {
+        const m = metaVals[i] && JSON.parse(metaVals[i]);
+        if (m) { title = m.t || ""; artist = m.a || ""; dead = !!m.d; }
+      } catch {}
       const db = dbMap.get(r.videoId);
       if (!title && db && db.title && db.title !== "Unknown") title = db.title;
       if (!artist && db && db.artist && db.artist !== "Unknown") artist = db.artist;
@@ -6511,6 +6570,8 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
         ext: r.ext,
         title,
         artist,
+        dead,
+        _noMeta: noMeta,
         sizeMB: +(r.sizeBytes / 1048576).toFixed(2),
         today: parseInt(dayVals[i] || "0", 10),
         total: parseInt(totalVals[i] || "0", 10),
@@ -6543,8 +6604,12 @@ app.get("/cache-panel/data", basicAuth, async (req, res) => {
     const filteredBytes = rows.reduce((a, r) => a + r.sizeMB, 0);
     const start = (page - 1) * limit;
 
+    // Başlığı olmayanları YouTube'dan tamamla — sadece bu sayfadakiler, bütçeli
+    const pageRows = rows.slice(start, start + limit);
+    await backfillTitles(pageRows);
+
     res.json({
-      rows: rows.slice(start, start + limit),
+      rows: pageRows,
       page, limit,
       filtered,
       filteredMB: +filteredBytes.toFixed(1),
