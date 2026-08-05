@@ -2506,6 +2506,28 @@ function isPermanentApiError(err) {
   return false;
 }
 
+/* Provider MP3 yerine HTML/JSON döndürdüğünde GÖVDEYİ OKU.
+   Eskiden gövde okunmadan destroy ediliyor ve sadece "API HTML/JSON döndürdü"
+   yazılıyordu — yani provider'ın "dönüştürülüyor", "kota doldu", "geçersiz key",
+   "video engelli" ya da Cloudflare sayfası mı döndürdüğünü ASLA göremiyorduk.
+   Logda gerçek sebebi görmek için ilk ~200 karakteri alıyoruz. */
+function readStreamPreview(stream, maxBytes = 200) {
+  return new Promise((resolve) => {
+    let buf = Buffer.alloc(0);
+    let settled = false;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      try { stream.destroy(); } catch {}
+      resolve(buf.toString("utf8").replace(/\s+/g, " ").trim().slice(0, maxBytes) || "(boş gövde)");
+    };
+    stream.on("data", (c) => { buf = Buffer.concat([buf, c]); if (buf.length >= maxBytes) done(); });
+    stream.on("end", done);
+    stream.on("error", done);
+    setTimeout(done, 3000); // gövde hiç gelmezse takılma
+  });
+}
+
 async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
   const budget = opts.background ? API_BUDGET.background : API_BUDGET.foreground;
   const providers = normalizeProviders(); //panelden apileri çek
@@ -2530,8 +2552,8 @@ async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
 
         const contentType = response.headers["content-type"] || "";
         if (contentType.includes("text/html") || contentType.includes("json")) {
-          try { response.data.destroy(); } catch {}
-          throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
+          const preview = await readStreamPreview(response.data);
+          throw new Error(`API MP3 yerine ${contentType} döndürdü — yanıt: ${preview}`);
         }
 
         const cacheHeader = response.headers["x-cache"] || "";
@@ -2583,8 +2605,8 @@ async function apiStreamMp4(videoId, quality = 720, opts = {}) {
 
         const contentType = response.headers["content-type"] || "";
         if (contentType.includes("text/html") || contentType.includes("json")) {
-          try { response.data.destroy(); } catch {}
-          throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
+          const preview = await readStreamPreview(response.data);
+          throw new Error(`API MP4 yerine ${contentType} döndürdü — yanıt: ${preview}`);
         }
 
         const validStream = await validateMediaStream(response.data, "video");
@@ -3982,7 +4004,7 @@ app.post("/pre-resolve", express.json(), async (req, res) => {
     const ids = Array.isArray(req.body && req.body.videoIds) ? req.body.videoIds : [];
     const valid = [...new Set(ids.filter(isValidVideoId))].slice(0, PRE_RESOLVE_MAX);
 
-    let alreadyCached = 0;
+    let alreadyCached = 0, belowThreshold = 0;
     const toWarm = [];
     for (const videoId of valid) {
       const mp3File = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
@@ -3992,11 +4014,19 @@ app.post("/pre-resolve", express.json(), async (req, res) => {
         alreadyCached++;
         continue;
       }
+      /* AKILLI CACHE EŞİĞİNE UY — ekranda görünen her şarkıyı indirme!
+         Bu liste bir arama sonucu; 20 şarkının çoğu hiç çalınmayacak. Hepsini
+         indirmek hem diski gereksiz doldurur hem de provider kotasını yakar
+         (provider zaten hata veriyor). Bunun yerine sadece GERÇEKTEN çalınmış,
+         yani smartCache.minRequests eşiğini geçmiş şarkıları ön-ısıtıyoruz:
+         böylece "çok dinlenen şarkı listede görününce hazırlansın" olur,
+         "gördüğüm her şarkıyı indir" olmaz. Eşik panelden yönetilir. */
+      if (!(await shouldCache(videoId))) { belowThreshold++; continue; }
       toWarm.push(videoId);
     }
 
     // Yanıtı HEMEN dön — uygulama 5 sn timeout ile bekliyor, iş arka planda sürsün.
-    res.json({ queued: toWarm.length, alreadyCached });
+    res.json({ queued: toWarm.length, alreadyCached, belowThreshold });
 
     toWarm.forEach((videoId, i) => {
       // Aralarına gecikme koy: provider'ı tek seferde 20 istekle boğmayalım.
