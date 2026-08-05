@@ -2242,40 +2242,32 @@ setInterval(() => {
   _cachedBlockedChannels = null;
 }, 60000);
 
-/* apiProviders VARSAYILANI — tek kaynak.
-   Hem ilk kurulumda (config.json yokken) hem de config.json var ama içinde
-   apiProviders bloğu YOKKEN kullanılır. İkincisi sahada yaşandı: bir
-   deploy/checkout config.json'u ezdi, apiProviders kayboldu, provider listesi
-   boş kaldı ve baseUrl "" olduğu için her istek host'suz bir URL'e gitti
-   (ERR_INVALID_URL) → tüm şarkılar 503. Bkz. getApiProviderConfig(). */
-const DEFAULT_API_PROVIDERS = {
-  providers: [
-    {
-      id: "bazocam",
-      name: "Bazocam",
-      enabled: true,
-      priority: 1,
-      baseUrl: "https://bazocam.net",
-      apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
-      endpoints: {
-        mp3: "/mp3download.php?id={id}&key={key}&b={bitrate}",
-        mp4: "/mp4download.php?id={id}&key={key}&q={quality}",
-        search: "/searchapi.php?search={query}&key={key}",
-        autocomplete: "/ototamamlamaapi.php?search={query}&key={key}"
-      }
-    }
-  ],
-  apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
-  baseUrl: "https://bazocam.net",
-  smartCache: { enabled: true, minRequests: 3 }
-};
-
 if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
     global: { enabled: true, mode: "youtube" },
     countries: {},
     mp3Provider: { bazocam: true, backend: true },
-    apiProviders: DEFAULT_API_PROVIDERS
+    apiProviders: {
+      providers: [
+        {
+          id: "bazocam",
+          name: "Bazocam",
+          enabled: true,
+          priority: 1,
+          baseUrl: "https://bazocam.net",
+          apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
+          endpoints: {
+            mp3: "/mp3download.php?id={id}&key={key}&b={bitrate}",
+            mp4: "/mp4download.php?id={id}&key={key}&q={quality}",
+            search: "/searchapi.php?search={query}&key={key}",
+            autocomplete: "/ototamamlamaapi.php?search={query}&key={key}"
+          }
+        }
+      ],
+      apiKey: "bzc_7mK2pXr9Qw1Lz4Ny",
+      baseUrl: "https://bazocam.net",
+      smartCache: { enabled: true, minRequests: 3 }
+    }
   }, null, 2));
 }
 
@@ -2284,30 +2276,16 @@ if (!fs.existsSync(CONFIG_FILE)) {
    gamma (yt2mp3.ai), cnv (y2mate), youtubemp3.ltd
 ========================= */
 
-let _warnedMissingApiProviders = false;
 function getApiProviderConfig() {
   const config = getCachedConfig();
-  const ap = config.apiProviders;
-  // Panelden yönetilen ayar VARSA her zaman o kazanır — hiçbir şeyi ezmeyiz.
-  const hasUsableProvider =
-    ap && Array.isArray(ap.providers) && ap.providers.length > 0;
-  if (hasUsableProvider) return ap;
-
-  /* Buraya düşmek "config.json'da apiProviders yok/boş" demektir. Eskiden
-     boş liste dönülüyordu → normalizeProviders baseUrl:"" ile sahte bir
-     provider uyduruyor → her şarkı ERR_INVALID_URL. Artık koddaki
-     varsayılana düşüyoruz ki servis ayakta kalsın; ama sessiz kalmıyoruz.
-     NOT: config.json'a YAZMIYORUZ — panel ayarları diske hiç dokunulmadan
-     kalsın. Panelden provider girilir girilmez üstteki dal devreye girer. */
-  if (!_warnedMissingApiProviders) {
-    _warnedMissingApiProviders = true;
-    console.error(
-      "[API_PROVIDER] ⚠️ config.json içinde 'apiProviders' bulunamadı — koddaki " +
-      "varsayılan provider kullanılıyor. Panelden (/admin/api-providers) provider " +
-      "tanımlayın; aksi halde provider değişiklikleri kalıcı olmaz."
-    );
-  }
-  return DEFAULT_API_PROVIDERS;
+  // Sabit API yok — config.json'da provider yoksa boş döner.
+  // Tüm API'ler panel'den (config.json) yönetilir.
+  return config.apiProviders || {
+    providers: [],
+    apiKey: "",
+    baseUrl: "",
+    smartCache: { enabled: true, minRequests: 3 }
+  };
 }
 
 // Akıllı Cache: İstek sayacı — sadece N+ istek gelen şarkılar cache'lenir
@@ -2427,36 +2405,14 @@ function normalizeProviders(includeDisabled = false) {
     apiKey: p.apiKey || fallbackKey,                            // ← panelden gelen KEY
     endpoints: { ...DEFAULT_ENDPOINTS, ...(p.endpoints || {}) } // ← panelden gelen URL şablonları
   }));
-  // Sahte "default" provider'ı SADECE gerçekten kullanılabilir bir baseUrl varsa
-  // üret. Eskiden baseUrl "" iken de üretiliyordu; buildProviderUrl host'suz bir
-  // yol döndürüyor ("/mp3download.php?...") ve axios ERR_INVALID_URL atıyordu —
-  // üstelik bu hata 3 kez, aralarında 35 sn uyunarak tekrarlanıyordu.
-  if (list.length === 0 && isUsableBaseUrl(fallbackBase)) {
+  if (list.length === 0) {
     list.push({
       id: "default", name: "Default", enabled: true, priority: 1,
       baseUrl: fallbackBase, apiKey: fallbackKey, endpoints: { ...DEFAULT_ENDPOINTS }
     });
   }
-  if (!includeDisabled) {
-    list = list.filter(p => p.enabled);
-    // Çalışma zamanında bozuk baseUrl'li provider'ı hiç deneme — boşuna
-    // beklemek yerine anında sıradakine geç.
-    const before = list.length;
-    list = list.filter(p => isUsableBaseUrl(p.baseUrl));
-    if (list.length < before) {
-      console.warn(`[API_PROVIDER] ${before - list.length} provider geçersiz baseUrl yüzünden atlandı`);
-    }
-  }
+  if (!includeDisabled) list = list.filter(p => p.enabled);
   return list.sort((a, b) => a.priority - b.priority);
-}
-
-// baseUrl gerçekten istek atılabilir mi? (http/https + host zorunlu)
-function isUsableBaseUrl(u) {
-  if (!u || typeof u !== "string") return false;
-  try {
-    const parsed = new URL(u);
-    return (parsed.protocol === "http:" || parsed.protocol === "https:") && !!parsed.hostname;
-  } catch { return false; }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2476,96 +2432,34 @@ function buildProviderUrl(provider, type, params) {
   return provider.baseUrl + path;  // panel'deki Base URL + key'li yol = tam istek adresi
 }
 
-/* DENEME BÜTÇESİ — neden iki profil var?
-   Provider, cache'inde olmayan şarkıda önce dönüştürme başlatır; iş bitene kadar
-   HTML/JSON ("işleniyor") döner. Bu yüzden beklemek MANTIKLI — ama sadece kimse
-   ekran karşısında beklemiyorsa.
-   ÖNCEKİ DURUM: tek profil vardı (3 deneme, aralar 15 sn + 20 sn). Kullanıcı
-   şarkıya bastığında backend 35+ sn bekliyordu; oysa ExoPlayer'ın read timeout'u
-   30 sn (MusicService.kt). Yani istemci 30. saniyede bağlantıyı koparıyor,
-   backend'in ürettiği yanıt hiç kimseye ulaşmıyordu — 35 saniye tamamen boşa.
-   ŞİMDİ:
-     foreground → kullanıcı bekliyor. Toplam ~20 sn'yi geçmez (30 sn'lik istemci
-                  timeout'unun altında kalır) ki hata da, başarı da yerine ulaşsın.
-     background → prewarm / pre-resolve / indirme. Kimse beklemiyor, dönüşüme
-                  bol zaman tanınır (eski davranış korunur). */
-/* ⚠️ foreground timeout'u DÜŞÜRME — 12 sn denendi ve şarkıların çalmamasına yol açtı.
-   Sahadan kanıt (2026-08-05 19:36, GtSRKwDCaZM): AYNI şarkı aynı saniyelerde iki
-   yoldan istendi. İndirme yolu (120 sn bütçe) 20. saniyede BAŞARDI (cache=MISS),
-   çalma yolu (12 sn bütçe) iki denemede de "timeout of 12000ms exceeded" aldı.
-   H3tEZUTzzHI'de de birebir aynı tablo. Yani provider, cache'inde olmayan şarkı
-   için 15-25 sn istiyor; 12 sn onu beklemeden kesiyordu.
-   Ayrıca kesilen aktarım diske yarım dosya bırakıyor ve bir sonraki istekte
-   "[DISK_CACHE_ERR] Bozuk dosya" ile siliniyordu — cache de dolmuyordu.
-   ÜST SINIR: ExoPlayer read timeout'u 30 sn (MusicService.kt). 25 sn onun altında
-   kalır, yani yanıt her hâlükârda istemciye yetişir.
-   attempts: 1 — ikinci deneme aynı işi baştan kuyruğa sokuyor ve toplamı 30 sn'nin
-   üstüne çıkarıyor; provider yavaşsa da çökmüşse de faydası yok. */
-const API_BUDGET = {
-  foreground: { attempts: 1, delays: [], timeout: 25000 },
-  background: { attempts: 3, delays: [15000, 20000], timeout: 120000 }
-};
-
-/* Tekrar denemenin ANLAMSIZ olduğu hatalar. Bunlarda beklemeden sıradaki
-   provider'a geçeriz — 35 sn boyunca aynı imkânsız isteği tekrarlamak yerine.
-   Örn. ERR_INVALID_URL (baseUrl boş), DNS yok, 401/403/404 (key/endpoint yanlış). */
-function isPermanentApiError(err) {
-  const code = err && err.code;
-  if (code === "ERR_INVALID_URL" || code === "ENOTFOUND" || code === "ERR_BAD_OPTION_VALUE") return true;
-  if (err && /Invalid URL/i.test(err.message || "")) return true;
-  const status = err && err.response && err.response.status;
-  if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) return true;
-  return false;
-}
-
-/* Provider MP3 yerine HTML/JSON döndürdüğünde GÖVDEYİ OKU.
-   Eskiden gövde okunmadan destroy ediliyor ve sadece "API HTML/JSON döndürdü"
-   yazılıyordu — yani provider'ın "dönüştürülüyor", "kota doldu", "geçersiz key",
-   "video engelli" ya da Cloudflare sayfası mı döndürdüğünü ASLA göremiyorduk.
-   Logda gerçek sebebi görmek için ilk ~200 karakteri alıyoruz. */
-function readStreamPreview(stream, maxBytes = 200) {
-  return new Promise((resolve) => {
-    let buf = Buffer.alloc(0);
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      try { stream.destroy(); } catch {}
-      resolve(buf.toString("utf8").replace(/\s+/g, " ").trim().slice(0, maxBytes) || "(boş gövde)");
-    };
-    stream.on("data", (c) => { buf = Buffer.concat([buf, c]); if (buf.length >= maxBytes) done(); });
-    stream.on("end", done);
-    stream.on("error", done);
-    setTimeout(done, 3000); // gövde hiç gelmezse takılma
-  });
-}
-
-async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
-  const budget = opts.background ? API_BUDGET.background : API_BUDGET.foreground;
+// Provider (bazocam vb.) cache'inde OLMAYAN şarkıda dönüştürmeye başlar ve iş bitene
+// kadar HTML/JSON ("işleniyor") döner ya da hiç yanıt vermez. Eski ayar (2 deneme,
+// aralarında 1.2 sn) dönüşüm sürerken pes ediyordu → yeni/az dinlenen şarkılarda
+// sürekli 503. Deneme sayısı ve aralar dönüşüme zaman tanıyacak şekilde artırıldı.
+const API_RETRY_DELAYS_MS = [15000, 20000]; // 1.→2. deneme arası, 2.→3. arası
+async function apiStreamMp3(videoId, bitrate = 320) {
   const providers = normalizeProviders(); //panelden apileri çek
-  if (providers.length === 0) {
-    throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
-  }
+  const ATTEMPTS = 3;
   let lastErr;
-  for (const provider of providers) { // her gelen apiyi sırayla dene
+  for (const provider of providers) { // her gelen apiyi sırayla dene 
     const url = buildProviderUrl(provider, "mp3", { id: videoId, bitrate });
-    for (let attempt = 1; attempt <= budget.attempts; attempt++) {
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
-        console.log(`[API_PROVIDER:${provider.id}] MP3 stream: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${budget.attempts}`);
+        console.log(`[API_PROVIDER:${provider.id}] MP3 stream: ${videoId} (${bitrate}kbps) — deneme ${attempt}/${ATTEMPTS}`);
 
         const response = await axiosClient({
           method: "GET",
           url,
           responseType: "stream",
-          timeout: budget.timeout,
+          timeout: 120000,
           validateStatus: (status) => status === 200,
           headers: { "User-Agent": getRandomUA() }
         });
 
         const contentType = response.headers["content-type"] || "";
         if (contentType.includes("text/html") || contentType.includes("json")) {
-          const preview = await readStreamPreview(response.data);
-          throw new Error(`API MP3 yerine ${contentType} döndürdü — yanıt: ${preview}`);
+          try { response.data.destroy(); } catch {}
+          throw new Error("API HTML/JSON döndürdü — MP3 dosyası bekleniyor");
         }
 
         const cacheHeader = response.headers["x-cache"] || "";
@@ -2580,12 +2474,8 @@ async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
         };
       } catch (err) {
         lastErr = err;
-        console.warn(`[API_PROVIDER:${provider.id}] MP3 deneme ${attempt}/${budget.attempts} başarısız: ${videoId} — ${err.message}`);
-        if (isPermanentApiError(err)) {
-          console.warn(`[API_PROVIDER:${provider.id}] Kalıcı hata — tekrar denenmeyecek`);
-          break;
-        }
-        if (attempt < budget.attempts) await new Promise(r => setTimeout(r, budget.delays[attempt - 1] || 4000));
+        console.warn(`[API_PROVIDER:${provider.id}] MP3 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, API_RETRY_DELAYS_MS[attempt - 1] || 20000));
       }
     }
     console.warn(`[API_PROVIDER:${provider.id}] MP3 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
@@ -2593,32 +2483,29 @@ async function apiStreamMp3(videoId, bitrate = 320, opts = {}) {
   throw lastErr || new Error("Tüm API provider'ları başarısız (MP3)");
 }
 
-async function apiStreamMp4(videoId, quality = 720, opts = {}) {
-  const budget = opts.background ? API_BUDGET.background : API_BUDGET.foreground;
+async function apiStreamMp4(videoId, quality = 720) {
   const providers = normalizeProviders();
-  if (providers.length === 0) {
-    throw new Error("Kullanılabilir API provider yok (config.json → apiProviders boş veya baseUrl geçersiz)");
-  }
+  const ATTEMPTS = 3; // MP3 ile aynı gerekçe: dönüşüm süresine zaman tanı
   let lastErr;
   for (const provider of providers) {
     const url = buildProviderUrl(provider, "mp4", { id: videoId, quality });
-    for (let attempt = 1; attempt <= budget.attempts; attempt++) {
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       try {
-        console.log(`[API_PROVIDER:${provider.id}] MP4 stream: ${videoId} (${quality}p) — deneme ${attempt}/${budget.attempts}`);
+        console.log(`[API_PROVIDER:${provider.id}] MP4 stream: ${videoId} (${quality}p) — deneme ${attempt}/${ATTEMPTS}`);
 
         const response = await axiosClient({
           method: "GET",
           url,
           responseType: "stream",
-          timeout: budget.timeout,
+          timeout: 120000,
           validateStatus: (status) => status === 200,
           headers: { "User-Agent": getRandomUA() }
         });
 
         const contentType = response.headers["content-type"] || "";
         if (contentType.includes("text/html") || contentType.includes("json")) {
-          const preview = await readStreamPreview(response.data);
-          throw new Error(`API MP4 yerine ${contentType} döndürdü — yanıt: ${preview}`);
+          try { response.data.destroy(); } catch {}
+          throw new Error("API HTML/JSON döndürdü — MP4 dosyası bekleniyor");
         }
 
         const validStream = await validateMediaStream(response.data, "video");
@@ -2630,12 +2517,8 @@ async function apiStreamMp4(videoId, quality = 720, opts = {}) {
         };
       } catch (err) {
         lastErr = err;
-        console.warn(`[API_PROVIDER:${provider.id}] MP4 deneme ${attempt}/${budget.attempts} başarısız: ${videoId} — ${err.message}`);
-        if (isPermanentApiError(err)) {
-          console.warn(`[API_PROVIDER:${provider.id}] Kalıcı hata — tekrar denenmeyecek`);
-          break;
-        }
-        if (attempt < budget.attempts) await new Promise(r => setTimeout(r, budget.delays[attempt - 1] || 4000));
+        console.warn(`[API_PROVIDER:${provider.id}] MP4 deneme ${attempt}/${ATTEMPTS} başarısız: ${videoId} — ${err.message}`);
+        if (attempt < ATTEMPTS) await new Promise(r => setTimeout(r, API_RETRY_DELAYS_MS[attempt - 1] || 20000));
       }
     }
     console.warn(`[API_PROVIDER:${provider.id}] MP4 tüm denemeler başarısız — sonraki provider'a geçiliyor`);
@@ -3288,8 +3171,7 @@ function prewarmTop10(items) {
           mediaLib.upsertTrack(videoId, { title, artist, category: "listening", status: "processing" });
 
           // ★ API Provider (bazocam) ile MP3 çek — yt-dlp YOK
-          // background: kimse beklemiyor → dönüşüme bol zaman tanı
-          const apiResult = await apiStreamMp3(videoId, 320, { background: true });
+          const apiResult = await apiStreamMp3(videoId, 320);
           const writeStream = fs.createWriteStream(cacheFile);
           await new Promise((resolve, reject) => {
             apiResult.stream.pipe(writeStream);
@@ -3475,13 +3357,6 @@ app.get("/config", (req, res) => {
   const config = { ...getCachedConfig(appId) };
   config.watch_base = "https://www.youtube.com/watch?v=";
   if (!config.autocompleteSource) config.autocompleteSource = "google";
-  /* apiProviders'ı istemciye GÖNDERME: içinde provider baseUrl'leri ve API key
-     var. /config uygulamaya açık bir endpoint — bu blok her kuruluma API
-     anahtarını dağıtıyordu. Key sızıp iptal edilirse tüm şarkılar durur.
-     Uygulama bu alanı okumuyor (ApiConfig.kt yalnız BASE_URL/WATCH_BASE bilir),
-     panel de okumuyor (provider ekranı /admin/api-providers kullanıyor).
-     Üstteki shallow kopya sayesinde cache'lenen nesne etkilenmez. */
-  delete config.apiProviders;
   res.json(config);
 });
 
@@ -3497,21 +3372,6 @@ app.post("/config", async (req, res) => {
           .filter(n => Number.isInteger(n) && n > 0)
       )];
     }
-    /* SUNUCU-İÇİ ANAHTARLARI KORU.
-       Bu endpoint gövdeyi OLDUĞU GİBİ diske yazıyor. Panel /config'i alıp
-       düzenleyip geri gönderdiğinde, gövdede olmayan her anahtar SESSİZCE
-       SİLİNİR. apiProviders (provider adresleri + API key) panelin bu ekranında
-       hiç yer almıyor — ayrı /admin/api-providers ile yönetiliyor — dolayısıyla
-       her config kaydında silinme riski taşıyordu. Gövdede yoksa diskteki
-       değeri aynen taşıyoruz. Gövdede varsa panel bilerek göndermiştir, ona
-       dokunmayız. */
-    if (body.apiProviders === undefined) {
-      try {
-        const existing = JSON.parse(await fs.promises.readFile(pathFor(appId, CONFIG_FILE), "utf-8"));
-        if (existing && existing.apiProviders !== undefined) body.apiProviders = existing.apiProviders;
-      } catch (e) { /* dosya yok/bozuk → korunacak bir şey de yok */ }
-    }
-
     ensureAppData(appId);
     await fs.promises.writeFile(pathFor(appId, CONFIG_FILE), JSON.stringify(body, null, 2));
     delete _cachedConfigByApp[appId]; // Sadece bu uygulamanın cache'ini invalidate et
@@ -4001,99 +3861,6 @@ app.post("/cache-notify", express.json(), async (req, res) => {
   }
 });
 
-/* ÖN-ISITMA (/pre-resolve)
-   Uygulama arama / Top50 / playlist ekranını çizer çizmez gördüğü videoId'leri
-   buraya POST ediyor (PreResolver.kt). Bu endpoint backend'de HİÇ TANIMLI DEĞİLDİ:
-   istek auth'u geçiyor, sonra Express 404 veriyordu. Yani sahadaki ön-ısıtmanın
-   tamamı sessizce çöpe gidiyordu; prewarmTop10() de iki çağrı yerinde de yorum
-   satırı olduğu için HİÇBİR şarkı önceden hazırlanmıyordu → her çalma isteği
-   kullanıcı beklerken sıfırdan provider'a gidiyordu.
-   Artık: zaten cache'te olanı atlar, olmayanı arka planda (kimse beklemiyor →
-   background bütçesi) diske indirir. Uygulamada değişiklik gerekmez. */
-const PRE_RESOLVE_MAX = 20;   // uygulama zaten 20 ile sınırlıyor
-app.post("/pre-resolve", express.json(), async (req, res) => {
-  try {
-    const ids = Array.isArray(req.body && req.body.videoIds) ? req.body.videoIds : [];
-    const valid = [...new Set(ids.filter(isValidVideoId))].slice(0, PRE_RESOLVE_MAX);
-
-    let alreadyCached = 0, belowThreshold = 0;
-    const toWarm = [];
-    for (const videoId of valid) {
-      const mp3File = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
-      const m4aFile = path.join(CACHE_DIR, `audio_${videoId}.m4a`);
-      if (await statOrNull(mp3File) || await statOrNull(m4aFile) ||
-          mediaLib.getReadyTrack(videoId, "m4a") || mediaLib.isProcessing(videoId)) {
-        alreadyCached++;
-        continue;
-      }
-      /* AKILLI CACHE EŞİĞİNE UY — ekranda görünen her şarkıyı indirme!
-         Bu liste bir arama sonucu; 20 şarkının çoğu hiç çalınmayacak. Hepsini
-         indirmek hem diski gereksiz doldurur hem de provider kotasını yakar
-         (provider zaten hata veriyor). Bunun yerine sadece GERÇEKTEN çalınmış,
-         yani smartCache.minRequests eşiğini geçmiş şarkıları ön-ısıtıyoruz:
-         böylece "çok dinlenen şarkı listede görününce hazırlansın" olur,
-         "gördüğüm her şarkıyı indir" olmaz. Eşik panelden yönetilir. */
-      if (!(await shouldCache(videoId))) { belowThreshold++; continue; }
-      toWarm.push(videoId);
-    }
-
-    // Yanıtı HEMEN dön — uygulama 5 sn timeout ile bekliyor, iş arka planda sürsün.
-    res.json({ queued: toWarm.length, alreadyCached, belowThreshold });
-
-    toWarm.forEach((videoId, i) => {
-      // Aralarına gecikme koy: provider'ı tek seferde 20 istekle boğmayalım.
-      setTimeout(() => {
-        queue.add(() => warmSongToDisk(videoId)).catch(() => {});
-      }, i * 3000);
-    });
-  } catch (e) {
-    if (!res.headersSent) res.status(400).json({ error: "Invalid payload" });
-  }
-});
-
-/* Bir şarkıyı arka planda provider'dan çekip diske yazar.
-   /stream'deki tek-uçuş kilidini PAYLAŞIR: ısıtma sürerken aynı şarkıya gerçek
-   bir dinleme isteği gelirse, o istek provider'a ikinci kez gitmek yerine bu
-   indirmeyi bekleyip diskten okur. */
-async function warmSongToDisk(videoId) {
-  const cacheKey = `ongoing:audio:${videoId}`;
-  if (ongoingResolutions.has(cacheKey)) return;            // zaten uçuşta
-  const cacheFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
-  if (await statOrNull(cacheFile)) return;                 // arada cache'lenmiş
-
-  let releaseFlight;
-  const flight = new Promise((resolve) => { releaseFlight = resolve; });
-  flight._startedAt = Date.now();
-  ongoingResolutions.set(cacheKey, flight);
-  const endFlight = () => {
-    if (ongoingResolutions.get(cacheKey) === flight) ongoingResolutions.delete(cacheKey);
-    releaseFlight();
-  };
-
-  try {
-    const apiResult = await apiStreamMp3(videoId, 320, { background: true });
-    await new Promise((resolve, reject) => {
-      const writer = fs.createWriteStream(cacheFile);
-      apiResult.stream.pipe(writer);
-      writer.on("finish", resolve);
-      writer.on("error", reject);
-      apiResult.stream.on("error", reject);
-    });
-    const size = (await statOrNull(cacheFile))?.size || 0;
-    if (size < 20 * 1024) {
-      await fs.promises.unlink(cacheFile).catch(() => {});
-      throw new Error(`Dosya çok küçük (${size} byte)`);
-    }
-    console.log(`[PRE_RESOLVE] ✅ ${videoId} ısıtıldı (${(size / 1024 / 1024).toFixed(2)} MB)`);
-    uploadToR2(`audio/${videoId}.mp3`, cacheFile).catch(() => {});
-  } catch (err) {
-    await fs.promises.unlink(cacheFile).catch(() => {});
-    console.warn(`[PRE_RESOLVE] ⚠️ ${videoId} ısıtılamadı: ${err.message}`);
-  } finally {
-    endFlight();
-  }
-}
-
 app.get("/stream", async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
@@ -4107,14 +3874,7 @@ app.get("/stream", async (req, res) => {
   if (ongoingResolutions.has(cacheKey)) {
     console.log(`[DEBOUNCE] +++ ${videoId} zaten çözümleniyor, bekletiliyor...`);
     try {
-      /* SINIRLI BEKLEME: kilidi tutan istek her koşulda serbest bırakmalı, ama
-         beklemeyi ona GÜVENEREK yapmıyoruz — tek bir sızıntı bu isteği sonsuza
-         kadar asılı bırakırdı. 20 sn'de çözülmezse kendi yolumuza devam ederiz
-         (istemcinin 30 sn'lik timeout'unun altında kalır). */
-      await Promise.race([
-        ongoingResolutions.get(cacheKey),
-        new Promise((r) => setTimeout(r, 20000))
-      ]);
+      await ongoingResolutions.get(cacheKey);
       // İlk işlem bittiğinde akış aşağıdan (cache hit ile) devam edecek
     } catch (err) {
       // Önceki hata aldıysa biz yine de bir şans verelim veya hata döndürelim
@@ -4238,25 +3998,7 @@ app.get("/stream", async (req, res) => {
         const userStream = new PassThrough();
         const diskStream = new PassThrough();
         const writer = fs.createWriteStream(cacheFile);
-
-        /* TEK-UÇUŞ (single-flight) KİLİDİ — handler'ın en başındaki
-           `ongoingResolutions.has(cacheKey)` beklemesinin karşılığı.
-           ÖNCEDEN: bu Map'e hiçbir yerde .set() yapılmıyordu (sadece okunuyor ve
-           temizleniyordu), yani kilit ölü koddu. Aynı şarkıyı isteyen 50 kullanıcı
-           = provider'a 50 paralel istek → rate-limit → hata dalgası.
-           ŞİMDİ: yalnızca DİSKE YAZDIĞIMIZ durumda kilidi kuruyoruz; çünkü
-           beklemenin bir işe yaraması için bekleyenin sonunda diskten okuyabilmesi
-           gerekir. Yazmıyorsak kilit kurmayız → bekleyenler eskisi gibi paralel
-           devam eder, hiçbir istek boşuna bekletilmez. */
-        let releaseFlight;
-        const flight = new Promise((resolve) => { releaseFlight = resolve; });
-        flight._startedAt = Date.now();   // takılırsa 2 dk sonra sweeper temizlesin
-        ongoingResolutions.set(cacheKey, flight);
-        const endFlight = () => {
-          if (ongoingResolutions.get(cacheKey) === flight) ongoingResolutions.delete(cacheKey);
-          releaseFlight();
-        };
-
+        diskStream.pipe(writer);
         writer.on("finish", () => {
           try {
             const size = fs.statSync(cacheFile).size;
@@ -4267,25 +4009,11 @@ app.get("/stream", async (req, res) => {
               fs.unlinkSync(cacheFile); // bozuk/küçük dosyayı R2'ye atma
             }
           } catch (e) {}
-          endFlight();   // bekleyenler artık diskten okuyabilir
         });
-        writer.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} endFlight(); });
-        /* pipe() kullanıyoruz, elle write() DEĞİL. Eskiden "data" olayında iki
-           PassThrough'a elle write ediliyordu; write() false dönse bile (yavaş
-           mobil istemci) yazmaya devam ediyordu → backpressure yok sayılıyor,
-           şarkı RAM'de birikiyordu. Aynı anda çok sayıda yavaş istemcide bu
-           bellek şişmesi demek. pipe() en yavaş hedefe göre otomatik fren yapar. */
-        apiResult.stream.pipe(userStream);
-        apiResult.stream.pipe(diskStream);
-        apiResult.stream.on("error", (err) => {
-          userStream.destroy(err);
-          diskStream.destroy(err);
-          // Kaynak koptuğunda writer 'finish' de 'error' da almayabilir; kilidi
-          // burada da bırakmazsak bekleyenler asılı kalır.
-          try { writer.destroy(); } catch {}
-          try { fs.unlinkSync(cacheFile); } catch {}
-          endFlight();
-        });
+        writer.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} });
+        apiResult.stream.on("data", (chunk) => { userStream.write(chunk); diskStream.write(chunk); });
+        apiResult.stream.on("end", () => { userStream.end(); diskStream.end(); });
+        apiResult.stream.on("error", (err) => { userStream.destroy(err); diskStream.destroy(err); });
         safePipe(userStream, res);
       } else {
         safePipe(apiResult.stream, res);
@@ -4297,15 +4025,50 @@ app.get("/stream", async (req, res) => {
       return;
     }
 
-    /* NOT: Buradaki ~45 satırlık blok (res.status(200) + response.headers…,
-       safePipe(response.data) ve `if (typeof streamUrl !== 'undefined')` içindeki
-       FFmpeg arka plan işleme) KALDIRILDI. Sebebi:
-         1) ULAŞILAMAZ kod idi — üstteki try'ın her iki dalı da return ediyor.
-         2) Çalışsa bile ReferenceError atardı: `response` ve `streamUrl`
-            değişkenleri bu handler'da hiçbir yerde tanımlı değil.
-       Kalıcı disk cache'i artık yukarıdaki akıllı-cache dalı yazıyor (tek API
-       çağrısından hem kullanıcıya hem diske). FFmpeg/yt-dlp yolu bilerek geri
-       getirilmedi — mimari API provider'a taşındı (bkz. prewarmTop10). */
+    res.status(200);
+    if (response.headers["content-type"]) res.setHeader("Content-Type", response.headers["content-type"]);
+    if (response.headers["content-length"]) res.setHeader("Content-Length", response.headers["content-length"]);
+    if (response.headers["content-range"]) res.setHeader("Content-Range", response.headers["content-range"]);
+    if (response.headers["accept-ranges"]) res.setHeader("Accept-Ranges", response.headers["accept-ranges"]);
+
+    safePipe(response.data, res);
+
+    if (typeof streamUrl !== 'undefined') {
+      // downloadToCache kaldırıldı — FFmpeg worker tek başına kalıcı cache'i yönetir
+      // Eski downloadToCache, YouTube URL'si expire olunca 403 alıyordu
+
+      //  ARKA PLANDA FFmpeg ile kalıcı dosya oluştur (bir sonraki istek diskten gelir)
+      const isVideo = typeStr === "video";
+      const checkExt = isVideo ? "mp4" : "m4a";
+
+      if (!mediaLib.getReadyTrack(videoId, checkExt) && !mediaLib.isProcessing(videoId)) {
+        const metadata = { 
+          title: req.query.title || "Unknown", 
+          artist: req.query.uploader || "Unknown" 
+        };
+        const category = isVideo ? "watching" : "listening";
+        
+        mediaLib.upsertTrack(videoId, { ...metadata, category, status: "processing" });
+        const cookiePath = getRandomCookie();
+        const proxyUrl = getRandomProxy(videoId);
+        
+        const processPromise = isVideo 
+          ? ffmpegWorker.processVideo(videoId, metadata, { cookiePath, proxyUrl })
+          : ffmpegWorker.processAudio(videoId, metadata, { format: "m4a", cookiePath, proxyUrl });
+
+        processPromise.then(result => {
+            mediaLib.markReady(videoId, result);
+            ffmpegWorker.downloadThumbnail(videoId).then(thumb => {
+              if (thumb) mediaLib.upsertTrack(videoId, { thumbnail: thumb, status: "ready" });
+            }).catch(() => { });
+            console.log(`[FFMPEG_BG] +++ Arka planda kalıcı dosya oluşturuldu (${checkExt}): ${videoId}`);
+          })
+          .catch(err => {
+            mediaLib.markFailed(videoId, err.message);
+            console.warn(`[FFMPEG_BG] *** Arka plan işleme başarısız: ${videoId}: ${err.message}`);
+          });
+      }
+    }
   } catch (err) {
     logError("STREAM", req.query.videoId, err.message);
     console.error("STREAM ERROR:", err.message);
@@ -5564,9 +5327,7 @@ app.get("/download/mp3", async (req, res) => {
     // ★ BİRİNCİL: Yeni API Provider (mp3download.php)
     try {
       console.log(`[DOWNLOAD_MP3] API Provider ile indiriliyor: ${videoId} (${quality}kbps)`);
-      // İndirmede istemci timeout'u 5 dakika (MainActivity httpClient) — dönüşüm
-      // süresine zaman tanıyabiliriz, çalma akışındaki gibi acele etmeye gerek yok.
-      const apiResult = await apiStreamMp3(videoId, parseInt(quality), { background: true });
+      const apiResult = await apiStreamMp3(videoId, parseInt(quality));
 
       const safeTitle = (req.query.title || `audio_${videoId}`)
         .replace(/[^\w\s\-\.]/g, "").trim().substring(0, 100) || `audio_${videoId}`;
@@ -5659,8 +5420,7 @@ app.get("/download/mp4", async (req, res) => {
     // ★ KATMAN 2: API PROVIDER (bazocam MP4)
     try {
       console.log(`[DOWNLOAD_MP4] API Provider ile deneniyor: ${videoId}`);
-      // İndirme = arka plan bütçesi (istemci 5 dk bekliyor)
-      const apiResult = await apiStreamMp4(videoId, 720, { background: true });
+      const apiResult = await apiStreamMp4(videoId, 720);
       if (apiResult && apiResult.stream) {
         console.log(`[DOWNLOAD_MP4] ✅ API Provider'dan indiriliyor: ${videoId}`);
         res.setHeader("Content-Type", "video/mp4");
