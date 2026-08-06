@@ -543,6 +543,36 @@ async function trackR2Access(key) {
   } catch (err) { /* sessizce devam */ }
 }
 
+// Dosya R2'de VARSA yeniden yüklemez, sadece son erişim zamanını tazeler.
+// Disk cache HIT yollarında uploadToR2 yerine bu kullanılır (her dinlemede
+// aynı dosyayı R2'ye tekrar yüklemek Class A kotasını ve bandı tüketiyordu).
+const r2InFlight = new Set();
+async function ensureInR2(key, filePath) {
+  if (!r2Client) return;
+  if (r2InFlight.has(key)) return;
+  try {
+    if (await redis.hexists("r2:last_access", key)) {
+      redis.hset("r2:last_access", key, Date.now().toString()).catch(() => {});
+      stats.r2UploadSkipped++;
+      return;
+    }
+    if (await existsInR2(key)) {
+      await trackR2Access(key);
+      stats.r2UploadSkipped++;
+      return;
+    }
+    r2InFlight.add(key);
+    try {
+      await uploadToR2(key, filePath);
+      stats.r2UploadDone++;
+    } finally {
+      r2InFlight.delete(key);
+    }
+  } catch (err) {
+    r2InFlight.delete(key);
+  }
+}
+
 //  R2 OTOMATİK TEMİZLEYİCİ: 30 gündür dinlenmeyen şarkıları siler
 async function cleanupR2() {
   if (!r2Client) return;
@@ -877,7 +907,9 @@ const stats = {
   proxyFallbackFail: 0,
   youtubeApiQuotaExceeded: 0,
   rateLimitHits: 0,
-  totalRequests: 0
+  totalRequests: 0,
+  r2UploadDone: 0,
+  r2UploadSkipped: 0
 };
 
 /* =========================
@@ -2329,6 +2361,51 @@ async function shouldCache(videoId) {
   }
 }
 
+/* NEGATİF CACHE — provider'ın çeviremediği videolar.
+   Tüm provider'lar başarısız olunca videoId kısa süre işaretlenir; bu sürede
+   gelen istekler 100 saniyelik retry zincirini yeniden başlatmak yerine anında
+   503 alır. Süre kısa tutuldu: geçici bir provider kesintisi uzun sürmesin.
+   Not: bu kontrol TÜM cache katmanlarından SONRA çalışır — diske/R2'ye inmiş
+   bir şarkı işaretli olsa bile normal şekilde sunulmaya devam eder. */
+const API_FAIL_TTL = parseInt(process.env.API_FAIL_TTL_SEC) || 600;
+
+// Redis çağrısını istek akışını bloklayamaz hale getirir (yanıt gecikirse eski davranış).
+function redisFast(promise, fallback) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => fallback),
+    new Promise(resolve => setTimeout(() => resolve(fallback), 500))
+  ]);
+}
+
+async function isApiFailed(kind, videoId) {
+  return (await redisFast(redis.exists(`fail:${kind}:${videoId}`), 0)) === 1;
+}
+
+function markApiFailed(kind, videoId) {
+  try {
+    redis.set(`fail:${kind}:${videoId}`, "1", "EX", API_FAIL_TTL).catch(() => {});
+  } catch (e) {}
+}
+
+/* Negatif cache yanıtı bilerek GECİKTİRİLİR.
+   MusicService.onPlayerError sahadaki APK'da hata alınca aynı videoyu SINIRSIZ
+   yeniden deniyor. Bugün provider retry zinciri ~35 sn sürdüğü için bu döngü
+   yavaş. Anında 503 dönersek döngü saniyeler seviyesine iner ve sunucu kendi
+   kendini döver. Bekleme, provider'a hiç gitmediği için ücretsiz (sadece timer);
+   istemcinin gördüğü süre bugünküyle aynı kalır. */
+const API_FAIL_DELAY_MS = parseInt(process.env.API_FAIL_DELAY_MS) || 25000;
+
+function sendApiFailResponse(req, res, message) {
+  const timer = setTimeout(() => {
+    if (res.headersSent || res.writableEnded) return;
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Retry-After", String(API_FAIL_TTL));
+    res.status(503).json({ error: message, retryable: true });
+  }, API_FAIL_DELAY_MS);
+  timer.unref();
+  req.on("close", () => clearTimeout(timer));
+}
+
 // bazocam.net API çağrıları — yeni endpoint'ler
 //
 // ÖNEMLİ: bazocam başarısız olduğunda HTTP 200 + content-type "audio/mpeg" ile
@@ -3586,33 +3663,53 @@ app.get("/top50", async (req, res) => {
   const region = country.toUpperCase();
   const cacheKey = `top50:${region}`;
 
-  // Otomatik ülke algılama — bu ülkeyi ısıtma listesine ekle
-  trackActiveRegion(region);
-
   try {
     // Redis cache kontrol (ülke bazlı)
     const cached = await cacheGet(cacheKey);
     if (cached) {
+      trackActiveRegion(region);
       const filtered = Array.isArray(cached) ? filterBlockedChannels(cached, country) : cached;
       return res.json({ source: "cache", region, data: slimTop50(filtered) });
     }
 
     let items;
+    /* Küçük pazarlarda (MZ, vb.) "mostPopular + videoCategoryId=10" grafiği yok;
+       YouTube 400 videoChartNotFound döner. O bölgeler için kategori filtresi
+       kaldırılıp tekrar denenir ve durum işaretlenir (bir daha boşuna denenmesin). */
+    const ytParams = {
+      part: "snippet,contentDetails,statistics",
+      chart: "mostPopular",
+      regionCode: region,
+      maxResults: 50,
+      key: YOUTUBE_API_KEY
+    };
+    if (!(await redisFast(redis.exists(`top50:nocat:${region}`), 0))) ytParams.videoCategoryId = 10;
+
     try {
-      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
-        params: {
-          part: "snippet,contentDetails,statistics",
-          chart: "mostPopular",
-          regionCode: region,
-          maxResults: 50,
-          videoCategoryId: 10,
-          key: YOUTUBE_API_KEY
-        }
-      });
+      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", { params: ytParams });
       items = filterBlockedChannels(response.data.items, country);
       youtubeApiStatus = "ok";
     } catch (apiError) {
-      if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
+      if (apiError.response && apiError.response.status === 400 && ytParams.videoCategoryId) {
+        delete ytParams.videoCategoryId;
+        try {
+          const retryRes = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", { params: ytParams });
+          items = filterBlockedChannels(retryRes.data.items, country);
+          youtubeApiStatus = "ok";
+          redis.set(`top50:nocat:${region}`, "1", "EX", 7 * 86400).catch(() => {});
+          console.log(`[TOP50] ${region}: kategori grafiği yok, kategorisiz listeye geçildi`);
+        } catch (retryErr) {
+          // Bu bölgede hiç grafik yok → US listesini bu bölgenin anahtarına 1 saat
+          // yaz. Kullanıcı boş ekran görmez ve YouTube'a tekrar tekrar gidilmez.
+          const fb = await cacheGet("top50:US");
+          if (Array.isArray(fb) && fb.length) {
+            await cacheSet(cacheKey, fb, 3600);
+            console.warn(`[TOP50] ${region}: grafik yok, US listesi 1 saat yedek olarak sunuluyor`);
+            return res.json({ source: "fallback", region, data: slimTop50(filterBlockedChannels(fb, country)) });
+          }
+          throw retryErr;
+        }
+      } else if (apiError.response && (apiError.response.status === 403 || apiError.response.status === 429)) {
         logError("API_FALLBACK", null, `YouTube API Quota exceeded. Piped fallback for top50 region=${region}`);
         youtubeApiStatus = "quota_exceeded";
         stats.youtubeApiQuotaExceeded++;
@@ -3634,6 +3731,10 @@ app.get("/top50", async (req, res) => {
     // Cache'e de küçültülmüş hâli yazılır → Redis belleği de ~%88 azalır.
     items = slimTop50(items);
     await cacheSet(cacheKey, items, CACHE_DURATION);
+    // Isıtma listesine SADECE gerçekten liste alınabilen bölgeler girer —
+    // aksi halde hata veren bölge her denemede skorunu artırıp çalışan
+    // bölgeleri ilk 10'dan düşürüyordu.
+    trackActiveRegion(region);
 
     // Top50 prewarm İPTAL: her /top50 isteğinde 15 şarkının MP3'ünü arka planda
     // dış provider'dan çözmeye çalışıyordu; provider 500 döndüğünde log'u hata seline
@@ -3977,7 +4078,7 @@ app.get("/stream", async (req, res) => {
         res.setHeader("Accept-Ranges", "bytes");
         // Arka planda R2'ye yedekle (doğru uzantıyla)
         const actualR2Key = isMp3 ? `audio/${videoId}.mp3` : r2Key;
-        uploadToR2(actualR2Key, diskFile).catch(() => { });
+        ensureInR2(actualR2Key, diskFile).catch(() => { });
         return res.sendFile(diskFile, (err) => {
           if (err && err.status === 416) return res.status(416).end();
           if (err && !res.headersSent) res.status(500).end();
@@ -4009,6 +4110,12 @@ app.get("/stream", async (req, res) => {
           return;
         }
       } catch (r2Err) { /* bu anahtar yok — sıradakini dene */ }
+    }
+
+    // Yakın zamanda hiçbir provider çeviremediyse retry zincirini yeniden kurma
+    if (await isApiFailed("mp3", videoId)) {
+      console.log(`[STREAM] Negatif cache: ${videoId} — provider atlandı`);
+      return sendApiFailResponse(req, res, "Stream geçici olarak kullanılamıyor");
     }
 
     // Akıllı cache: istek sayacını artır
@@ -4070,7 +4177,11 @@ app.get("/stream", async (req, res) => {
       return;
     } catch (apiErr) {
       console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
-      if (!res.headersSent) res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
+      markApiFailed("mp3", videoId);
+      if (!res.headersSent) {
+        res.setHeader("Cache-Control", "no-store");
+        res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
+      }
       return;
     }
 
@@ -4217,7 +4328,7 @@ app.get("/stream/video", async (req, res) => {
         const fileSize = vStats.size;
         console.log(`[DISK_VIDEO_HIT] +++ Video diskten: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
         touchCache(diskVideoFile); // dinlendi → 24sa idle sayacını sıfırla
-        uploadToR2(r2Key, diskVideoFile).catch(() => { });
+        ensureInR2(r2Key, diskVideoFile).catch(() => { });
 
         //  Range Request desteği (ExoPlayer için ZORUNLU)
         const range = req.headers.range;
@@ -4260,6 +4371,16 @@ app.get("/stream/video", async (req, res) => {
         return;
       }
     } catch (r2Err) { }
+
+    // Yakın zamanda hiçbir provider çeviremediyse retry zincirini yeniden kurma.
+    // Video tarafında istemci yeniden deneme döngüsü yok (VideoService'te
+    // onPlayerError yok) → burada beklemeye gerek yok, anında dönülür.
+    if (await isApiFailed("mp4", videoId)) {
+      console.log(`[VIDEO_API] Negatif cache: ${videoId} — provider atlandı`);
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Retry-After", String(API_FAIL_TTL));
+      return res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor", retryable: true });
+    }
 
     // ★ KATMAN 2: API PROVIDER (bazocam MP4) — proxy/yt-dlp'ye gerek kalmadan video stream
     try {
@@ -4313,7 +4434,11 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (apiErr) {
       console.warn(`[VIDEO_API] API Provider başarısız: ${videoId} — ${apiErr.message}`);
-      if (!res.headersSent) res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
+      markApiFailed("mp4", videoId);
+      if (!res.headersSent) {
+        res.setHeader("Cache-Control", "no-store");
+        res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
+      }
       return;
     }
 
@@ -4390,16 +4515,28 @@ async function warmTop50() {
   console.log(`[WARMUP] ${regions.length} aktif ülke ısıtılacak: ${regions.join(", ")}`);
   for (const region of regions) {
     try {
-      const response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
-        params: {
-          part: "snippet,contentDetails,statistics",
-          chart: "mostPopular",
-          regionCode: region,
-          maxResults: 50,
-          videoCategoryId: 10,
-          key: YOUTUBE_API_KEY
+      // /top50 ile aynı mantık: kategori grafiği olmayan bölgelerde kategorisiz dene.
+      const wParams = {
+        part: "snippet,contentDetails,statistics",
+        chart: "mostPopular",
+        regionCode: region,
+        maxResults: 50,
+        key: YOUTUBE_API_KEY
+      };
+      if (!(await redisFast(redis.exists(`top50:nocat:${region}`), 0))) wParams.videoCategoryId = 10;
+
+      let response;
+      try {
+        response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", { params: wParams });
+      } catch (wErr) {
+        if (wErr.response && wErr.response.status === 400 && wParams.videoCategoryId) {
+          delete wParams.videoCategoryId;
+          response = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", { params: wParams });
+          redis.set(`top50:nocat:${region}`, "1", "EX", 7 * 86400).catch(() => {});
+        } else {
+          throw wErr;
         }
-      });
+      }
       trackYoutubeApiCall();
       // Isıtmada da küçültülmüş hâli cache'lenir (yanıt %88 küçülür, Redis belleği de).
       const items = slimTop50(filterBlockedChannels(response.data.items));
