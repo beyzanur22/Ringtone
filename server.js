@@ -2289,11 +2289,20 @@ function getApiProviderConfig() {
 }
 
 // Akıllı Cache: İstek sayacı — sadece N+ istek gelen şarkılar cache'lenir
+/* Sayacın ömrü = bir şarkının "kaç kez dinlendiği"nin hatırlanma süresi.
+   ESKİDEN 24 saat: cache'lenmek için gereken 2 dinlemenin İLK dinlemeden
+   itibaren 24 saat içinde olması gerekiyordu. Günde bir dinlenen şarkı 2'ye
+   hiç ulaşamıyor, sayaç sıfırlanıyor ve şarkı ASLA diske inmiyordu — her
+   seferinde provider'a gidiyordu.
+   7 GÜN ile "hafta içinde 2 kez" dinlenenler de cache'leniyor. Redis maliyeti
+   ihmal edilebilir (şarkı başına tek küçük anahtar; Redis şu an ~10 MB). */
+const REQ_COUNT_TTL = 7 * 86400; // 7 gün
+
 async function incrementRequestCount(videoId) {
   try {
     const key = `req_count:${videoId}`;
     const count = await redis.incr(key);
-    if (count === 1) await redis.expire(key, 86400); // 24 saat TTL
+    if (count === 1) await redis.expire(key, REQ_COUNT_TTL);
     return count;
   } catch { return 1; }
 }
