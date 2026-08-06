@@ -2300,12 +2300,24 @@ async function incrementRequestCount(videoId) {
 
 async function shouldCache(videoId) {
   const providerConfig = getApiProviderConfig();
-  const minReq = providerConfig.smartCache?.minRequests || 3;
+  /* Varsayılan 3 → 1: bir şarkının diske inmesi için 3 kez dinlenmesi
+     gerekiyordu; üstelik sayacın ömrü 24 saat olduğu için "günde bir dinlenen"
+     şarkı 3'e hiç ulaşamıyor ve HER seferinde provider'a gidiyordu. 1 ile her
+     şarkı ilk dinlemede diske iner, ikinci dinlemeden itibaren anında gelir.
+     Disk buna müsait (%37 dolu, 92 GB boş, 125 GB tavan + 96 saat idle silme).
+     NOT: Panelde smartCache.minRequests ayarlıysa O KAZANIR — burası sadece
+     panelde değer yoksa geçerli olan varsayılan. */
+  const minReq = providerConfig.smartCache?.minRequests || 1;
   if (!providerConfig.smartCache?.enabled) return true;
   try {
     const count = parseInt(await redis.get(`req_count:${videoId}`) || "0");
     return count >= minReq;
-  } catch { return false; }
+  } catch {
+    /* Redis okunamadıysa eskiden false dönüyordu → cache HİÇ dolmuyordu.
+       Artık true: Redis geçici olarak düşse bile şarkılar diske inmeye devam
+       eder. Atomik yazma sayesinde riski yok. */
+    return true;
+  }
 }
 
 // bazocam.net API çağrıları — yeni endpoint'ler
@@ -3964,17 +3976,31 @@ app.get("/stream", async (req, res) => {
       }
     }
 
-    //  KATMAN 1: CLOUDFLARE R2 (Ağ gecikmesi var ama YouTube'dan hızlı)
-    try {
-      const r2Data = await getR2Stream(r2Key);
-      if (r2Data && r2Data.stream) {
-        console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId}`);
-        if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
-        if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
-        safePipe(r2Data.stream, res);
-        return;
-      }
-    } catch (r2Err) { /* R2 yoksa devam */ }
+    /*  KATMAN 1: CLOUDFLARE R2
+        ⚠️ ANAHTAR UYUŞMAZLIĞI DÜZELTMESİ:
+        Ses dosyaları R2'ye "audio/<id>.mp3" adıyla YAZILIYOR (uploadToR2
+        çağrılarına bak), ama burada r2Key "audio/<id>.m4a" olarak kuruluyordu
+        (extStr = "m4a"). Yani yazdığımız dosyayı hiç aramıyorduk → R2'deki
+        679 dosya / 6.7 GB hazır cache tamamen ıskalanıyor, her istek
+        bazocam'a gidiyordu.
+        Artık ses için önce .mp3 (bizim yazdığımız), sonra .m4a (eski kayıtlar)
+        deneniyor. Video tarafı zaten tutarlıydı (video/<id>.mp4), ona dokunulmadı. */
+    const r2Candidates = typeStr === "audio"
+      ? [`audio/${videoId}.mp3`, `audio/${videoId}.m4a`]
+      : [r2Key];
+    for (const key of r2Candidates) {
+      try {
+        const r2Data = await getR2Stream(key);
+        if (r2Data && r2Data.stream) {
+          console.log(`[R2_CACHE_HIT] --> Cloudflare'den sunuluyor: ${videoId} (${key})`);
+          if (r2Data.contentType) res.setHeader("Content-Type", r2Data.contentType);
+          if (r2Data.contentLength) res.setHeader("Content-Length", r2Data.contentLength);
+          res.setHeader("Accept-Ranges", "bytes");
+          safePipe(r2Data.stream, res);
+          return;
+        }
+      } catch (r2Err) { /* bu anahtar yok — sıradakini dene */ }
+    }
 
     // Akıllı cache: istek sayacını artır
     await incrementRequestCount(videoId);
@@ -3997,20 +4023,34 @@ app.get("/stream", async (req, res) => {
         const { PassThrough } = require("stream");
         const userStream = new PassThrough();
         const diskStream = new PassThrough();
-        const writer = fs.createWriteStream(cacheFile);
+        /* ⚠️ ATOMİK YAZMA — doğrudan son dosyaya yazma!
+           ÖNCEDEN: createWriteStream(cacheFile) ile hedef dosyaya doğrudan
+           yazılıyordu. İki sorun:
+             1) pm2 4 worker çalıştırıyor. `!fs.existsSync(cacheFile)` kontrolü
+                ile yazma arasında yarış var — iki worker aynı anda "yok" görüp
+                aynı dosyaya yazabiliyor, içerik iç içe geçip bozuluyor.
+             2) Aktarım yarıda kesilirse (timeout/abort) yarım dosya HEDEF
+                adla diskte kalıyor ve sonraki istekte gerçek cache sanılıyor.
+           Sonuç loglarda görülüyordu: "[DISK_CACHE_ERR] Bozuk dosya, siliniyor".
+           ŞİMDİ: önce worker'a özel .tmp dosyasına yaz, boyut doğrulanınca
+           rename ile yerine koy. rename atomiktir — yarım dosya asla görünmez.
+           (Aynı desen kodun başka yerlerinde zaten kullanılıyor, bkz. satır ~835) */
+        const tmpFile = `${cacheFile}.${process.pid}.tmp`;
+        const writer = fs.createWriteStream(tmpFile);
         diskStream.pipe(writer);
         writer.on("finish", () => {
           try {
-            const size = fs.statSync(cacheFile).size;
+            const size = fs.statSync(tmpFile).size;
             if (size > 20 * 1024) {
+              fs.renameSync(tmpFile, cacheFile);   // ← atomik yerine koyma
               console.log(`[SMART_CACHE] Diske kaydedildi: ${videoId} (${(size / 1024 / 1024).toFixed(2)} MB)`);
               uploadToR2(`audio/${videoId}.mp3`, cacheFile).catch(() => {});
             } else {
-              fs.unlinkSync(cacheFile); // bozuk/küçük dosyayı R2'ye atma
+              fs.unlinkSync(tmpFile); // bozuk/küçük dosya hedefe hiç taşınmaz
             }
-          } catch (e) {}
+          } catch (e) { try { fs.unlinkSync(tmpFile); } catch {} }
         });
-        writer.on("error", () => { try { fs.unlinkSync(cacheFile); } catch {} });
+        writer.on("error", () => { try { fs.unlinkSync(tmpFile); } catch {} });
         apiResult.stream.on("data", (chunk) => { userStream.write(chunk); diskStream.write(chunk); });
         apiResult.stream.on("end", () => { userStream.end(); diskStream.end(); });
         apiResult.stream.on("error", (err) => { userStream.destroy(err); diskStream.destroy(err); });
