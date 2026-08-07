@@ -1673,7 +1673,7 @@ app.post("/auth/token", async (req, res) => {
     }
 
     // Replay attack koruması
-    if (Math.abs(Date.now() - parseInt(timestamp)) > 5 * 60 * 1000) {
+    if (Math.abs(Date.now() - parseInt(timestamp)) > 30 * 60 * 1000) {
       return res.status(403).json({ error: "Request expired" });
     }
 
@@ -1792,7 +1792,7 @@ app.use(async (req, res, next) => {
 
   // İstek 5 dakikadan eski ise reddet (Replay Attack koruması)
   const now = Date.now();
-  if (Math.abs(now - parseInt(timestamp)) > 5 * 60 * 1000) {
+  if (Math.abs(now - parseInt(timestamp)) > 30 * 60 * 1000) {
     console.warn(`[AUTH] Süresi dolmuş istek: IP: ${req.ip}`);
     return res.status(403).json({ error: "Request Expired" });
   }
