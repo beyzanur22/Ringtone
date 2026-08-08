@@ -4161,6 +4161,10 @@ app.get("/stream", async (req, res) => {
     try {
       console.log(`[STREAM] API Provider ile stream deneniyor: ${videoId}`);
       const apiResult = await apiStreamMp3(videoId, 320);
+      // Dönüşüm başarılı → kilidi HEMEN bırak. Kilidin görevi "aynı şarkıyı paralel
+      // çevirmeyi önlemek"ti; bazocam artık dönüştürdü (24sa cache'ledi). Kilidi 75sn
+      // tutmak, aynı şarkının indirmesini/çalmasını boşuna bloke ediyordu.
+      releaseConvertLock("mp3", videoId);
 
       res.setHeader("Content-Type", apiResult.contentType || "audio/mpeg");
       if (apiResult.contentLength) res.setHeader("Content-Length", apiResult.contentLength);
@@ -5590,6 +5594,8 @@ app.get("/download/mp3", async (req, res) => {
     try {
       console.log(`[DOWNLOAD_MP3] API Provider ile indiriliyor: ${videoId} (${quality}kbps)`);
       const apiResult = await apiStreamMp3(videoId, parseInt(quality));
+      // Dönüşüm başarılı → kilidi HEMEN bırak (çalma/indirme birbirini kilitlemesin).
+      releaseConvertLock("mp3", videoId);
 
       const safeTitle = (req.query.title || `audio_${videoId}`)
         .replace(/[^\w\s\-\.]/g, "").trim().substring(0, 100) || `audio_${videoId}`;
