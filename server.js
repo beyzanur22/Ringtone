@@ -4139,11 +4139,12 @@ app.get("/stream", async (req, res) => {
       } catch (r2Err) { /* bu anahtar yok — sıradakini dene */ }
     }
 
-    // Yakın zamanda hiçbir provider çeviremediyse retry zincirini yeniden kurma
-    if (await isApiFailed("mp3", videoId)) {
-      console.log(`[STREAM] Negatif cache: ${videoId} — provider atlandı`);
-      return sendApiFailResponse(req, res, "Stream geçici olarak kullanılamıyor");
-    }
+    /* NEGATİF CACHE KALDIRILDI (2026-08-08).
+       Eskiden bir şarkı bir kez başarısız olunca `fail:mp3:<id>` yazılıp 10 dakika
+       boyunca provider'a HİÇ gidilmiyordu. Provider (bazocam) iyileştikten sonra
+       bile o şarkı 10 dakika daha hata vermeye devam ediyordu: aynı link tarayıcıda
+       inerken uygulamada "başarısız" görünüyordu. Aşırı yüke karşı koruma zaten
+       aşağıdaki tek-akış (single-flight) kilidiyle sağlanıyor. */
 
     // Akıllı cache: istek sayacını artır
     await incrementRequestCount(videoId);
@@ -4211,7 +4212,7 @@ app.get("/stream", async (req, res) => {
       return;
     } catch (apiErr) {
       console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
-      markApiFailed("mp3", videoId);
+      // Negatif cache yazımı kaldırıldı — bir başarısızlık şarkıyı 10 dk kilitlemesin.
       releaseConvertLock("mp3", videoId); // başarısızlıkta hemen bırak (başarıda TTL düşürür)
       if (!res.headersSent) {
         res.setHeader("Cache-Control", "no-store");
@@ -4407,15 +4408,8 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (r2Err) { }
 
-    // Yakın zamanda hiçbir provider çeviremediyse retry zincirini yeniden kurma.
-    // Video tarafında istemci yeniden deneme döngüsü yok (VideoService'te
-    // onPlayerError yok) → burada beklemeye gerek yok, anında dönülür.
-    if (await isApiFailed("mp4", videoId)) {
-      console.log(`[VIDEO_API] Negatif cache: ${videoId} — provider atlandı`);
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("Retry-After", String(API_FAIL_TTL));
-      return res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor", retryable: true });
-    }
+    /* NEGATİF CACHE KALDIRILDI (2026-08-08) — MP3 tarafındaki gerekçenin aynısı:
+       tek başarısızlık videoyu 10 dakika kilitliyordu, provider iyileşse bile. */
 
     // ★ KATMAN 2: API PROVIDER (bazocam MP4) — proxy/yt-dlp'ye gerek kalmadan video stream
     try {
@@ -4469,7 +4463,7 @@ app.get("/stream/video", async (req, res) => {
       }
     } catch (apiErr) {
       console.warn(`[VIDEO_API] API Provider başarısız: ${videoId} — ${apiErr.message}`);
-      markApiFailed("mp4", videoId);
+      // Negatif cache yazımı kaldırıldı.
       if (!res.headersSent) {
         res.setHeader("Cache-Control", "no-store");
         res.status(503).json({ error: "Video stream geçici olarak kullanılamıyor" });
