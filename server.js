@@ -5539,6 +5539,41 @@ app.get("/download/mp3", async (req, res) => {
 
     const quality = ["128", "192", "320"].includes(kbps) ? kbps : "320";
 
+    /* KATMAN 0 — HAZIR CACHE (indirme de çalma gibi ÖNCE cache'e baksın).
+       ÖNCEDEN: /download/mp3 doğrudan bazocam'a gidiyor, diskteki/R2'deki hazır
+       dosyayı YOK SAYIYORDU. Sonuç: bir şarkı çalınınca /stream onu diske+R2'ye
+       kaydediyor ama İNDİRMEK istenince bazocam'dan yeniden isteniyordu — bazocam
+       o an takılırsa "çalıyor ama inmiyor" oluyordu. Artık indirme de önce cache'e
+       bakar; bulursa anında verir, bazocam'a HİÇ gitmez. */
+    const dlTitle = (req.query.title || `audio_${videoId}`)
+      .replace(/[^\w\s\-\.]/g, "").trim().substring(0, 100) || `audio_${videoId}`;
+
+    // 0a) Disk cache (/stream'in smart-cache yazdığı dosya)
+    const dlDiskFile = path.join(CACHE_DIR, `audio_${videoId}.mp3`);
+    const dlStat = await statOrNull(dlDiskFile);
+    if (dlStat && dlStat.size > 20 * 1024) {
+      console.log(`[DOWNLOAD_MP3] Disk cache HIT: ${videoId} (${(dlStat.size/1024/1024).toFixed(2)} MB)`);
+      touchCache(dlDiskFile);
+      res.setHeader("Content-Disposition", `attachment; filename="${dlTitle}.mp3"`);
+      res.setHeader("Content-Type", "audio/mpeg");
+      res.setHeader("Content-Length", dlStat.size);
+      return safePipe(fs.createReadStream(dlDiskFile), res);
+    }
+
+    // 0b) R2 (Cloudflare) cache — çalma sırasında yüklenen dosya
+    for (const key of [`audio/${videoId}.mp3`, `audio/${videoId}.m4a`]) {
+      try {
+        const r2 = await getR2Stream(key);
+        if (r2 && r2.stream) {
+          console.log(`[DOWNLOAD_MP3] R2 cache HIT: ${videoId} (${key})`);
+          res.setHeader("Content-Disposition", `attachment; filename="${dlTitle}.mp3"`);
+          res.setHeader("Content-Type", r2.contentType || "audio/mpeg");
+          if (r2.contentLength) res.setHeader("Content-Length", r2.contentLength);
+          return safePipe(r2.stream, res);
+        }
+      } catch (e) { /* bu anahtar yok — sıradakini dene */ }
+    }
+
     // Aynı şarkı başka bir worker'da zaten çevriliyorsa ikinci zinciri kurma
     // (bazocam'a paralel kopya istek gitmesin — bkz. acquireConvertLock).
     if (!(await acquireConvertLock("mp3", videoId))) {
