@@ -2387,6 +2387,33 @@ function markApiFailed(kind, videoId) {
   } catch (e) {}
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// KÜME GENELİ TEK-AKIŞ (single-flight) — aynı videoId için aynı anda TEK dönüştürme.
+// pm2 çok worker çalıştırıyor; her worker'ın belleği AYRI olduğu için aynı uncached
+// şarkı birden fazla worker'da PARALEL çevriliyor ve bazocam'ın tek çalışan
+// sağlayıcısını (gamma/ytmp3.gl) boğuyordu → "HTML/JSON döndürdü" ve 500 hataları.
+// Bu kilit Redis'te (paylaşımlı) tutulur → tüm cluster bir şarkı için TEK çeviri yapar.
+// FARKLI şarkılar etkilenmez (kilit videoId başına) — hepsi paralel devam eder.
+//
+// GÜVENLİK ("asla bozma"): Redis erişilemez/timeout olursa kilit "alınmış" sayılır
+// (fallback "OK") → sistem BUGÜNKÜ gibi davranır, hiçbir isteği bloklamaz.
+// TTL, bir worker çökse bile şarkının sonsuza dek kilitli kalmamasını garanti eder.
+const CONVERT_LOCK_TTL_MS = parseInt(process.env.CONVERT_LOCK_TTL_MS) || 75000;
+async function acquireConvertLock(kind, videoId) {
+  try {
+    const r = await redisFast(
+      redis.set(`convlock:${kind}:${videoId}`, String(process.pid), "PX", CONVERT_LOCK_TTL_MS, "NX"),
+      "OK" // Redis hata/timeout → kilit alınmış say → engelleme YOK, eski davranış
+    );
+    return r === "OK";
+  } catch (e) {
+    return true; // her ihtimale karşı: asla bloklama
+  }
+}
+function releaseConvertLock(kind, videoId) {
+  try { redis.del(`convlock:${kind}:${videoId}`).catch(() => {}); } catch (e) {}
+}
+
 /* Negatif cache yanıtı bilerek GECİKTİRİLİR.
    MusicService.onPlayerError sahadaki APK'da hata alınca aynı videoyu SINIRSIZ
    yeniden deniyor. Bugün provider retry zinciri ~35 sn sürdüğü için bu döngü
@@ -4121,6 +4148,13 @@ app.get("/stream", async (req, res) => {
     // Akıllı cache: istek sayacını artır
     await incrementRequestCount(videoId);
 
+    // Aynı şarkı başka bir worker'da ZATEN çevriliyorsa ikinci zinciri kurma.
+    // (Aksi halde tek şarkı için bazocam'a 3-5 kat paralel istek gidiyordu.)
+    if (!(await acquireConvertLock("mp3", videoId))) {
+      console.log(`[STREAM] Tek-akış: ${videoId} zaten çevriliyor — bu istek atlandı`);
+      return sendApiFailResponse(req, res, "Stream hazırlanıyor, lütfen tekrar deneyin");
+    }
+
     // ★ YENİ BİRİNCİL YOL: API Provider (bazocam mp3download.php)
     // Cache katmanlarında bulunamadıysa, API'den direkt MP3 stream et
     try {
@@ -4178,6 +4212,7 @@ app.get("/stream", async (req, res) => {
     } catch (apiErr) {
       console.warn(`[STREAM] API Provider başarısız: ${videoId} — ${apiErr.message}`);
       markApiFailed("mp3", videoId);
+      releaseConvertLock("mp3", videoId); // başarısızlıkta hemen bırak (başarıda TTL düşürür)
       if (!res.headersSent) {
         res.setHeader("Cache-Control", "no-store");
         res.status(503).json({ error: "Stream geçici olarak kullanılamıyor" });
@@ -5510,6 +5545,18 @@ app.get("/download/mp3", async (req, res) => {
 
     const quality = ["128", "192", "320"].includes(kbps) ? kbps : "320";
 
+    // Aynı şarkı başka bir worker'da zaten çevriliyorsa ikinci zinciri kurma
+    // (bazocam'a paralel kopya istek gitmesin — bkz. acquireConvertLock).
+    if (!(await acquireConvertLock("mp3", videoId))) {
+      console.log(`[DOWNLOAD_MP3] Tek-akış: ${videoId} zaten çevriliyor — bu istek atlandı`);
+      if (!res.headersSent) {
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Retry-After", "20");
+        return res.status(503).json({ error: "MP3 hazırlanıyor, lütfen birazdan tekrar deneyin", retryable: true });
+      }
+      return;
+    }
+
     // ★ BİRİNCİL: Yeni API Provider (mp3download.php)
     try {
       console.log(`[DOWNLOAD_MP3] API Provider ile indiriliyor: ${videoId} (${quality}kbps)`);
@@ -5526,6 +5573,7 @@ app.get("/download/mp3", async (req, res) => {
       return;
     } catch (apiErr) {
       console.warn(`[DOWNLOAD_MP3] API Provider başarısız: ${apiErr.message}`);
+      releaseConvertLock("mp3", videoId); // başarısızlıkta hemen bırak
     }
 
     // Sabit bazocam converter.php fallback kaldırıldı — indirme tamamen panel'deki
