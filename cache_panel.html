@@ -6,14 +6,15 @@
 <title>Cache Yönetimi | Ringtone Master</title>
 <style>
 :root {
-  --bg: #f8f7f2;
-  --card-bg: #ffffff;
-  --text: #4a4a4a;
-  --text-muted: #8e8e8e;
+  --bg: #0b0b10;
+  --card-bg: #16161e;
+  --card-bg-2: #1c1c26;
+  --text: #e9e9f0;
+  --text-muted: #8b8b99;
   --accent: #d4a373;
-  --danger: #e63946;
+  --danger: #ef4444;
   --success: #10b981;
-  --border: #e2e2e2;
+  --border: #262633;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:40px 20px}
@@ -25,45 +26,44 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .btn-danger{background:var(--danger);color:#fff}
 .btn-danger:hover{background:#c1303c;transform:translateY(-1px)}
 .btn-sm{padding:5px 12px;font-size:12px;border-radius:6px}
-.btn-outline-danger{border:1px solid var(--danger);color:var(--danger);background:transparent}
+.btn-outline-danger{border:1px solid var(--danger);color:#f87171;background:transparent}
 .btn-outline-danger:hover{background:var(--danger);color:#fff}
 
 /* Stats Grid */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-bottom:30px}
-.stat-card{background:var(--card-bg);padding:25px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+.stat-card{background:var(--card-bg);padding:25px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.3)}
 .stat-card .value{font-size:32px;font-weight:800;color:var(--text);margin-bottom:5px}
 .stat-card .label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;font-weight:600}
 
 /* Filters */
-.filters-bar{background:var(--card-bg);padding:15px 25px;border-radius:12px;border:1px solid var(--border);margin-bottom:20px;display:flex;gap:15px;align-items:center;box-shadow:0 2px 4px rgba(0,0,0,0.02)}
+.filters-bar{background:var(--card-bg);padding:15px 25px;border-radius:12px;border:1px solid var(--border);margin-bottom:20px;display:flex;gap:15px;align-items:center}
 .search-wrapper{flex:1;position:relative;display:flex;align-items:center}
-.search-input{width:100%;padding:10px 15px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#f9f9f9}
+.search-input{width:100%;padding:10px 15px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--card-bg-2);color:var(--text)}
+.search-input::placeholder{color:var(--text-muted)}
 .search-icon{position:absolute;left:15px;color:var(--text-muted)}
-select{padding:10px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:#fff;cursor:pointer;color:var(--text)}
+select{padding:10px 15px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--card-bg-2);cursor:pointer;color:var(--text)}
 .btn-filter{background:#000;color:#fff;padding:10px 25px}
 
 /* Table */
-.section{background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+.section{background:var(--card-bg);border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.3)}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;padding:15px 20px;font-size:12px;text-transform:uppercase;color:var(--text-muted);font-weight:700;background:#fafafa;border-bottom:1px solid var(--border)}
-td{padding:18px 20px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
+th{text-align:left;padding:15px 20px;font-size:12px;text-transform:uppercase;color:var(--text-muted);font-weight:700;background:var(--card-bg-2);border-bottom:1px solid var(--border)}
+td{padding:16px 20px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#fcfcfc}
+tr:hover td{background:#20202b}
 
 .track-info{display:flex;flex-direction:column;gap:4px}
 .track-title{font-weight:600;color:var(--text);display:block}
 .track-id{font-size:12px;color:var(--text-muted);font-family:monospace}
-.badge-quality{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid #fde68a}
-.request-bar{width:100px;height:6px;background:#f0f0f0;border-radius:3px;overflow:hidden;display:inline-block;margin-right:8px}
+.badge-quality{background:rgba(212,163,115,0.14);color:#e0b487;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid rgba(212,163,115,0.3)}
+.request-bar{width:100px;height:6px;background:#2a2a37;border-radius:3px;overflow:hidden;display:inline-block;margin-right:8px;vertical-align:middle}
 .request-fill{height:100%;background:var(--accent);border-radius:3px}
 .req-count{font-weight:700;font-size:13px}
 
-/* Dual Tables */
-.dual-tables{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
-.section-header{padding:15px 20px;font-size:16px;font-weight:700;border-bottom:1px solid var(--border)}
-.audio-header{background:#f0f9ff;color:#1e40af}
-.video-header{background:#fef2f2;color:#991b1b}
-.table-scroll{max-height:600px;overflow-y:auto}
+/* Tek Liste */
+.section-header{padding:16px 20px;font-size:16px;font-weight:700;border-bottom:1px solid var(--border);color:var(--text);display:flex;justify-content:space-between;align-items:center}
+.section-header .muted{font-size:13px;font-weight:500;color:var(--text-muted)}
+.table-scroll{max-height:720px;overflow-y:auto}
 .cache-table{width:100%;border-collapse:collapse}
 .cache-table th{position:sticky;top:0;z-index:1}
 
@@ -71,17 +71,17 @@ tr:hover td{background:#fcfcfc}
 .server-section{margin-bottom:30px}
 .server-title{font-size:18px;font-weight:700;margin-bottom:15px;color:var(--text)}
 .server-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
-.server-card{background:var(--card-bg);padding:20px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}
+.server-card{background:var(--card-bg);padding:20px;border-radius:16px;border:1px solid var(--border);box-shadow:0 4px 6px -1px rgba(0,0,0,0.3)}
 .server-card h3{font-size:14px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:15px;display:flex;align-items:center;gap:8px}
-.progress-bar{width:100%;height:10px;background:#f0f0f0;border-radius:5px;overflow:hidden;margin:8px 0}
+.progress-bar{width:100%;height:10px;background:#2a2a37;border-radius:5px;overflow:hidden;margin:8px 0}
 .progress-fill{height:100%;border-radius:5px;transition:width 0.3s}
 .progress-fill.green{background:#10b981}
 .progress-fill.yellow{background:#f59e0b}
-.progress-fill.red{background:#e63946}
+.progress-fill.red{background:#ef4444}
 .server-detail{display:flex;justify-content:space-between;font-size:13px;color:var(--text-muted);margin-top:4px}
 .server-detail span:last-child{font-weight:700;color:var(--text)}
 .cache-breakdown{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.cache-item{background:#f9f9f9;padding:12px;border-radius:10px;text-align:center}
+.cache-item{background:var(--card-bg-2);padding:12px;border-radius:10px;text-align:center}
 .cache-item .icon{font-size:24px}
 .cache-item .size{font-size:18px;font-weight:800;color:var(--text)}
 .cache-item .desc{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px}
@@ -90,7 +90,6 @@ tr:hover td{background:#fcfcfc}
 @media(max-width:992px){
   .stats-grid{grid-template-columns:repeat(2,1fr)}
   .server-grid{grid-template-columns:1fr}
-  .dual-tables{grid-template-columns:1fr}
   .filters-bar{flex-direction:column;align-items:stretch}
 }
 </style>
@@ -144,7 +143,7 @@ tr:hover td{background:#fcfcfc}
         <h3>⚡ Redis (Geçici Cache)</h3>
         <div class="server-detail"><span>Bellek Kullanımı</span><span>%%REDIS_USED%%</span></div>
         <div class="server-detail"><span>Toplam Anahtar</span><span>%%REDIS_KEYS%%</span></div>
-        <div style="margin-top:12px;padding:10px;background:#f0fdf4;border-radius:8px;font-size:12px;color:#166534">
+        <div style="margin-top:12px;padding:10px;background:rgba(16,185,129,0.1);border-radius:8px;font-size:12px;color:#6ee7b7">
           ℹ️ Redis sadece URL ve metadata tutar, dosya kaydetmez. Sunucu RAM'inden yer kullanır.
         </div>
       </div>
@@ -185,14 +184,14 @@ tr:hover td{background:#fcfcfc}
     </select>
   </div>
 
-  <!-- İki Tablo Yan Yana -->
-  <div class="dual-tables">
-
-    <!-- SOL: Dinleme (Audio) -->
-    <div class="section">
-      <div class="section-header audio-header">🎧 Dinleme Cache (MP3)</div>
-      <div class="table-scroll">
-      <table class="cache-table" id="audioTable">
+  <!-- TEK LİSTE: Dinleme + İzleme birleşik -->
+  <div class="section">
+    <div class="section-header">
+      <span>🎵 Cache'lenen Şarkılar</span>
+      <span class="muted">Toplam %%TOTAL_CACHE%% · %%CACHE_SIZE%% MB</span>
+    </div>
+    <div class="table-scroll">
+      <table class="cache-table" id="cacheTable">
         <thead>
           <tr>
             <th width="40">#</th>
@@ -206,36 +205,11 @@ tr:hover td{background:#fcfcfc}
         </thead>
         <tbody>
           %%AUDIO_LIST%%
-        </tbody>
-      </table>
-      %%AUDIO_EMPTY%%
-      </div>
-    </div>
-
-    <!-- SAĞ: İzleme (Video) -->
-    <div class="section">
-      <div class="section-header video-header">📺 İzleme Cache (MP4)</div>
-      <div class="table-scroll">
-      <table class="cache-table" id="videoTable">
-        <thead>
-          <tr>
-            <th width="40">#</th>
-            <th>Şarkı</th>
-            <th>Kalite</th>
-            <th>İstek</th>
-            <th>Boyut</th>
-            <th>Tarih</th>
-            <th width="60">İşlem</th>
-          </tr>
-        </thead>
-        <tbody>
           %%VIDEO_LIST%%
         </tbody>
       </table>
-      %%VIDEO_EMPTY%%
-      </div>
+      %%AUDIO_EMPTY%%%%VIDEO_EMPTY%%
     </div>
-
   </div>
 </div>
 
@@ -249,22 +223,20 @@ function filterTable() {
 
 function sortTable() {
   const sortBy = document.getElementById('sortFilter').value;
-  ['audioTable','videoTable'].forEach(id => {
-    const tbody = document.querySelector('#' + id + ' tbody');
-    if (!tbody) return;
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-    rows.sort((a, b) => {
-      if (sortBy === 'requests') return parseInt(b.dataset.requests) - parseInt(a.dataset.requests);
-      if (sortBy === 'size') return parseFloat(b.dataset.size) - parseFloat(a.dataset.size);
-      return new Date(b.dataset.date) - new Date(a.dataset.date);
-    });
-    rows.forEach(row => tbody.appendChild(row));
+  const tbody = document.querySelector('#cacheTable tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort((a, b) => {
+    if (sortBy === 'requests') return parseInt(b.dataset.requests) - parseInt(a.dataset.requests);
+    if (sortBy === 'size') return parseFloat(b.dataset.size) - parseFloat(a.dataset.size);
+    return new Date(b.dataset.date) - new Date(a.dataset.date);
   });
+  rows.forEach(row => tbody.appendChild(row));
 }
 
 async function deleteItem(videoId) {
   if (!confirm('Bu şarkı cache\'den silinecek. Emin misin?')) return;
-  
+
   try {
     const res = await fetch('/cache-panel/action', {
       method: 'POST',
