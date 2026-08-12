@@ -3756,6 +3756,24 @@ app.get("/top50", async (req, res) => {
       }
     }
 
+    // İÇERİK FİLTRESİ (canlı + 35dk üstü) — /search ile aynı kural Top50'ye de uygulanır.
+    // YouTube'un gerçek süresi contentDetails.duration'da; filtreye besle (applyContentFilter
+    // onu _ytDurationSec'ten okur). Chart öğeleri canlı değil → süresiz (Piped yedeği)
+    // şarkılar yanlışlıkla elenmesin diye liveBroadcastContent'i "none"a sabitle.
+    if (Array.isArray(items)) {
+      for (const it of items) {
+        if (!it) continue;
+        if (it.contentDetails && it.contentDetails.duration) {
+          const s = parseDurationToSeconds(it.contentDetails.duration);
+          if (s >= 0) it._ytDurationSec = s;
+        }
+        if (it.liveBroadcastContent === undefined) {
+          it.liveBroadcastContent = (it.snippet && it.snippet.liveBroadcastContent) || "none";
+        }
+      }
+      items = applyContentFilter(items);
+    }
+
     // Cache'e de küçültülmüş hâli yazılır → Redis belleği de ~%88 azalır.
     items = slimTop50(items);
     await cacheSet(cacheKey, items, CACHE_DURATION);
