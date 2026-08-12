@@ -1727,6 +1727,7 @@ app.use(async (req, res, next) => {
       (req.path === "/autocomplete" && req.method === "GET") ||
       req.path.startsWith("/top50/test") ||
       req.path === "/privacy-policy.html" || req.path === "/memo-music-privacy-policy.html" ||
+      req.path === "/echoes-music-privacy-policy.html" ||
       req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
@@ -6195,6 +6196,9 @@ app.get("/privacy-policy.html", (req, res) => {
 });
 app.get("/memo-music-privacy-policy.html", (req, res) => {
   res.sendFile(path.join(__dirname, "memo-music-privacy-policy.html"));
+});
+app.get("/echoes-music-privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "echoes-music-privacy-policy.html"));
 });
 app.get("/child-safety-standards.html", (req, res) => {
   res.sendFile(path.join(__dirname, "child-safety-standards.html"));
