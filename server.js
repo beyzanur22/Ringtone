@@ -1730,6 +1730,7 @@ app.use(async (req, res, next) => {
       req.path === "/echoes-music-privacy-policy.html" ||
       req.path === "/nich-music-privacy-policy.html" ||
       req.path === "/peluna-music-privacy-policy.html" ||
+      req.path === "/ploink-music-privacy-policy.html" ||
       req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
@@ -2022,11 +2023,7 @@ function isMasterRequest(req) {
   }
   return false;
 }
-// active-users / login-ips gibi presence & IP kayıtları için KAPSAM çöz:
-//   • per-app key  → o uygulama (kilitli, ?appId yok sayılır — çapraz erişim yok)
-//   • master/admin → ?appId= verilmişse o uygulama; yoksa null (GLOBAL, tüm app'ler)
-// resolveAppId'den farkı: master + appId yok → "default" DEĞİL, null (global) döner.
-// Böylece süper panelde dropdown'dan app seçince presence/IP o app'e daralır.
+
 function resolveScopeApp(req) {
   const bound = resolveAppFromKey(req.headers["x-app-key"]);
   if (bound) return bound;
@@ -2498,13 +2495,7 @@ function validateMediaStream(srcStream, kind) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────
-// ÇOKLU API PROVIDER SİSTEMİ
-// Her provider kendi baseUrl + apiKey + endpoint şablonlarına sahip.
-// Panelden yeni API eklenince backend otomatik kullanır — UYGULAMA GÜNCELLENMEZ.
-// İstekler priority sırasına göre denenir; biri çökerse sonrakine geçilir.
-// Şablon değişkenleri: {id} {key} {bitrate} {quality} {query}
-// ─────────────────────────────────────────────────────────────
+
 const DEFAULT_ENDPOINTS = {
   mp3: "/mp3download.php?id={id}&key={key}&b={bitrate}",
   mp4: "/mp4download.php?id={id}&key={key}&q={quality}",
@@ -2515,13 +2506,7 @@ const DEFAULT_ENDPOINTS = {
 // Config'i normalize et — eski (tek baseUrl) ve yeni (provider başına baseUrl) şemayı destekler
 function normalizeProviders(includeDisabled = false) {
   const cfg = getApiProviderConfig();
-  // ═══════════════════════════════════════════════════════════════════════
-  //  KANIT #3 — API ve KEY bilgisi NEREDEN geliyor?
-  //  cfg = getApiProviderConfig() → config.json'u okur (PANELİN yazdığı dosya).
-  //  Yani tüm API adresleri + key'ler config.json'da; kodda SABİT değil.
-  //  Panelden API/key değiştirince config.json değişir → bu fonksiyon yeni
-  //  değeri okur → uygulamaya hiç dokunulmaz (APK güncellenmez).
-  // ═══════════════════════════════════════════════════════════════════════
+ 
   const fallbackBase = (cfg.baseUrl || "").replace(/\/+$/, "");
   const fallbackKey = cfg.apiKey || "";
   let list = (cfg.providers || []).map(p => ({
@@ -2543,13 +2528,7 @@ function normalizeProviders(includeDisabled = false) {
   return list.sort((a, b) => a.priority - b.priority);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  KANIT #4 — API + KEY tam burada birleşiyor (otomatik).
-//  provider.baseUrl + provider.apiKey ikisi de config.json'dan (panelden) geldi.
-//  Şablondaki {key} → provider.apiKey, {id}/{query} → istek parametreleri.
-//  Üretilen URL örneği:  https://[PANEL_BASEURL]/mp3download.php?id=X&key=[PANEL_KEY]&b=320
-//  → Panelden ne girersen URL otomatik ona göre oluşur. Kod sabit değil.
-// ═══════════════════════════════════════════════════════════════════════════
+
 function buildProviderUrl(provider, type, params) {
   const tpl = provider.endpoints[type] || DEFAULT_ENDPOINTS[type]; // panelden gelen şablon
   const all = { key: provider.apiKey, ...params };                 // {key} = panel'deki API key
@@ -6225,6 +6204,9 @@ app.get("/nich-music-privacy-policy.html", (req, res) => {
 });
 app.get("/peluna-music-privacy-policy.html", (req, res) => {
   res.sendFile(path.join(__dirname, "peluna-music-privacy-policy.html"));
+});
+app.get("/ploink-music-privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "ploink-music-privacy-policy.html"));
 });
 app.get("/child-safety-standards.html", (req, res) => {
   res.sendFile(path.join(__dirname, "child-safety-standards.html"));
