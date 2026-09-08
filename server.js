@@ -1731,6 +1731,7 @@ app.use(async (req, res, next) => {
       req.path === "/nich-music-privacy-policy.html" ||
       req.path === "/peluna-music-privacy-policy.html" ||
       req.path === "/ploink-music-privacy-policy.html" ||
+      req.path === "/nomii-music-privacy-policy.html" ||
       req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
@@ -6207,6 +6208,9 @@ app.get("/peluna-music-privacy-policy.html", (req, res) => {
 });
 app.get("/ploink-music-privacy-policy.html", (req, res) => {
   res.sendFile(path.join(__dirname, "ploink-music-privacy-policy.html"));
+});
+app.get("/nomii-music-privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "nomii-music-privacy-policy.html"));
 });
 app.get("/child-safety-standards.html", (req, res) => {
   res.sendFile(path.join(__dirname, "child-safety-standards.html"));
