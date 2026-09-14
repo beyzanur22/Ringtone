@@ -676,12 +676,17 @@ const VIDEO_CACHE_DIR = path.join(MEDIA_BASE, "video"); // MP4 video cache → /
 });
 const MAX_CACHE_SIZE = 125 * 1024 * 1024 * 1024; // 125GB — Contabo VPS (145GB disk), 20GB sisteme kalır
 
-// 4 GÜN (96 saat) dinlenmeyen cache dosyaları otomatik silinir. .env'de CACHE_MAX_IDLE_HOURS ile değiştirilir.
-// Not: Süre uzadıkça disk daha dolu kalır ama cache isabet oranı artar → şarkılar daha hızlı açılır.
-const CACHE_MAX_IDLE_MS = (parseInt(process.env.CACHE_MAX_IDLE_HOURS) || 96) * 60 * 60 * 1000;
+// Türe göre boşta kalma süresi: MP4 1 gün, MP3/M4A 2 gün istek yoksa silinir.
+const VIDEO_MAX_IDLE_MS = (parseInt(process.env.VIDEO_CACHE_MAX_IDLE_HOURS) || 24) * 60 * 60 * 1000;
+const AUDIO_MAX_IDLE_MS = (parseInt(process.env.AUDIO_CACHE_MAX_IDLE_HOURS) || 48) * 60 * 60 * 1000;
+function maxIdleMsFor(name) {
+  if (name.endsWith('.mp4')) return VIDEO_MAX_IDLE_MS;
+  if (name.endsWith('.mp3') || name.endsWith('.m4a')) return AUDIO_MAX_IDLE_MS;
+  return null;
+}
 
 // Cache dosyası dinlendiğinde "son erişim" zamanını GÜNCELLE (mtime = şimdi).
-// Böylece 24 saat boyunca hiç dinlenmeyen dosyalar checkDiskSpaceAndCleanup ile silinir,
+// Böylece süresi (MP4 1 gün, MP3 2 gün) boyunca istek almayan dosyalar checkDiskSpaceAndCleanup ile silinir,
 // düzenli dinlenenler ise diskte kalır. (R2'deki r2:last_access mantığının disk karşılığı.)
 function touchCache(filePath) {
   const nowDate = new Date();
@@ -728,23 +733,24 @@ async function checkDiskSpaceAndCleanup() {
       }
     }
 
-    // ZAMAN BAZLI TEMİZLİK: 24 saattir DİNLENMEYEN cache dosyalarını sil (disk dolmasa bile).
-    // mtime, dinlenince touchCache ile "şimdi"ye çekiliyor → mtime = son dinlenme zamanı.
+    // ZAMAN BAZLI TEMİZLİK: MP4 1 gün, MP3/M4A 2 gün istek yoksa sil.
+    // mtime = son istek zamanı (touchCache ile güncelleniyor).
     const survivors = [];
-    let idleDeleted = 0, idleFreed = 0;
+    let videoDeleted = 0, audioDeleted = 0, idleFreed = 0;
     for (const file of allFiles) {
-      const isMedia = file.name.endsWith('.mp3') || file.name.endsWith('.m4a') || file.name.endsWith('.mp4');
-      if (isMedia && (now - file.stat.mtimeMs > CACHE_MAX_IDLE_MS)) {
+      const maxIdle = maxIdleMsFor(file.name);
+      if (maxIdle && (now - file.stat.mtimeMs > maxIdle)) {
         try {
           await fs.promises.unlink(file.path);
-          idleDeleted++; idleFreed += file.stat.size;
+          if (file.name.endsWith('.mp4')) videoDeleted++; else audioDeleted++;
+          idleFreed += file.stat.size;
         } catch (_) { survivors.push(file); }
       } else {
         survivors.push(file);
       }
     }
-    if (idleDeleted > 0) {
-      console.log(`[DISK_CLEANUP] ${idleDeleted} dosya ${Math.round(CACHE_MAX_IDLE_MS / 3600000)} saattir dinlenmediği için silindi, ${(idleFreed / 1024 / 1024).toFixed(1)} MB açıldı.`);
+    if (videoDeleted + audioDeleted > 0) {
+      console.log(`[DISK_CLEANUP] İstek almayan ${videoDeleted} MP4 (${Math.round(VIDEO_MAX_IDLE_MS / 3600000)}sa) + ${audioDeleted} ses (${Math.round(AUDIO_MAX_IDLE_MS / 3600000)}sa) silindi, ${(idleFreed / 1024 / 1024).toFixed(1)} MB açıldı.`);
     }
     allFiles = survivors;
 
@@ -4071,6 +4077,7 @@ app.get("/stream", async (req, res) => {
       if (mediaStat) {
         console.log(`[MEDIA_LIB_HIT] 🎵 Kendi diskimizden sunuluyor: ${videoId}`);
         mediaLib.recordAccess(videoId);
+        touchCache(mediaFile);
         const fSize = mediaStat.size;
         res.setHeader("Content-Type", typeStr === "video" ? "video/mp4" : "audio/mp4");
         res.setHeader("Content-Length", fSize);
@@ -4328,6 +4335,7 @@ app.get("/stream/video", async (req, res) => {
       const fileSize = fStats.size;
       console.log(`[MEDIA_VIDEO_HIT] +++ Video diskten sunuluyor: ${videoId} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
       mediaLib.recordAccess(videoId);
+      touchCache(videoFile);
 
       // Range Request desteği (ExoPlayer için ZORUNLU)
       const range = req.headers.range;
@@ -5651,6 +5659,7 @@ app.get("/download/mp4", async (req, res) => {
       const fStats = fs.statSync(fileToPipe);
       console.log(`[DOWNLOAD_MP4] Media Library'den sunuluyor: ${videoId} (${(fStats.size / 1024 / 1024).toFixed(2)} MB)`);
       mediaLib.recordAccess(videoId);
+      touchCache(fileToPipe);
       res.setHeader("Content-Type", "video/mp4");
       res.setHeader("Content-Length", fStats.size);
       res.setHeader("Content-Disposition", `attachment; filename=video_${videoId}.mp4`);

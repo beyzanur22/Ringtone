@@ -25,8 +25,9 @@ module.exports = {
         // disk temizliği ve indirme yazımı hep bu havuzu paylaşır → yoğunlukta
         // istekler sıraya girip yavaşlıyordu. 32'ye çıkarınca darboğaz kalkar.
         UV_THREADPOOL_SIZE: 32,
-        // Cache'te 4 gün dinlenmeyen dosya silinir (eski: 24 saat).
-        CACHE_MAX_IDLE_HOURS: 96
+        // İstek almayan cache: MP4 1 gün, MP3/M4A 2 gün sonra silinir.
+        VIDEO_CACHE_MAX_IDLE_HOURS: 24,
+        AUDIO_CACHE_MAX_IDLE_HOURS: 48
       }
     },
 
