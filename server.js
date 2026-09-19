@@ -3426,6 +3426,25 @@ app.post("/admin/apps", basicAuth, express.json(), async (req, res) => {
   }
 });
 
+// Uygulama (izole panel) sil — SADECE süper admin. default silinemez.
+// Kayıt apps.json'dan düşer + data/<appId>/ klasörü temizlenir → panel girişi ölür.
+app.delete("/admin/apps/:appId", basicAuth, (req, res) => {
+  try {
+    if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin uygulama silebilir" });
+    const slug = String(req.params.appId || "").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    if (!slug || slug === "default") return res.status(400).json({ error: "geçersiz uygulama" });
+    const apps = { ...getApps() };
+    if (!apps[slug]) return res.status(404).json({ error: "uygulama yok" });
+    delete apps[slug];
+    saveApps(apps);
+    // İzole veri klasörünü temizle (config, duyurular vs.) — geri alınamaz.
+    try { fs.rmSync(path.join(__dirname, "data", slug), { recursive: true, force: true }); } catch (e) {}
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "Apps delete failed: " + e.message });
+  }
+});
+
 // Tüm uygulamaların izole panel giriş bilgileri — SADECE master (süper panel).
 // İzole panel yöneticileri (per-app key) burayı göremez → 403.
 app.get("/admin/app-credentials", basicAuth, (req, res) => {
