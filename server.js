@@ -3207,6 +3207,63 @@ function filterBlockedChannels(items, country = "all") {
   });
 }
 
+// ── ÇALMA/İNDİRME ANINDA ENGEL (videoId tipli) ──────────────────────────
+// filterBlockedChannels yalnızca arama/top50'de çalışıyor. Ama /stream ve
+// /download'a doğrudan videoId ile gelen istekler (favori, kuyruk, son çalınan)
+// hiç filtreden geçmiyordu → panelden engellenen bir video yine çalınıyordu.
+// Burada videoId tipli engel kurallarını ÇALMA anında da uyguluyoruz.
+//
+// Kaynak: panelin YAZDIĞI dosyanın aynısı → pathFor(appId, ...). (getBlockedChannels
+// hep global dosyayı okuyor; non-default app'te panel data/<appId>/'e yazdığı için
+// o okuma kaçırabiliyordu. Burada app-başına okuyoruz ki panelde ne girildiyse o
+// uygulansın.) App-başına 60sn'lik küçük bir cache, her istekte disk okumasını önler.
+//
+// Not: channel/keyword tipli engeller için çalma anında elimizde yalnız videoId var
+// (kanal/başlık yok), o yüzden onlar arama tarafında kalır; videoId tipli engel
+// burada anında reddedilir — "silinmiş videoyu videoId ile engelle" tam bu yola girer.
+const _blockedByAppCache = {}; // appId -> { data, ts }
+const BLOCKED_APP_TTL_MS = 60000;
+function getBlockedForApp(appId) {
+  const now = Date.now();
+  const c = _blockedByAppCache[appId];
+  if (c && (now - c.ts) < BLOCKED_APP_TTL_MS) return c.data;
+  let data = [];
+  try {
+    const f = pathFor(appId, "blockedChannels.json");
+    if (fs.existsSync(f)) data = JSON.parse(fs.readFileSync(f, "utf-8") || "[]");
+  } catch (e) { data = []; }
+  _blockedByAppCache[appId] = { data, ts: now };
+  return data;
+}
+function extractVideoId(s) {
+  s = (s || "").trim();
+  const m = s.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : s;
+}
+function isVideoIdBlocked(videoId, country, appId) {
+  const groups = getBlockedForApp(appId);
+  if (!groups || !groups.length) return false;
+  const target = extractVideoId(videoId);
+  const ctry = (country || "all").toUpperCase();
+  return groups.some(group => {
+    if ((group.type || "channel") !== "videoId") return false;
+    const rc = group.countries || "all";
+    if (rc !== "all") {
+      const arr = Array.isArray(rc) ? rc : String(rc).split(",");
+      if (!arr.map(s => s.trim().toUpperCase()).includes(ctry)) return false;
+    }
+    if (!Array.isArray(group.channels)) return false;
+    return group.channels.some(v => extractVideoId(v) === target);
+  });
+}
+// req'ten engel kararı: appId + ülke çözüp videoId tipli engeli kontrol et.
+function isStreamBlocked(req, videoId) {
+  try {
+    const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "all";
+    return isVideoIdBlocked(videoId, country, resolveAppId(req));
+  } catch (e) { return false; } // asla çalmayı kendi hatamızla bozma
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // KANAL ADI ZENGİNLEŞTİRME (enrichment)
 // Arama kaynağı (bazocam) sonuçlarda kanal/uploader adını VERMİYOR (boş gelir).
@@ -3547,6 +3604,7 @@ app.post("/blocked-channels", async (req, res) => {
     ensureAppData(appId);
     await fs.promises.writeFile(blockedFile, JSON.stringify(blocked, null, 2));
     if (appId === "default") _cachedBlockedChannels = null;
+    delete _blockedByAppCache[appId]; // çalma/indirme engel cache'i de hemen tazelensin
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Write failed" }); }
 });
@@ -3560,6 +3618,7 @@ app.delete("/blocked-channels/:id", async (req, res) => {
     blocked = blocked.filter(ch => ch.id !== req.params.id);
     await fs.promises.writeFile(blockedFile, JSON.stringify(blocked, null, 2));
     if (appId === "default") _cachedBlockedChannels = null;
+    delete _blockedByAppCache[appId]; // engel kaldırılınca çalma/indirme hemen tekrar açılsın
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: "Delete failed" }); }
 });
@@ -4043,6 +4102,13 @@ app.get("/stream", async (req, res) => {
   const { videoId } = req.query;
   if (!videoId || !isValidVideoId(videoId)) {
     return res.status(400).json({ error: "Invalid or missing videoId" });
+  }
+
+  // Panelden engellenen video (videoId tipli) çalma anında da reddedilsin —
+  // favori/kuyruk/son çalınandan doğrudan gelen istekler artık sağlayıcıya gitmez.
+  if (isStreamBlocked(req, videoId)) {
+    console.log(`[BLOCKED] /stream engellendi: ${videoId}`);
+    return res.status(410).json({ error: "Bu içerik kullanılamıyor", blocked: true });
   }
 
   const typeStr = (req.query.type === "video" || req.path.includes("video") || req.path.includes("mp4")) ? "video" : "audio";
@@ -5572,6 +5638,12 @@ app.get("/download/mp3", async (req, res) => {
       return res.status(400).json({ error: "Invalid or missing videoId" });
     }
 
+    // Panelden engellenen video indirilemesin — sağlayıcıya hiç gitmeden reddet.
+    if (isStreamBlocked(req, videoId)) {
+      console.log(`[BLOCKED] /download/mp3 engellendi: ${videoId}`);
+      return res.status(410).json({ error: "Bu içerik kullanılamıyor", blocked: true });
+    }
+
     const quality = ["128", "192", "320"].includes(kbps) ? kbps : "320";
 
     /* KATMAN 0 — HAZIR CACHE (indirme de çalma gibi ÖNCE cache'e baksın).
@@ -5722,6 +5794,12 @@ app.get("/download/mp4", async (req, res) => {
 
     if (!videoId || !isValidVideoId(videoId)) {
       return res.status(400).json({ error: "Invalid or missing videoId" });
+    }
+
+    // Panelden engellenen video indirilemesin — sağlayıcıya hiç gitmeden reddet.
+    if (isStreamBlocked(req, videoId)) {
+      console.log(`[BLOCKED] /download/mp4 engellendi: ${videoId}`);
+      return res.status(410).json({ error: "Bu içerik kullanılamıyor", blocked: true });
     }
 
     const typeStr = "video";
