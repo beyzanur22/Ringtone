@@ -3754,6 +3754,80 @@ function slimTop50(items) {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   GRAFİĞİ OLMAYAN ÜLKELER → DİL/BÖLGE KARDEŞİ
+   YouTube bazı ülkelerde (AO, MZ, ...) "mostPopular" grafiği vermiyor.
+   Eskiden bu ülkeler doğrudan US listesine düşüyordu; Angolalı kullanıcıya
+   Amerikan listesi gidiyordu. Artık önce aynı dili konuşan kardeş ülkenin
+   MÜZİK listesi denenir (AO → BR), o da yoksa US'e düşülür.
+   ═══════════════════════════════════════════════════════════════ */
+const TOP50_KARDES_ULKE = {
+  // Portekizce
+  AO: "BR", MZ: "BR", CV: "BR", GW: "BR", ST: "BR", TL: "BR",
+  // Arapça
+  LY: "EG", SD: "EG", YE: "EG", SY: "EG", MR: "EG", DJ: "EG", SO: "EG", KM: "EG", PS: "EG",
+  // Fransızca (Afrika)
+  BJ: "FR", BF: "FR", TD: "FR", CF: "FR", CG: "FR", CD: "FR", CI: "FR", GA: "FR",
+  GN: "FR", ML: "FR", NE: "FR", SN: "FR", TG: "FR", CM: "FR", MG: "FR", RW: "FR", BI: "FR",
+  // Rusça / Orta Asya & Kafkasya
+  KG: "RU", TJ: "RU", TM: "RU", UZ: "RU", AM: "RU", MD: "RU", GE: "RU",
+  // İngilizce Afrika
+  ZM: "ZA", ZW: "ZA", MW: "ZA", BW: "ZA", NA: "ZA", SZ: "ZA", LS: "ZA",
+  SL: "NG", LR: "NG", GM: "NG", UG: "NG", SS: "NG", ET: "NG",
+  // İspanyolca
+  BO: "MX", PY: "MX", HN: "MX", NI: "MX", SV: "MX", GT: "MX", CR: "MX", PA: "MX",
+  DO: "MX", CU: "MX", GQ: "MX",
+  // Balkanlar
+  XK: "RS", ME: "RS", BA: "RS", MK: "RS", AL: "RS",
+  // Güney Asya
+  NP: "IN", BT: "IN", MV: "IN", LK: "IN", BD: "IN", AF: "IN",
+  // Güneydoğu Asya & Pasifik
+  LA: "TH", KH: "TH", MM: "TH", BN: "MY",
+  PG: "AU", FJ: "AU", SB: "AU", VU: "AU", WS: "AU", TO: "AU"
+};
+
+/** Kardeş ülkenin müzik listesi (cache'te yoksa YouTube'dan çekip kardeşin anahtarına yazar). */
+async function top50KardesListesi(region, country) {
+  const kardes = TOP50_KARDES_ULKE[region];
+  if (!kardes) return null;
+  let items = await cacheGet(`top50:${kardes}`);
+  if (!Array.isArray(items) || !items.length) {
+    try {
+      const r = await axiosClient.get("https://www.googleapis.com/youtube/v3/videos", {
+        params: {
+          part: "snippet,contentDetails,statistics",
+          chart: "mostPopular",
+          regionCode: kardes,
+          maxResults: 50,
+          videoCategoryId: 10,
+          key: YOUTUBE_API_KEY
+        }
+      });
+      // Ana /top50 akışıyla aynı hazırlık: süre + canlı alanlarını doldur, filtrele, küçült.
+      let ham = filterBlockedChannels(r.data.items, country);
+      if (Array.isArray(ham)) {
+        for (const it of ham) {
+          if (!it) continue;
+          if (it.contentDetails && it.contentDetails.duration) {
+            const sn = parseDurationToSeconds(it.contentDetails.duration);
+            if (sn >= 0) it._ytDurationSec = sn;
+          }
+          if (it.liveBroadcastContent === undefined) {
+            it.liveBroadcastContent = (it.snippet && it.snippet.liveBroadcastContent) || "none";
+          }
+        }
+        ham = applyContentFilter(ham);
+      }
+      items = slimTop50(ham);
+      if (Array.isArray(items) && items.length) await cacheSet(`top50:${kardes}`, items, CACHE_DURATION);
+    } catch (e) {
+      console.warn(`[TOP50] ${region}: kardeş ${kardes} listesi alınamadı — ${e.message}`);
+      return null;
+    }
+  }
+  return (Array.isArray(items) && items.length) ? { kardes, items } : null;
+}
+
 app.get("/top50", async (req, res) => {
   // Ülke tespiti: Cloudflare header > Android X-Country header > fallback US
   const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "US";
@@ -3796,7 +3870,19 @@ app.get("/top50", async (req, res) => {
           redis.set(`top50:nocat:${region}`, "1", "EX", 7 * 86400).catch(() => {});
           console.log(`[TOP50] ${region}: kategori grafiği yok, kategorisiz listeye geçildi`);
         } catch (retryErr) {
-          // Bu bölgede hiç grafik yok → US listesini bu bölgenin anahtarına 1 saat
+          // Bu bölgede hiç grafik yok. Önce dil/bölge kardeşi (AO → BR), sonra US.
+          const kardesSonuc = await top50KardesListesi(region, country);
+          if (kardesSonuc) {
+            await cacheSet(cacheKey, kardesSonuc.items, 3600);
+            console.warn(`[TOP50] ${region}: grafik yok, ${kardesSonuc.kardes} listesi 1 saat sunuluyor`);
+            return res.json({
+              source: "sibling",
+              region,
+              servedFrom: kardesSonuc.kardes,
+              data: slimTop50(filterBlockedChannels(kardesSonuc.items, country))
+            });
+          }
+          // Kardeş yoksa eski davranış: US listesini bu bölgenin anahtarına 1 saat
           // yaz. Kullanıcı boş ekran görmez ve YouTube'a tekrar tekrar gidilmez.
           const fb = await cacheGet("top50:US");
           if (Array.isArray(fb) && fb.length) {
