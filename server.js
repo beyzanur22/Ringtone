@@ -3897,6 +3897,88 @@ app.get("/top50/test/:region", async (req, res) => {
   }
 });
 
+/* ═══════════════════════════════════════════════════════════════
+   EN ÇOK DİNLENEN (ülke bazlı, gerçek çalma sayısından)
+   - POST /play-event : app çalmaya başlayınca {videoId,title,thumb,uploader}
+     gönderir → ZINCRBY mostplayed:<ülke> + meta:<videoId> saklanır (fire&forget).
+   - GET  /most-played: X-Country'ye göre en çok çalınanları Top50 ŞEKLİNDE döner.
+     Veri azsa Top50 ile doldurulur (asla boş/çok kısa kalmaz) → yeni kullanıcıda da dolu.
+   İmza: diğer uçlar gibi auth middleware korur; app zaten imzalıyor.
+   ═══════════════════════════════════════════════════════════════ */
+app.post("/play-event", express.json(), async (req, res) => {
+  try {
+    const { videoId, title, thumb, uploader } = req.body || {};
+    if (!videoId || !isValidVideoId(videoId)) return res.json({ ok: false });
+    const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || "US").toUpperCase();
+    const zkey = `mostplayed:${country}`;
+    redis.zincrby(zkey, 1, videoId).then(() => redis.expire(zkey, 60 * 86400)).catch(() => {});
+    if (title) {
+      const mkey = `meta:${videoId}`;
+      redis.hset(mkey,
+        "title", String(title).slice(0, 200),
+        "uploader", String(uploader || "").slice(0, 120),
+        "thumb", String(thumb || "").slice(0, 400)
+      ).then(() => redis.expire(mkey, 60 * 86400)).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (e) { res.json({ ok: false }); }
+});
+
+app.get("/most-played", async (req, res) => {
+  const country = (req.headers["cf-ipcountry"] || req.headers["x-country"] || "US").toUpperCase();
+  const N = 50;
+  try {
+    let ids = [];
+    try { ids = await redis.zrevrange(`mostplayed:${country}`, 0, N - 1); } catch (e) { ids = []; }
+
+    const items = [];
+    const seen = new Set();
+    for (const vid of ids) {
+      if (!vid || seen.has(vid)) continue;
+      let meta = null;
+      try { meta = await redis.hgetall(`meta:${vid}`); } catch (e) { meta = null; }
+      if (meta && meta.title) {
+        seen.add(vid);
+        items.push({
+          id: vid,
+          snippet: {
+            title: meta.title,
+            channelTitle: meta.uploader || "",
+            thumbnails: meta.thumb ? { high: { url: meta.thumb } } : {}
+          }
+        });
+      }
+    }
+
+    // Yetersizse (yeni/az trafikli app) Top50 ile doldur — asla boş kalmasın
+    if (items.length < 20) {
+      const fb = (await cacheGet(`top50:${country}`)) || (await cacheGet("top50:US"));
+      if (Array.isArray(fb)) {
+        for (const it of slimTop50(filterBlockedChannels(fb, country))) {
+          if (it && it.id && !seen.has(it.id)) {
+            seen.add(it.id);
+            items.push(it);
+            if (items.length >= N) break;
+          }
+        }
+      }
+    }
+
+    // videoId tipli engeller çalma listesinde de düşsün
+    const appId = resolveAppId(req);
+    const filtered = items.filter(it => !isVideoIdBlocked(it.id, country, appId));
+    return res.json({ source: "mostplayed", region: country, data: filtered });
+  } catch (e) {
+    // Hata → Top50'ye düş (kullanıcı boş ekran görmez)
+    try {
+      const fb = (await cacheGet(`top50:${country}`)) || (await cacheGet("top50:US"));
+      return res.json({ source: "fallback", region: country, data: slimTop50(filterBlockedChannels(fb || [], country)) });
+    } catch (e2) {
+      return res.json({ source: "empty", region: country, data: [] });
+    }
+  }
+});
+
 // SEARCH
 app.get("/search", searchLimiter, async (req, res) => {
   const country = req.headers["cf-ipcountry"] || req.headers["x-country"] || "UNKNOWN";
