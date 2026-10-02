@@ -5611,14 +5611,68 @@ app.get("/download/mp3", async (req, res) => {
 
     // Aynı şarkı başka bir worker'da zaten çevriliyorsa ikinci zinciri kurma
     // (bazocam'a paralel kopya istek gitmesin — bkz. acquireConvertLock).
+    //
+    // ÖNCEDEN: kilit alınamayınca HEMEN 503 "retryable" dönülüyordu. Kullanıcı
+    // cache'te olmayan bir şarkıyı ÇALMAYA başlayıp (bu /stream kilidi tutar,
+    // dönüşüm 15-35sn sürebilir) daha şarkı başlamadan "indir"e basınca, indirme
+    // bu kilide takılıp 503 yiyordu; istemci de 503'ü sert hata sayıp anında
+    // "İndirme başarısız" gösteriyordu. Hâlbuki aynı şarkı o an zaten çevriliyordu.
+    //
+    // ARTIK: kilit alınamazsa 503 atmak yerine, süren çevrimin bitip cache'e
+    // (disk veya R2) düşmesini BEKLE; düşünce oradan ver — provider'a ikinci
+    // istek gitmez, kullanıcı "başarısız" görmez. Çevrim bekleme süresi içinde
+    // bitmez ama kilit boşalırsa, bu istek kendisi çevirmek üzere devam eder.
     if (!(await acquireConvertLock("mp3", videoId))) {
-      console.log(`[DOWNLOAD_MP3] Tek-akış: ${videoId} zaten çevriliyor — bu istek atlandı`);
-      if (!res.headersSent) {
-        res.setHeader("Cache-Control", "no-store");
-        res.setHeader("Retry-After", "20");
-        return res.status(503).json({ error: "MP3 hazırlanıyor, lütfen birazdan tekrar deneyin", retryable: true });
+      console.log(`[DOWNLOAD_MP3] Tek-akış: ${videoId} zaten çevriliyor — cache bekleniyor`);
+      const WAIT_MS = parseInt(process.env.DOWNLOAD_WAIT_MS) || 60000;
+      const POLL_MS = 1000;
+      const deadline = Date.now() + WAIT_MS;
+      let gotLock = false;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+
+        // a) Disk cache — süren çalma/indirme bitince buraya düşer
+        const st = await statOrNull(dlDiskFile);
+        if (st && st.size > 20 * 1024) {
+          console.log(`[DOWNLOAD_MP3] Bekleme sonrası disk HIT: ${videoId} (${(st.size/1024/1024).toFixed(2)} MB)`);
+          touchCache(dlDiskFile);
+          res.setHeader("Content-Disposition", `attachment; filename="${dlTitle}.mp3"`);
+          res.setHeader("Content-Type", "audio/mpeg");
+          res.setHeader("Content-Length", st.size);
+          return safePipe(fs.createReadStream(dlDiskFile), res);
+        }
+
+        // b) R2 — çalma sırasında yüklenmiş olabilir
+        for (const key of [`audio/${videoId}.mp3`, `audio/${videoId}.m4a`]) {
+          try {
+            const r2 = await getR2Stream(key);
+            if (r2 && r2.stream) {
+              console.log(`[DOWNLOAD_MP3] Bekleme sonrası R2 HIT: ${videoId} (${key})`);
+              res.setHeader("Content-Disposition", `attachment; filename="${dlTitle}.mp3"`);
+              res.setHeader("Content-Type", r2.contentType || "audio/mpeg");
+              if (r2.contentLength) res.setHeader("Content-Length", r2.contentLength);
+              return safePipe(r2.stream, res);
+            }
+          } catch (e) { /* bu anahtar yok — sıradakini dene */ }
+        }
+
+        // c) Süren çevrim bitmiş ama cache yazılmamış olabilir → kilit boşaldıysa
+        //    bu istek kendisi çevirsin (aşağıdaki provider yoluna devam)
+        if (await acquireConvertLock("mp3", videoId)) {
+          console.log(`[DOWNLOAD_MP3] Kilit boşaldı — bu istek çeviriyor: ${videoId}`);
+          gotLock = true;
+          break;
+        }
       }
-      return;
+      // Süre doldu, cache gelmedi ve kilit hâlâ bizde değil → ancak o zaman 503
+      if (!gotLock) {
+        if (!res.headersSent) {
+          res.setHeader("Cache-Control", "no-store");
+          res.setHeader("Retry-After", "20");
+          return res.status(503).json({ error: "MP3 hazırlanıyor, lütfen birazdan tekrar deneyin", retryable: true });
+        }
+        return;
+      }
     }
 
     // ★ BİRİNCİL: Yeni API Provider (mp3download.php)
