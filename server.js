@@ -5123,6 +5123,35 @@ const presenceMinKeyApp = (ms, appId) => appId
   ? "presence:min:app:" + appId + ":" + new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "")
   : presenceMinKey(ms);
 
+/* --- Uygulama modu (müzik / zil sesi) ayrımı ---
+   Mod kararını TAMAMEN istemci verir (ASN > ülke > global); sunucu hesaplayamaz.
+   Uygulama 15 sn'de bir /device-action/active yoklamasında X-App-Mode gönderir —
+   fiilen bir heartbeat. Header taşımayan istekler (/config, ExoPlayer /stream)
+   modu DEĞİŞTİRMEZ: son bilinen mod korunur. Hiç bildirmemiş cihaz "bilinmiyor"
+   olarak kalır ve toplamdan çıkarma ile hesaplanır (ayrı küme tutulmaz). */
+const APP_MODES = ["youtube", "ringtone"];
+const presenceModeZKey = (mode, appId) => appId
+  ? `presence:z:app:${appId}:mode:${mode}`
+  : `presence:z:mode:${mode}`;
+
+function normalizeAppMode(req) {
+  const raw = String(req.headers["x-app-mode"] || "").toLowerCase().trim();
+  if (raw === "ringtone") return "ringtone";
+  if (raw === "youtube" || raw === "mediasvc") return "youtube";
+  return null;   // bilgi yok
+}
+
+// Cihaz TEK bir mod kümesinde bulunur — mod değişiminde çift sayımı önler.
+function queueModePresence(pipe, uid, mode, appId, nowMs) {
+  const scopes = [null];
+  if (appId && appId !== "default") scopes.push(appId);
+  for (const scope of scopes) {
+    pipe.zadd(presenceModeZKey(mode, scope), nowMs, uid);
+    APP_MODES.filter(m => m !== mode)
+      .forEach(m => pipe.zrem(presenceModeZKey(m, scope), uid));
+  }
+}
+
 function normalizeExtractor(req) {
   const raw = String(req.headers["x-extractor"] || "").toLowerCase().trim();
   if (raw === "newpipe" || raw === "np") return "newpipe";
@@ -5180,8 +5209,19 @@ async function recordPresence(req) {
     const nowMs = Date.now();
 
     // Throttle — aynı cihaz 30 sn içinde tekrar yazılmaz (yoğun trafikte Redis'i korur)
+    const appMode = normalizeAppMode(req);
     const last = presenceLastWrite.get(uid);
-    if (last && nowMs - last < PRESENCE_THROTTLE_MS) return;
+    if (last && nowMs - last < PRESENCE_THROTTLE_MS) {
+      // Mod bilgisi throttle'a kurban gitmesin: 15 sn'lik yoklama 30 sn'lik
+      // pencereye takılırsa mod kümesi bayatlar, cihaz "bilinmiyor"a düşerdi.
+      // Mod taşıyan istek X-Device-Id de taşır → uid ve appId burada kesindir.
+      if (appMode) {
+        const p = redis.pipeline();
+        queueModePresence(p, uid, appMode, resolveAppId(req), nowMs);
+        p.exec().catch(() => {});
+      }
+      return;
+    }
     presenceLastWrite.set(uid, nowMs);
     if (presenceLastWrite.size > 20000) {
       for (const [k, t] of presenceLastWrite) {
@@ -5227,6 +5267,7 @@ async function recordPresence(req) {
     if (country !== "?") pipe.hset(key, "country", country);
     if (extractor !== "unknown") pipe.hset(key, "extractor", extractor);
     if (Number.isFinite(sdk) && sdk > 0) pipe.hset(key, "sdk", String(sdk));
+    if (appMode) pipe.hset(key, "mode", appMode);
     // Cihaz tek bir çıkarıcı kümesinde bulunmalı — APK güncellemesiyle
     // "unknown" → "newpipe" geçişinde çift sayılmasın diye diğerlerinden çıkar.
     pipe.zadd(PRESENCE_EXTRACTOR_ZKEY(extractor), nowMs, uid);
@@ -5251,6 +5292,7 @@ async function recordPresence(req) {
       pipe.pfadd(minKeyApp, uid);
       pipe.expire(minKeyApp, 7200);
     }
+    if (appMode) queueModePresence(pipe, uid, appMode, appId, nowMs);
     pipe.exec().catch(() => {});
   } catch (e) {
     // presence asla isteği bozmamalı — sessizce yut
@@ -5268,10 +5310,12 @@ if (isPrimaryWorker) {
       pipe.zremrangebyscore(PRESENCE_ZKEY, 0, cutoff);
       // Çıkarıcı kümeleri de aynı pencereyle budanır
       EXTRACTORS.forEach(ex => pipe.zremrangebyscore(PRESENCE_EXTRACTOR_ZKEY(ex), 0, cutoff));
+      APP_MODES.forEach(m => pipe.zremrangebyscore(presenceModeZKey(m, null), 0, cutoff));
       // Per-app (izole panel) kümeleri de budanır
       Object.keys(getApps()).filter(id => id !== "default").forEach(id => {
         pipe.zremrangebyscore(presenceZKeyApp(id), 0, cutoff);
         EXTRACTORS.forEach(ex => pipe.zremrangebyscore(presenceExtractorZKeyApp(ex, id), 0, cutoff));
+        APP_MODES.forEach(m => pipe.zremrangebyscore(presenceModeZKey(m, id), 0, cutoff));
       });
       await pipe.exec();
     } catch (e) {
@@ -5292,6 +5336,12 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     const ZKEY = presenceZKeyApp(boundApp);
     const EXKEY = (ex) => presenceExtractorZKeyApp(ex, boundApp);
     const MINKEY = (ms) => presenceMinKeyApp(ms, boundApp);
+    const MODEKEY = (m) => presenceModeZKey(m, boundApp);
+
+    // ?mode=ringtone|youtube → liste, ülke kırılımı ve pencere sayımı SADECE
+    // o modu kapsar. Panelin "Zil Sesi Modu" bölümü bunu kullanır.
+    const qMode = String(req.query.mode || "").toLowerCase();
+    const modeFilter = APP_MODES.includes(qMode) ? qMode : null;
 
     const [c5, c15, c60] = await Promise.all([
       redis.zcount(ZKEY, nowMs - 5 * 60 * 1000, "+inf"),
@@ -5317,11 +5367,39 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       };
     });
 
-    // Pencere içindeki cihazlar (en yeni önce)
-    const uids = await redis.zrevrangebyscore(ZKEY, "+inf", winFrom);
+    // Mod bazlı sayaçlar (Müzik / Zil sesi) — 5 dk, 15 dk, 1 sa.
+    // "bilinmiyor" ayrı küme DEĞİL, toplamdan çıkarılır: X-App-Mode göndermeyen
+    // eski APK'lar. Ayrı küme tutulsaydı modsuz istekler (/config, /stream)
+    // cihazı sürekli kümeler arasında gezdirirdi.
+    const modePipe = redis.pipeline();
+    APP_MODES.forEach(m => {
+      modePipe.zcount(MODEKEY(m), nowMs - 5 * 60 * 1000, "+inf");
+      modePipe.zcount(MODEKEY(m), nowMs - 15 * 60 * 1000, "+inf");
+      modePipe.zcount(MODEKEY(m), nowMs - 60 * 60 * 1000, "+inf");
+    });
+    const modeRes = await modePipe.exec();
+    const byMode = {};
+    APP_MODES.forEach((m, i) => {
+      const num = (r) => (r && !r[0] ? Number(r[1]) || 0 : 0);
+      byMode[m] = {
+        online5m: num(modeRes[i * 3]),
+        online15m: num(modeRes[i * 3 + 1]),
+        online1h: num(modeRes[i * 3 + 2]),
+      };
+    });
+    const modeSum = (f) => APP_MODES.reduce((a, m) => a + byMode[m][f], 0);
+    byMode.unknown = {
+      online5m: Math.max(0, c5 - modeSum("online5m")),
+      online15m: Math.max(0, c15 - modeSum("online15m")),
+      online1h: Math.max(0, c60 - modeSum("online1h")),
+    };
+
+    // Pencere içindeki cihazlar (en yeni önce) — mod filtresi varsa o kümeden
+    const uids = await redis.zrevrangebyscore(modeFilter ? MODEKEY(modeFilter) : ZKEY, "+inf", winFrom);
     let users = [];
     const byCountryMap = {};
     const windowByExtractor = { newpipe: 0, backend: 0, unknown: 0 };
+    const windowByMode = { youtube: 0, ringtone: 0, unknown: 0 };
     if (uids.length) {
       const pipe = redis.pipeline();
       uids.forEach(uid => pipe.hgetall(presenceKey(uid)));
@@ -5332,12 +5410,15 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
         byCountryMap[country] = (byCountryMap[country] || 0) + 1;
         const ex = EXTRACTORS.includes(h.extractor) ? h.extractor : "unknown";
         windowByExtractor[ex]++;
+        const md = APP_MODES.includes(h.mode) ? h.mode : "unknown";
+        windowByMode[md]++;
         if (users.length < PRESENCE_LIST_LIMIT) {
           users.push({
             uid: uids[i],
             ip: h.ip,
             country,
             extractor: ex,
+            mode: md,
             sdk: h.sdk ? Number(h.sdk) : null,
             endpoint: h.endpoint || "",
             hits: Number(h.hits) || 0,
@@ -5353,16 +5434,21 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       .map(([country, count]) => ({ country, count }))
       .sort((a, b) => b.count - a.count);
 
-    // Son 60 dakikanın dakika bazlı benzersiz cihaz sayısı (grafik)
-    const tlPipe = redis.pipeline();
-    const minutes = [];
-    for (let i = 59; i >= 0; i--) {
-      const ms = nowMs - i * 60 * 1000;
-      minutes.push(new Date(ms).toISOString().slice(11, 16));
-      tlPipe.pfcount(MINKEY(ms));
+    // Son 60 dakikanın dakika bazlı benzersiz cihaz sayısı (grafik).
+    // Mod filtresi varken ÜRETİLMEZ: dakikalık HLL anahtarları moda göre
+    // ayrılmadığı için filtreli grafik tüm kullanıcıları gösterir, yanıltır.
+    let timeline = [];
+    if (!modeFilter) {
+      const tlPipe = redis.pipeline();
+      const minutes = [];
+      for (let i = 59; i >= 0; i--) {
+        const ms = nowMs - i * 60 * 1000;
+        minutes.push(new Date(ms).toISOString().slice(11, 16));
+        tlPipe.pfcount(MINKEY(ms));
+      }
+      const tlRes = await tlPipe.exec();
+      timeline = tlRes.map(([err, v], i) => ({ t: minutes[i], count: err ? 0 : (Number(v) || 0) }));
     }
-    const tlRes = await tlPipe.exec();
-    const timeline = tlRes.map(([err, v], i) => ({ t: minutes[i], count: err ? 0 : (Number(v) || 0) }));
 
     res.json({
       online: c5,                              // varsayılan "şu an aktif" = son 5 dk
@@ -5374,6 +5460,9 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       listed: users.length,
       byExtractor,             // {newpipe|backend|unknown: {online5m, online15m, online1h}}
       windowByExtractor,       // seçili pencere içindeki kırılım
+      byMode,                  // {youtube|ringtone|unknown: {online5m, online15m, online1h}}
+      windowByMode,            // seçili pencere içindeki mod kırılımı
+      modeFilter,              // null = tüm modlar
       byCountry,
       timeline,
       users,
