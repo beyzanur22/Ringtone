@@ -5394,6 +5394,44 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       online1h: Math.max(0, c60 - modeSum("online1h")),
     };
 
+    /* Uygulama (paket) bazlı kırılım — SADECE süper panelde üretilir; izole panel
+       zaten tek uygulamayı görür. "default" için ayrı küme tutulmadığından (global
+       havuza yazılır) sayısı global toplamdan diğer uygulamalar çıkarılarak bulunur.
+       DİKKAT: apps.json'da KAYITLI OLMAYAN paketler de default'a düşer, yani o satır
+       "Musica + tanınmayan paketler" demektir. */
+    let byApp = null;
+    if (!boundApp) {
+      const from5 = nowMs - 5 * 60 * 1000;
+      const apps = getApps();
+      const ids = Object.keys(apps).filter(id => id !== "default");
+      const appPipe = redis.pipeline();
+      ids.forEach(id => {
+        appPipe.zcount(presenceModeZKey("ringtone", id), from5, "+inf");
+        appPipe.zcount(presenceModeZKey("youtube", id), from5, "+inf");
+        appPipe.zcount(presenceZKeyApp(id), from5, "+inf");
+      });
+      const appRes = await appPipe.exec();
+      const n = (r) => (r && !r[0] ? Number(r[1]) || 0 : 0);
+      const rows = ids.map((id, i) => ({
+        id,
+        name: (apps[id] && apps[id].name) || id,
+        packageName: (apps[id] && apps[id].packageName) || "",
+        ringtone: n(appRes[i * 3]),
+        youtube: n(appRes[i * 3 + 1]),
+        total: n(appRes[i * 3 + 2]),
+      }));
+      const sum = (f) => rows.reduce((a, r) => a + r[f], 0);
+      rows.unshift({
+        id: "default",
+        name: ((apps.default && apps.default.name) || "default") + " + kayıtsız paketler",
+        packageName: (apps.default && apps.default.packageName) || "",
+        ringtone: Math.max(0, byMode.ringtone.online5m - sum("ringtone")),
+        youtube: Math.max(0, byMode.youtube.online5m - sum("youtube")),
+        total: Math.max(0, c5 - sum("total")),
+      });
+      byApp = rows.sort((a, b) => b.ringtone - a.ringtone || b.total - a.total);
+    }
+
     // Pencere içindeki cihazlar (en yeni önce) — mod filtresi varsa o kümeden
     const uids = await redis.zrevrangebyscore(modeFilter ? MODEKEY(modeFilter) : ZKEY, "+inf", winFrom);
     let users = [];
@@ -5463,6 +5501,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       byMode,                  // {youtube|ringtone|unknown: {online5m, online15m, online1h}}
       windowByMode,            // seçili pencere içindeki mod kırılımı
       modeFilter,              // null = tüm modlar
+      byApp,                   // süper panelde paket bazlı kırılım (son 5 dk), izole panelde null
       byCountry,
       timeline,
       users,
