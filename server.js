@@ -7105,8 +7105,9 @@ app.post("/device-action/create", express.json(), (req, res) => {
 
   const targetAppId = resolveAppId(req);
   const all = loadDeviceActions(targetAppId);
-  // Önceki aktif action'ı deaktif et — SADECE aynı app modundakileri (modlar izole).
-  all.forEach(a => { if ((a.appMode || "youtube") === appMode) a.active = false; });
+  // Eski aktifleri KAPATMA: gönderilen her action, admin "Durdur"/"Sil" diyene
+  // kadar aktif kalır ve listede birikir. (Cihaz yoklamada kendine uyan ilk/en
+  // yeni aktifi alır; farklı ülke/sürüm/mod hedefleri aynı anda yaşayabilir.)
 
   const newAction = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -7124,7 +7125,7 @@ app.post("/device-action/create", express.json(), (req, res) => {
     maxVersion: parseInt(maxVersion) || 0,
     showOnce: showOnce !== false, // varsayılan: tek seferlik
     active: true,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 saat geçerli
+    expiresAt: null, // süresiz: admin "Durdur"/"Sil" diyene kadar aktif kalır
     createdAt: new Date().toISOString(),
     executedCount: 0
   };
