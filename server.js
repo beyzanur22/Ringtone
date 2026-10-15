@@ -1742,12 +1742,14 @@ app.use(async (req, res, next) => {
       req.path === "/rena-music-privacy-policy.html" ||
       req.path === "/tiibi-music-privacy-policy.html" ||
       req.path === "/tuni-music-privacy-policy.html" ||
+      req.path === "/vupvup-music-privacy-policy.html" ||
+      (req.path.startsWith("/privacy/") && req.method === "GET") ||
       req.path === "/child-safety-standards.html" ||
       req.path === "/loadtest") {
     return next();
   }
   // Admin panel frontend (X-App-Key ile doğrulama)
-  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps", "/admin/app-credentials", "/admin/users"];
+  const adminPaths = ["/config", "/blocked-channels", "/send-notification", "/announcements", "/popup", "/device-actions", "/device-action", "/feedbacks", "/feedback", "/admin/apps", "/admin/app-credentials", "/admin/users", "/admin/privacy-policies"];
   const isAdminPath = adminPaths.some(p => req.path === p || req.path.startsWith(p + "/"));
   const _adminKey = req.headers["x-app-key"];
   if (isAdminPath && _adminKey && (_adminKey === APP_SECRET || resolveAppFromKey(_adminKey))) {
@@ -3513,6 +3515,77 @@ app.get("/admin/app-credentials", basicAuth, (req, res) => {
     .filter(id => id !== "default")
     .map(id => ({ ...panelCredentials(id), name: apps[id].name, packageName: apps[id].packageName || "" }));
   res.json({ apps: list });
+});
+
+// GİZLİLİK POLİTİKALARI — panelden paket adı + e-posta girilir, sayfa şablondan üretilir.
+// Kayıtlar data/ altında (gitignore) → deploy ezmez. Herkese açık adres: /privacy/<paket>
+const PRIVACY_FILE = path.join(__dirname, "data", "privacy_policies.json");
+const PRIVACY_TEMPLATE = path.join(__dirname, "privacy-policy-template.html");
+const PACKAGE_RE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/;
+const EMAIL_RE = /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/;
+
+function getPrivacyPolicies() {
+  try { return JSON.parse(fs.readFileSync(PRIVACY_FILE, "utf-8")); } catch (e) { return {}; }
+}
+function savePrivacyPolicies(data) {
+  fs.mkdirSync(path.dirname(PRIVACY_FILE), { recursive: true });
+  fs.writeFileSync(PRIVACY_FILE, JSON.stringify(data, null, 2));
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function privacyUrl(req, pkg) {
+  return `https://${req.get("host")}/privacy/${pkg}`;
+}
+
+app.get("/admin/privacy-policies", basicAuth, (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const all = getPrivacyPolicies();
+  res.json({ policies: Object.values(all).map(p => ({ ...p, url: privacyUrl(req, p.packageName) })) });
+});
+
+app.post("/admin/privacy-policies", basicAuth, express.json(), (req, res) => {
+  try {
+    if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+    const appName = String((req.body || {}).appName || "").trim();
+    const packageName = String((req.body || {}).packageName || "").trim();
+    const email = String((req.body || {}).email || "").trim();
+    if (!appName || appName.length > 80) return res.status(422).json({ error: "Uygulama adı zorunlu (en fazla 80 karakter)" });
+    if (!PACKAGE_RE.test(packageName)) return res.status(422).json({ error: "Geçersiz paket adı (ör. app.vupvup.descargamusica)" });
+    if (!EMAIL_RE.test(email)) return res.status(422).json({ error: "Geçersiz e-posta" });
+    const all = getPrivacyPolicies();
+    const now = new Date().toISOString();
+    all[packageName] = { appName, packageName, email, createdAt: (all[packageName] || {}).createdAt || now, updatedAt: now };
+    savePrivacyPolicies(all);
+    res.json({ ok: true, policy: { ...all[packageName], url: privacyUrl(req, packageName) } });
+  } catch (e) {
+    res.status(422).json({ error: "Kaydedilemedi: " + e.message });
+  }
+});
+
+app.delete("/admin/privacy-policies/:pkg", basicAuth, (req, res) => {
+  if (!isMasterRequest(req)) return res.status(403).json({ error: "Sadece süper admin" });
+  const all = getPrivacyPolicies();
+  if (!all[req.params.pkg]) return res.status(404).json({ error: "Kayıt yok" });
+  delete all[req.params.pkg];
+  savePrivacyPolicies(all);
+  res.json({ ok: true });
+});
+
+app.get("/privacy/:pkg", (req, res) => {
+  const p = getPrivacyPolicies()[req.params.pkg];
+  if (!p) return res.status(404).send("Privacy policy not found");
+  let tpl;
+  try { tpl = fs.readFileSync(PRIVACY_TEMPLATE, "utf-8"); } catch (e) { return res.status(500).send("Template missing"); }
+  const d = new Date(p.updatedAt || p.createdAt || Date.now());
+  const vars = {
+    APP_NAME: escapeHtml(p.appName),
+    PACKAGE: escapeHtml(p.packageName),
+    EMAIL: escapeHtml(p.email),
+    DATE: d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+    YEAR: String(d.getFullYear())
+  };
+  res.type("html").send(tpl.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vars ? vars[k] : m)));
 });
 
 // KİŞİSEL PANEL KULLANICILARI — sadece süper admin yönetir (şifre asla döndürülmez)
@@ -6683,6 +6756,9 @@ app.get("/tiibi-music-privacy-policy.html", (req, res) => {
 });
 app.get("/tuni-music-privacy-policy.html", (req, res) => {
   res.sendFile(path.join(__dirname, "tuni-music-privacy-policy.html"));
+});
+app.get("/vupvup-music-privacy-policy.html", (req, res) => {
+  res.sendFile(path.join(__dirname, "vupvup-music-privacy-policy.html"));
 });
 app.get("/child-safety-standards.html", (req, res) => {
   res.sendFile(path.join(__dirname, "child-safety-standards.html"));
