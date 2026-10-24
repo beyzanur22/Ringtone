@@ -6380,8 +6380,8 @@ app.get("/admin", (req, res) => {
   <title>Müzik Kontrol</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --line: rgba(255,255,255,0.12); --dim: rgba(255,255,255,0.55); --card: #0b0b0d; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #000; color: #fff; min-height: 100vh; padding: 48px 20px; }
+    :root { --line: rgba(255,255,255,0.12); --dim: rgba(255,255,255,0.6); --card: #27272c; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #1e1e22; color: #fff; min-height: 100vh; padding: 48px 20px; }
     .wrap { max-width: 860px; margin: 0 auto; }
     header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
     .logo { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; }
@@ -6394,14 +6394,14 @@ app.get("/admin", (req, res) => {
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
     .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; text-decoration: none; color: #fff; display: flex; align-items: center; gap: 16px; transition: border-color .15s, background .15s, transform .15s; }
-    .card:hover { border-color: rgba(255,255,255,0.5); background: #121215; transform: translateY(-1px); }
+    .card:hover { border-color: rgba(255,255,255,0.5); background: #2f2f35; transform: translateY(-1px); }
     .icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
     .card-info { flex: 1; min-width: 0; }
     .card-info h3 { font-size: 15px; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
     .card-info p { font-size: 13px; color: var(--dim); }
     .card.main { background: #fff; color: #000; border-color: #fff; padding: 22px 24px; }
     .card.main:hover { background: #f1f1f1; }
-    .card.main .icon { background: #000; border-color: #000; }
+    .card.main .icon { background: #1e1e22; border-color: #1e1e22; }
     .card.main .card-info h3 { font-size: 18px; }
     .card.main .card-info p { color: rgba(0,0,0,0.6); }
     .arrow { font-size: 26px; line-height: 1; opacity: .5; }
