@@ -1765,7 +1765,7 @@ app.use(async (req, res, next) => {
       req.path.startsWith("/admin/api-") || req.path.startsWith("/admin/smart-cache") ||
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
-      req.path === "/admin/login-ips" || req.path === "/admin/active-users" ||
+      req.path === "/admin/login-ips" || req.path === "/admin/active-users" || req.path === "/admin/visitor-stats" ||
       req.path === "/admin/review-logs") {
     return next();
   }
@@ -5197,6 +5197,25 @@ const presenceMinKeyApp = (ms, appId) => appId
   ? "presence:min:app:" + appId + ":" + new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "")
   : presenceMinKey(ms);
 
+/* --- Ziyaretçi özeti (son 24 saat / son 7 gün, ülke kırılımlı) ---
+   Uygulama başına ("default" = Musica dahil) saatlik + günlük HLL; ülke başına ayrı
+   anahtar. Gün listesindeki ülkeler bir kümede tutulur. UTC saat/gün dilimleri. */
+const VIS_HOUR_TTL = 26 * 3600;
+const VIS_DAY_TTL = 8 * 86400;
+const visHourStr = (ms) => new Date(ms).toISOString().slice(0, 13).replace(/[-T]/g, "");  // YYYYMMDDHH
+const visDayStr = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");      // YYYYMMDD
+const visHourKey = (app, h, cc) => `vis:h:${app}:${h}` + (cc ? `:${cc}` : "");
+const visDayKey = (app, d, cc) => `vis:d:${app}:${d}` + (cc ? `:${cc}` : "");
+const visCcKey = (app, d) => `vis:cc:${app}:${d}`;
+function queueVisitor(pipe, uid, appId, country, nowMs) {
+  const app = appId || "default";
+  const cc = /^[A-Z]{2}$/.test(country) ? country : "XX";
+  const h = visHourStr(nowMs), d = visDayStr(nowMs);
+  for (const k of [visHourKey(app, h), visHourKey(app, h, cc)]) { pipe.pfadd(k, uid); pipe.expire(k, VIS_HOUR_TTL); }
+  for (const k of [visDayKey(app, d), visDayKey(app, d, cc)]) { pipe.pfadd(k, uid); pipe.expire(k, VIS_DAY_TTL); }
+  pipe.sadd(visCcKey(app, d), cc); pipe.expire(visCcKey(app, d), VIS_DAY_TTL);
+}
+
 /* --- Uygulama modu (müzik / zil sesi) ayrımı ---
    Mod kararını TAMAMEN istemci verir (ASN > ülke > global); sunucu hesaplayamaz.
    Uygulama 15 sn'de bir /device-action/active yoklamasında X-App-Mode gönderir —
@@ -5367,6 +5386,7 @@ async function recordPresence(req) {
       pipe.expire(minKeyApp, 7200);
     }
     if (appMode) queueModePresence(pipe, uid, appMode, appId, nowMs);
+    queueVisitor(pipe, uid, appId, String(country).toUpperCase(), nowMs);
     pipe.exec().catch(() => {});
   } catch (e) {
     // presence asla isteği bozmamalı — sessizce yut
@@ -5584,6 +5604,49 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
   } catch (e) {
     console.error("[PRESENCE] Listeleme hatası:", e.message);
     res.status(500).json({ error: "Listeleme hatası: " + e.message });
+  }
+});
+
+// Ziyaretçi özeti — seçili uygulamanın son 24 saat / son 7 gün benzersiz cihazı, ülke kırılımlı
+app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
+  try {
+    // İzole panel → kendi uygulaması; süper panel → seçili uygulama ("default" = Musica)
+    let app = resolveAppFromKey(req.headers["x-app-key"]);
+    if (!app) {
+      const raw = ((req.query && req.query.appId) || "").toString().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+      app = raw && getApps()[raw] ? raw : "default";
+    }
+    const nowMs = Date.now();
+    const hours = [], days = [];
+    for (let i = 23; i >= 0; i--) hours.push(visHourStr(nowMs - i * 3600 * 1000));
+    for (let i = 6; i >= 0; i--) days.push(visDayStr(nowMs - i * 86400 * 1000));
+
+    const ccSets = await Promise.all(days.map(d => redis.smembers(visCcKey(app, d)).catch(() => [])));
+    const countries = [...new Set(ccSets.flat())];
+    const d24Days = new Set(days.slice(-2));
+    const countries24 = new Set(ccSets.filter((_, i) => d24Days.has(days[i])).flat());
+
+    const pipe = redis.pipeline();
+    pipe.pfcount(...hours.map(h => visHourKey(app, h)));
+    pipe.pfcount(...days.map(d => visDayKey(app, d)));
+    days.forEach(d => pipe.pfcount(visDayKey(app, d)));
+    countries.forEach(cc => {
+      pipe.pfcount(...hours.map(h => visHourKey(app, h, cc)));
+      pipe.pfcount(...days.map(d => visDayKey(app, d, cc)));
+    });
+    const r = (await pipe.exec()).map(([err, v]) => err ? 0 : (Number(v) || 0));
+    let i = 0;
+    const last24h = r[i++], last7d = r[i++];
+    const daily = days.map(d => ({ date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`, count: r[i++] }));
+    const byCountry = countries.map(cc => {
+      const h24 = r[i++], d7 = r[i++];
+      return { country: cc, last24h: countries24.has(cc) ? h24 : 0, last7d: d7 };
+    }).filter(c => c.last7d > 0).sort((a, b) => b.last7d - a.last7d || b.last24h - a.last24h);
+
+    res.json({ app, last24h, last7d, daily, byCountry, updatedAt: new Date(nowMs).toISOString() });
+  } catch (e) {
+    console.error("[VISITORS] hata:", e.message);
+    res.status(500).json({ error: "Ziyaretçi özeti hatası: " + e.message });
   }
 });
 
