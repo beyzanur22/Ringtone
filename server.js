@@ -6288,6 +6288,15 @@ app.get("/admin", (req, res) => {
       </div>
     </a>`;
   }).join("");
+  // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
+  const appsBox = !scopeIds.length ? "" : `
+    <button type="button" class="card apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}" style="border-color:#22c55e">
+      <div class="icon" style="background:#15271d">📱</div>
+      <div class="card-info">
+        <h3>Uygulamalar <span class="chev">▾</span></h3>
+        <p>${scopeIds.length} uygulama · listelemek için tıkla</p>
+      </div>
+    </button>`;
   // Altyapı kartları — SADECE süper kullanıcılar (beyza/olcay) görür
   const superCards = !isSuper ? "" : `
     <a class="card" href="/cache-panel"><div class="icon" style="background:#1e293b">💾</div><div class="card-info"><h3>Cache Panel</h3><p>Media önbelleği yönetimi</p></div></a>
@@ -6297,7 +6306,7 @@ app.get("/admin", (req, res) => {
     <a class="card" href="/content-filter"><div class="icon" style="background:#2a1a1a">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
     <a class="card" href="/admin/stats"><div class="icon" style="background:#2a1e2a">📊</div><div class="card-info"><h3>İstatistikler</h3><p>Sunucu & API durumu</p></div></a>
     <a class="card" href="/health"><div class="icon" style="background:#1e2a24">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
-    <a class="card" href="/admin/panel" style="border-color:#7c3aed"><div class="icon" style="background:#2d1f4e">🎛️</div><div class="card-info"><h3>React Panel</h3><p>Config, Popup & Kanal Yönetimi (Tümü)</p></div></a>`;
+    <a class="card" href="/admin/panel" style="border-color:#7c3aed"><div class="icon" style="background:#2d1f4e">🎛️</div><div class="card-info"><h3>Tüm Uygulamalar Kontrol</h3><p>Config, Popup & Kanal Yönetimi (Tümü)</p></div></a>`;
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -6382,6 +6391,12 @@ app.get("/admin", (req, res) => {
     .stat-value { font-size: 24px; font-weight: 700; color: #a855f7; }
     .stat-label { font-size: 12px; color: #666; margin-top: 2px; }
     .footer { margin-top: 40px; color: #444; font-size: 13px; }
+    .apps-toggle { font: inherit; text-align: left; cursor: pointer; width: 100%; }
+    .apps-toggle .chev { display: inline-block; transition: transform 0.2s; color: #888; }
+    .apps-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
+    .apps-list { margin-top: 20px; }
+    .apps-list[hidden] { display: none; }
+    .apps-title { width: 100%; max-width: 900px; margin: 32px 0 12px; color: #94a3b8; font-size: 14px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -6390,12 +6405,28 @@ app.get("/admin", (req, res) => {
   <div style="margin-bottom:32px;color:#94a3b8;font-size:14px">👤 <b style="color:#e2e8f0">${_esc(sess.user)}</b> · <a href="/admin/logout" style="color:#f87171;text-decoration:none">Çıkış Yap</a></div>
 
   <div class="grid">
-    ${superCards}${appCards}
+    ${superCards}${appsBox}
   </div>
+  ${!appsBox ? "" : `<div class="apps-title" id="appsTitle" ${isSuper ? "hidden" : ""}>📱 Uygulamalar</div>
+  <div class="grid apps-list" id="appsList" ${isSuper ? "hidden" : ""}>
+    ${appCards}
+  </div>`}
 
   <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
 
   <script>
+    // Uygulamalar kutusu aç/kapa
+    (function(){
+      var btn = document.getElementById('appsToggle');
+      if (!btn) return;
+      var list = document.getElementById('appsList'), title = document.getElementById('appsTitle');
+      btn.addEventListener('click', function(){
+        var open = btn.getAttribute('aria-expanded') !== 'true';
+        btn.setAttribute('aria-expanded', open);
+        list.hidden = !open; title.hidden = !open;
+        if (open) title.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    })();
     // Sunucu uptime göster
     fetch('/health').then(r=>r.json()).then(d=>{
       const h = Math.floor(d.uptimeSeconds/3600);
