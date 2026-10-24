@@ -7165,6 +7165,9 @@ app.get("/device-action/active", (req, res) => {
   const appVersion = parseInt(req.headers["x-app-version"]) || 0;
   // app modu: "youtube" | "ringtone". Eski istemciler header göndermez → "youtube".
   const appMode = (req.headers["x-app-mode"] || "youtube").toLowerCase();
+  // Bu uygulamanın cihazdaki açılış sayısı (paket başına ayrı sayaç). Header yoksa -1.
+  const launchHeader = req.headers["x-launch-count"];
+  const launchCount = launchHeader == null || launchHeader === "" ? -1 : (parseInt(launchHeader) || 0);
 
   const active = all.find(a => {
     if (!a.active) return false;
@@ -7185,6 +7188,9 @@ app.get("/device-action/active", (req, res) => {
       if (a.maxVersion && appVersion > a.maxVersion) return false;
     }
 
+    // Min. kullanım şartı — sayaç göndermeyen eski istemcilere gösterilmez
+    if (a.minLaunches > 0 && launchCount < a.minLaunches) return false;
+
     return true;
   });
   res.json(active || null);
@@ -7198,6 +7204,7 @@ app.post("/device-action/create", express.json(), (req, res) => {
     countries, countryMode,        // ülke hedefleme
     forceAction,                   // iptal edilemez (zorunlu)
     minVersion, maxVersion,        // sürüm aralığı (versionCode)
+    minLaunches,                   // en az kaç açılıştan sonra gösterilsin (0 = şart yok)
     appMode: bodyAppMode           // "youtube" | "ringtone" | "both" — hangi uygulama modu
   } = req.body;
   // Geçerli app modu (varsayılan: youtube — mevcut davranış korunur)
@@ -7234,6 +7241,7 @@ app.post("/device-action/create", express.json(), (req, res) => {
     forceAction: forceAction === true,
     minVersion: parseInt(minVersion) || 0,
     maxVersion: parseInt(maxVersion) || 0,
+    minLaunches: Math.max(0, parseInt(minLaunches) || 0),
     showOnce: showOnce !== false, // varsayılan: tek seferlik
     active: true,
     expiresAt: null, // süresiz: admin "Durdur"/"Sil" diyene kadar aktif kalır
