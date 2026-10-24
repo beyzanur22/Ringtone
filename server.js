@@ -2117,7 +2117,7 @@ function loginPageHtml() {
   return `<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0b12">
-<title>Melodia — Panel Girişi</title>
+<title>Müzik Kontrol — Panel Girişi</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0a11;--card:rgba(24,24,35,.72);--line:rgba(255,255,255,.08);--txt:#e8eaf2;--dim:#8b93a7;--accent:#a78bfa;--accent2:#7c3aed}
@@ -2156,7 +2156,7 @@ button[type=submit]:disabled{opacity:.65;cursor:wait;transform:none}
 <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
 <div class="card" id="card">
   <div class="logo">🎵</div>
-  <h1>Melodia</h1>
+  <h1>Müzik Kontrol</h1>
   <div class="sub">Yönetim Paneli</div>
   <div class="err" id="err"></div>
   <form id="f" autocomplete="on">
@@ -6280,151 +6280,112 @@ app.get("/admin", (req, res) => {
   const appCards = scopeIds.map(id => {
     const a = apps[id];
     return `
-    <a class="card" href="/admin/${_esc(id)}/panel" style="border-color:${_esc(a.brandPrimary || "#22c55e")}">
-      <div class="icon" style="background:#15271d">📱</div>
-      <div class="card-info">
-        <h3>${_esc(a.name || id)}</h3>
-        <p>${_esc(a.packageName || "")} · Panel</p>
-      </div>
-    </a>`;
+      <a class="app" href="/admin/${_esc(id)}/panel">
+        <span class="dot" style="background:${_esc(a.brandPrimary || "#22c55e")}"></span>
+        <span class="app-txt"><b>${_esc(a.name || id)}</b><small>${_esc(a.packageName || "")}</small></span>
+        <span class="arrow">›</span>
+      </a>`;
   }).join("");
-  // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
-  const appsBox = !scopeIds.length ? "" : `
-    <button type="button" class="card apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}" style="border-color:#22c55e">
-      <div class="icon" style="background:#15271d">📱</div>
-      <div class="card-info">
-        <h3>Uygulamalar <span class="chev">▾</span></h3>
-        <p>${scopeIds.length} uygulama · listelemek için tıkla</p>
-      </div>
-    </button>`;
   // Altyapı kartları — SADECE süper kullanıcılar (beyza/olcay) görür
   const superCards = !isSuper ? "" : `
-    <a class="card" href="/cache-panel"><div class="icon" style="background:#1e293b">💾</div><div class="card-info"><h3>Cache Panel</h3><p>Media önbelleği yönetimi</p></div></a>
-    <a class="card" href="/proxy-panel"><div class="icon" style="background:#1e2a1e">🔁</div><div class="card-info"><h3>Proxy Panel</h3><p>Proxy havuzu ve ban yönetimi</p></div></a>
-    <a class="card" href="/playlist-cache"><div class="icon" style="background:#2a1e1e">🎶</div><div class="card-info"><h3>Playlist Cache</h3><p>Top 50 önbellekleme</p></div></a>
-    <a class="card" href="/converter"><div class="icon" style="background:#1e1e2a">🔄</div><div class="card-info"><h3>Converter</h3><p>MP3/MP4 dönüştürücü</p></div></a>
-    <a class="card" href="/content-filter"><div class="icon" style="background:#2a1a1a">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
-    <a class="card" href="/admin/stats"><div class="icon" style="background:#2a1e2a">📊</div><div class="card-info"><h3>İstatistikler</h3><p>Sunucu & API durumu</p></div></a>
-    <a class="card" href="/health"><div class="icon" style="background:#1e2a24">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
-    <a class="card" href="/admin/panel" style="border-color:#7c3aed"><div class="icon" style="background:#2d1f4e">🎛️</div><div class="card-info"><h3>Tüm Uygulamalar Kontrol</h3><p>Config, Popup & Kanal Yönetimi (Tümü)</p></div></a>`;
+    <a class="card main" href="/admin/panel">
+      <div class="icon">🎛️</div>
+      <div class="card-info"><h3>Tüm Uygulamalar Kontrol</h3><p>Config, popup ve kanal yönetimi — tüm uygulamalar</p></div>
+      <span class="arrow">›</span>
+    </a>
+    <div class="section">Araçlar</div>
+    <div class="grid">
+      <a class="card" href="/cache-panel"><div class="icon">💾</div><div class="card-info"><h3>Cache Panel</h3><p>Media önbelleği yönetimi</p></div></a>
+      <a class="card" href="/playlist-cache"><div class="icon">🎶</div><div class="card-info"><h3>Playlist Cache</h3><p>Top 50 önbellekleme</p></div></a>
+      <a class="card" href="/content-filter"><div class="icon">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
+      <a class="card" href="/health"><div class="icon">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
+    </div>`;
+  // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
+  const appsBox = !scopeIds.length ? "" : `
+    <div class="section">Uygulamalar</div>
+    <button type="button" class="card apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}">
+      <div class="icon">📱</div>
+      <div class="card-info"><h3>Uygulamalar <span class="count">${scopeIds.length}</span></h3><p>Tek tek uygulama paneline girmek için tıkla</p></div>
+      <span class="chev">▾</span>
+    </button>
+    <div class="apps-list" id="appsList" ${isSuper ? "hidden" : ""}>${appCards}</div>`;
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Melodia Admin</title>
+  <title>Müzik Kontrol</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #0f0f11;
-      color: #fff;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 40px 20px;
-    }
-    .logo {
-      font-size: 32px;
-      font-weight: 800;
-      background: linear-gradient(135deg, #a855f7, #6366f1);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 6px;
-    }
-    .subtitle {
-      color: #666;
-      font-size: 14px;
-      margin-bottom: 48px;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
-      width: 100%;
-      max-width: 900px;
-    }
-    .card {
-      background: #1a1a1f;
-      border: 1px solid #2a2a35;
-      border-radius: 16px;
-      padding: 28px 24px;
-      text-decoration: none;
-      color: #fff;
-      transition: all 0.2s ease;
-      display: flex;
-      align-items: center;
-      gap: 18px;
-    }
-    .card:hover {
-      background: #22222a;
-      border-color: #a855f7;
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px rgba(168,85,247,0.15);
-    }
-    .icon {
-      width: 52px;
-      height: 52px;
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      flex-shrink: 0;
-    }
-    .card-info h3 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-    .card-info p  { font-size: 13px; color: #888; }
-    .stats {
-      width: 100%;
-      max-width: 900px;
-      background: #1a1a1f;
-      border: 1px solid #2a2a35;
-      border-radius: 16px;
-      padding: 20px 24px;
-      margin-top: 20px;
-      display: flex;
-      gap: 40px;
-      flex-wrap: wrap;
-    }
-    .stat { text-align: center; }
-    .stat-value { font-size: 24px; font-weight: 700; color: #a855f7; }
-    .stat-label { font-size: 12px; color: #666; margin-top: 2px; }
-    .footer { margin-top: 40px; color: #444; font-size: 13px; }
-    .apps-toggle { font: inherit; text-align: left; cursor: pointer; width: 100%; }
-    .apps-toggle .chev { display: inline-block; transition: transform 0.2s; color: #888; }
+    :root { --line: rgba(255,255,255,0.12); --dim: rgba(255,255,255,0.55); --card: #0b0b0d; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #000; color: #fff; min-height: 100vh; padding: 48px 20px; }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+    .logo { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; }
+    .subtitle { color: var(--dim); font-size: 13px; margin-top: 4px; }
+    .user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+    .user b { font-weight: 700; }
+    .user a { color: #fff; text-decoration: none; border: 1px solid var(--line); padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; transition: all .15s; }
+    .user a:hover { background: #fff; color: #000; }
+    .section { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--dim); margin: 32px 0 12px; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; text-decoration: none; color: #fff; display: flex; align-items: center; gap: 16px; transition: border-color .15s, background .15s, transform .15s; }
+    .card:hover { border-color: rgba(255,255,255,0.5); background: #121215; transform: translateY(-1px); }
+    .icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    .card-info { flex: 1; min-width: 0; }
+    .card-info h3 { font-size: 15px; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
+    .card-info p { font-size: 13px; color: var(--dim); }
+    .card.main { background: #fff; color: #000; border-color: #fff; padding: 22px 24px; }
+    .card.main:hover { background: #f1f1f1; }
+    .card.main .icon { background: #000; border-color: #000; }
+    .card.main .card-info h3 { font-size: 18px; }
+    .card.main .card-info p { color: rgba(0,0,0,0.6); }
+    .arrow { font-size: 26px; line-height: 1; opacity: .5; }
+    .apps-toggle { width: 100%; font: inherit; text-align: left; cursor: pointer; }
+    .count { background: #fff; color: #000; font-size: 12px; font-weight: 800; padding: 1px 8px; border-radius: 999px; }
+    .chev { font-size: 18px; color: var(--dim); transition: transform .2s; }
     .apps-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
-    .apps-list { margin-top: 20px; }
+    .apps-toggle[aria-expanded="true"] { border-color: rgba(255,255,255,0.5); }
+    .apps-list { margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); background: var(--card); }
     .apps-list[hidden] { display: none; }
-    .apps-title { width: 100%; max-width: 900px; margin: 32px 0 12px; color: #94a3b8; font-size: 14px; font-weight: 600; }
+    .app { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: #fff; text-decoration: none; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); transition: background .15s; }
+    .app:hover { background: #fff; color: #000; }
+    .app:hover small { color: rgba(0,0,0,0.55); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+    .app-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .app-txt b { font-size: 14px; font-weight: 700; }
+    .app-txt small { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: rgba(255,255,255,0.35); font-size: 12px; text-align: center; }
   </style>
 </head>
 <body>
-  <div class="logo">🎵 Melodia</div>
-  <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
-  <div style="margin-bottom:32px;color:#94a3b8;font-size:14px">👤 <b style="color:#e2e8f0">${_esc(sess.user)}</b> · <a href="/admin/logout" style="color:#f87171;text-decoration:none">Çıkış Yap</a></div>
+  <div class="wrap">
+    <header>
+      <div>
+        <div class="logo">🎵 Müzik Kontrol</div>
+        <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+      </div>
+      <div class="user">👤 <b>${_esc(sess.user)}</b><a href="/admin/logout">Çıkış Yap</a></div>
+    </header>
 
-  <div class="grid">
-    ${superCards}${appsBox}
+    ${superCards}
+    ${appsBox}
+
+    <div class="footer">music.cevapla.tv · Müzik Kontrol</div>
   </div>
-  ${!appsBox ? "" : `<div class="apps-title" id="appsTitle" ${isSuper ? "hidden" : ""}>📱 Uygulamalar</div>
-  <div class="grid apps-list" id="appsList" ${isSuper ? "hidden" : ""}>
-    ${appCards}
-  </div>`}
-
-  <div class="footer">music.cevapla.tv · Melodia Backend v1.0</div>
 
   <script>
     // Uygulamalar kutusu aç/kapa
     (function(){
       var btn = document.getElementById('appsToggle');
       if (!btn) return;
-      var list = document.getElementById('appsList'), title = document.getElementById('appsTitle');
+      var list = document.getElementById('appsList');
       btn.addEventListener('click', function(){
         var open = btn.getAttribute('aria-expanded') !== 'true';
         btn.setAttribute('aria-expanded', open);
-        list.hidden = !open; title.hidden = !open;
-        if (open) title.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        list.hidden = !open;
+        if (open) btn.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     })();
     // Sunucu uptime göster
