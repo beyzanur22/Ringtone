@@ -4847,6 +4847,9 @@ const REGIONS_ZKEY = "top50:active_regions";        // skor = ülkeden gelen TOP
 const REGIONS_SEEN_HKEY = "top50:region_lastseen";  // ülke → son görülme zamanı (7 gün inaktif prune için)
 const WARM_REGION_LIMIT = 10;   // en ÇOK istek gelen bu kadar ülke ısıtılır (yük azaltma: eskiden 25)
 
+// POPÜLER ALBÜMLER — ülke başına haftada bir çekilir (albums.js); /albums ve /albums/:id
+require("./albums")(app, { redis, isPrimaryWorker, regionsKey: REGIONS_ZKEY, dataDir: path.join(__dirname, "data") });
+
 function trackActiveRegion(country) {
   if (!country || country === "UNKNOWN" || country.length !== 2) return;
   const region = country.toUpperCase();
