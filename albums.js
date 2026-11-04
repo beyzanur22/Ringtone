@@ -16,6 +16,10 @@ const ARTIST_LIMIT = 40;                    // ülke listesindeki ilk 40 sanatç
 const MIN_ALBUMS = 5;                       // bundan azsa eski liste korunur
 const GAP_MS = 400;                         // YouTube'a istekler arası bekleme
 const K = { list: cc => `albums:list:${cc}`, item: id => `albums:item:${id}`, wanted: "albums:wanted", lock: cc => `albums:lock:${cc}` };
+const GLOBAL = "GLOBAL";                    // ülke listesi yoksa / desteklenmiyorsa gösterilen dünya listesi
+// YouTube Music'in ülke listesi tuttuğu 68 ülke. Diğerleri sessizce dünya listesini döndürüyor → onlara GLOBAL.
+const SUPPORTED = new Set(("AR AU AT BE BO BR CA CL CO CR CZ DK DO EC EG SV EE FI FR DE GT HN HK HU IS IN ID IE IL IT JP KE " +
+  "LU MY MX NL NZ NI NG NO PA PY PE PH PL PT RO RU SA RS SG ZA KR ES SE CH TW TZ TH TR UG UA AE GB US UY VN ZW").split(" "));
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -128,13 +132,28 @@ async function bestAlbum(artist, cc) {
   }
   return null;
 }
+async function chartArtists(code) {
+  const gl = code === "ZZ" ? "US" : code;      // "ZZ" = YouTube Music dünya listesi
+  return parseCharts(await ytm("browse", { browseId: "FEmusic_charts", formData: { selectedValues: [code] } }, gl));
+}
+// Dünya listesi: hacme göre sıralanan "ZZ" Hint derlemeleriyle doluyor → dünyaca tanınan
+// ABD + İngiltere listeleri sırayla karıştırılır; eksik kalırsa "ZZ" ile tamamlanır
+async function globalArtists() {
+  const out = [], seen = new Set();
+  const add = a => { if (a && !seen.has(a.id) && out.length < ARTIST_LIMIT) { seen.add(a.id); out.push(a); } };
+  const lists = [await chartArtists("US"), await chartArtists("GB")];
+  for (let i = 0; out.length < ARTIST_LIMIT && lists.some(l => i < l.length); i++) lists.forEach(l => add(l[i]));
+  if (out.length < ARTIST_LIMIT) (await chartArtists("ZZ")).forEach(add);
+  return out;
+}
 async function buildCountry(cc) {
   albumCache.clear();
-  const artists = parseCharts(await ytm("browse", { browseId: "FEmusic_charts", formData: { selectedValues: [cc] } }, cc)).slice(0, ARTIST_LIMIT);
+  const artists = cc === GLOBAL ? await globalArtists() : (await chartArtists(cc)).slice(0, ARTIST_LIMIT);
+  const gl = cc === GLOBAL ? "US" : cc;
   const out = [], seen = new Set();
   for (const ar of artists) {
     try {
-      const a = await bestAlbum(ar, cc);
+      const a = await bestAlbum(ar, gl);
       if (a && !seen.has(a.id)) { seen.add(a.id); out.push({ ...a, artist: a.artist || ar.name }); }
     } catch (e) { console.warn(`[ALBUMS] ${cc} ${ar.name}: ${e.message}`); }
   }
@@ -179,7 +198,8 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     try { regions = await redis.zrevrange(regionsKey, 0, REGION_LIMIT - 1); } catch (e) {}
     let wanted = [];
     try { wanted = await redis.smembers(K.wanted); } catch (e) {}
-    const all = [...new Set([...(regions || []), ...(wanted || [])])].filter(c => /^[A-Z]{2}$/.test(c)).slice(0, 25);
+    // Önce dünya listesi (her ülkenin yedeği), sonra desteklenen ülkeler
+    const all = [GLOBAL, ...[...new Set([...(regions || []), ...(wanted || [])])].filter(c => SUPPORTED.has(c)).slice(0, 25)];
     for (const cc of all) {
       const cur = await readList(cc);
       if (!cur || Date.now() - (cur.updatedAt || 0) > REFRESH_MS) await refreshCountry(cc);
@@ -193,10 +213,11 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
   // Uygulama: ülkenin popüler albümleri (kapaklı liste, parçasız)
   app.get("/albums", async (req, res) => {
     const cc = countryOf(req);
-    const list = await readList(cc);
+    let list = SUPPORTED.has(cc) ? await readList(cc) : null;
     if (!list) {
-      redis.sadd(K.wanted, cc).catch(() => {});   // ilk istek: bir sonraki kontrolde çekilir
-      return res.json({ region: cc, updatedAt: null, albums: [] });
+      if (SUPPORTED.has(cc)) redis.sadd(K.wanted, cc).catch(() => {});   // ülke listesi bir sonraki kontrolde çekilir
+      list = await readList(GLOBAL);                                       // o zamana kadar / desteklenmiyorsa dünya listesi
+      if (!list) return res.json({ region: GLOBAL, updatedAt: null, albums: [] });
     }
     // Ülkeye göre değişir: ortak önbelleğe (Cloudflare) girmesin, cihaz yarım saat tutsun
     res.set({ "Cache-Control": "private, max-age=1800", Vary: "CF-IPCountry, X-Country" });
