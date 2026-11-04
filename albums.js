@@ -24,6 +24,14 @@ const SUPPORTED = new Set(("AR AU AT BE BO BR CA CL CO CR CZ DK DO EC EG SV EE F
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// Olay günlüğü: konsol + Redis (son 100 kayıt) — admin paneli tüm worker'lardan aynı listeyi görür
+let logRedis = null;
+function ev(cc, msg, level = "info") {
+  (level === "warn" || level === "error" ? console.warn : console.log)(`[ALBUMS] ${cc}: ${msg}`);
+  if (!logRedis) return;
+  logRedis.multi().lpush("albums:log", JSON.stringify({ t: Date.now(), cc, msg, level })).ltrim("albums:log", 0, 99).exec().catch(() => {});
+}
+
 // ---- JSON yardımcıları (YouTube Music cevabı derin iç içe) ----
 function* walk(o, key) {
   if (Array.isArray(o)) { for (const v of o) yield* walk(v, key); }
@@ -176,7 +184,7 @@ async function buildCountry(cc) {
   albumCache.clear();
   const artists = cc === GLOBAL ? await globalArtists() : (await chartArtists(cc)).slice(0, ARTIST_LIMIT);
   const gl = cc === GLOBAL ? "US" : cc;
-  console.log(`[ALBUMS] ${cc}: başladı (${artists.length} sanatçı)`);
+  ev(cc, `başladı (${artists.length} sanatçı)`);
   const out = [], seen = new Set();
   let fails = 0;
   for (const ar of artists) {
@@ -185,14 +193,15 @@ async function buildCountry(cc) {
       fails = 0;
       if (a && !seen.has(a.id)) { seen.add(a.id); out.push({ ...a, artist: a.artist || ar.name }); }
     } catch (e) {
-      console.warn(`[ALBUMS] ${cc} ${ar.name}: ${e.message}`);
+      ev(cc, `${ar.name}: ${e.message}`, "warn");
       if (++fails >= 5) throw new Error("art arda 5 sanatçı alınamadı — YouTube erişimi sorunlu");
     }
   }
   return out;
 }
 
-module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey, dataDir }) {
+module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey, dataDir, basicAuth, isMaster }) {
+  logRedis = redis;
   const fileDir = path.join(dataDir, "albums");
   const itemDir = path.join(fileDir, "items");   // Redis boşalırsa albüm detayı buradan
   try { fs.mkdirSync(itemDir, { recursive: true }); } catch (e) {}
@@ -212,7 +221,7 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     const t0 = Date.now();
     try {
       const albums = await buildCountry(cc);
-      if (albums.length < MIN_ALBUMS) { console.warn(`[ALBUMS] ${cc}: sadece ${albums.length} albüm — eski liste korunuyor`); return; }
+      if (albums.length < MIN_ALBUMS) { ev(cc, `sadece ${albums.length} albüm — eski liste korunuyor`, "error"); return; }
       const list = { v: LIST_V, region: cc, updatedAt: Date.now(), albums: albums.map(slim) };
       const multi = redis.multi().set(K.list(cc), JSON.stringify(list));
       for (const a of albums) multi.set(K.item(a.id), JSON.stringify(a), "EX", 30 * 24 * 3600);
@@ -221,9 +230,9 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
       for (const a of albums) {
         try { fs.writeFileSync(path.join(itemDir, `${a.id}.json`), JSON.stringify(a)); } catch (e) {}
       }
-      console.log(`[ALBUMS] ${cc}: ${albums.length} albüm (${Math.round((Date.now() - t0) / 1000)} sn)`);
+      ev(cc, `${albums.length} albüm hazır (${Math.round((Date.now() - t0) / 1000)} sn)`, "ok");
     } catch (e) {
-      console.warn(`[ALBUMS] ${cc} yenilenemedi, eski liste korunuyor: ${e.message}`);
+      ev(cc, `yenilenemedi, eski liste korunuyor: ${e.message}`, "error");
     } finally {
       redis.srem(K.wanted, cc).catch(() => {});   // başarısızsa da düşer; ülke yeniden istenirse tekrar eklenir
       redis.del(K.lock(cc)).catch(() => {});
@@ -246,8 +255,8 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
   if (isPrimaryWorker) {
     // Yeniden başlatmada yarıda kalan çekimin kilidi kalmasın (yoksa o ülke 1 saat atlanırdı)
     redis.keys("albums:lock:*").then(k => k.length && redis.del(...k)).catch(() => {});
-    setTimeout(() => checkAll().catch(e => console.warn(`[ALBUMS] kontrol hatası: ${e.message}`)), 60 * 1000);
-    setInterval(() => checkAll().catch(e => console.warn(`[ALBUMS] kontrol hatası: ${e.message}`)), CHECK_MS);
+    setTimeout(() => checkAll().catch(e => ev("KONTROL", e.message, "error")), 60 * 1000);
+    setInterval(() => checkAll().catch(e => ev("KONTROL", e.message, "error")), CHECK_MS);
   }
 
   // Uygulama: ülkenin popüler albümleri (kapaklı liste, parçasız)
@@ -279,6 +288,84 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
       return res.json(a);
     } catch (e) {}
     res.status(404).json({ error: "Albüm bulunamadı" });
+  });
+
+  // ---- ADMIN: albüm durumu (panel › İzleme › Albümler) ----
+  app.get("/admin/albums/status", basicAuth, async (req, res) => {
+    try {
+      const now = Date.now();
+      const top = await redis.zrevrange(regionsKey, 0, 39, "WITHSCORES").catch(() => []);
+      const reqs = new Map();
+      for (let i = 0; i < top.length; i += 2) reqs.set(top[i], Number(top[i + 1]) || 0);
+      const topOrder = [...reqs.keys()];
+      const wanted = await redis.smembers(K.wanted).catch(() => []);
+      const listKeys = await redis.keys("albums:list:*").catch(() => []);
+      const locks = new Set(await redis.keys("albums:lock:*").catch(() => []));
+      let files = [];
+      try { files = fs.readdirSync(fileDir).filter(f => f.endsWith(".json")).map(f => f.slice(0, -5)); } catch (e) {}
+      // checkAll'un takip ettiği ülkeler (aynı kural)
+      const tracked = new Set([GLOBAL, ...[...new Set([...topOrder.slice(0, REGION_LIMIT), ...wanted])].filter(c => SUPPORTED.has(c)).slice(0, 25)]);
+      const ccs = new Set([...tracked, ...listKeys.map(k => k.split(":")[2]), ...files]);
+
+      const rows = [];
+      for (const cc of ccs) {
+        let list = null, inRedis = false, inFile = false;
+        try { const v = await redis.get(K.list(cc)); if (v) { list = JSON.parse(v); inRedis = true; } } catch (e) {}
+        try { const f = JSON.parse(fs.readFileSync(path.join(fileDir, `${cc}.json`), "utf-8")); inFile = true; if (!list) list = f; } catch (e) {}
+        const albums = (list && list.albums) || [];
+        let cachedItems = 0, itemFiles = 0;
+        if (albums.length) {
+          const vals = await redis.mget(...albums.map(a => K.item(a.id))).catch(() => []);
+          cachedItems = vals.filter(Boolean).length;
+          itemFiles = albums.filter(a => fs.existsSync(path.join(itemDir, `${a.id}.json`))).length;
+        }
+        const supported = cc === GLOBAL || SUPPORTED.has(cc);
+        const age = list && list.updatedAt ? now - list.updatedAt : null;
+        let status = "ok";
+        if (locks.has(K.lock(cc))) status = "fetching";
+        else if (!supported) status = "unsupported";
+        else if (!list) status = "missing";
+        else if (list.v !== LIST_V) status = "old_version";
+        else if (age > REFRESH_MS) status = "stale";
+        else if (!inRedis) status = "file_only";
+        rows.push({
+          cc, status, supported, tracked: tracked.has(cc), wanted: wanted.includes(cc), requests: reqs.get(cc) || 0,
+          inRedis, inFile, albumCount: albums.length, cachedItems, itemFiles,
+          updatedAt: (list && list.updatedAt) || null, v: (list && list.v) || 1,
+          sample: albums.slice(0, 3).map(a => `${a.artist} — ${a.title}`),
+        });
+      }
+      rows.sort((a, b) => (b.cc === GLOBAL) - (a.cc === GLOBAL) || b.requests - a.requests || a.cc.localeCompare(b.cc));
+      const unsupportedTop = topOrder.filter(c => !SUPPORTED.has(c)).slice(0, 20).map(cc => ({ cc, requests: reqs.get(cc) }));
+      const log = (await redis.lrange("albums:log", 0, 59).catch(() => []))
+        .map(s => { try { return JSON.parse(s); } catch (e) { return null; } }).filter(Boolean);
+      res.json({ now, refreshMs: REFRESH_MS, checkMs: CHECK_MS, listVersion: LIST_V, rows, unsupportedTop, log,
+        canRefresh: !!(isMaster && isMaster(req)) });
+    } catch (e) {
+      res.status(422).json({ error: e.message });
+    }
+  });
+
+  // ADMIN: bir ülkeden istek gelse ne döner (yan etkisiz /albums)
+  app.get("/admin/albums/test", basicAuth, async (req, res) => {
+    const cc = cc2(req.query.cc) || "US";
+    let list = SUPPORTED.has(cc) ? await readList(cc) : null;
+    const fallback = !list;
+    if (!list) list = await readList(GLOBAL);
+    res.json({ cc, supported: SUPPORTED.has(cc), served: (list && list.region) || null, fallback,
+      albumCount: ((list && list.albums) || []).length, updatedAt: (list && list.updatedAt) || null,
+      albums: ((list && list.albums) || []).slice(0, 12) });
+  });
+
+  // ADMIN: ülke listesini şimdi yenile (yalnız süper admin; arka planda çalışır)
+  app.post("/admin/albums/refresh", basicAuth, async (req, res) => {
+    if (!isMaster || !isMaster(req)) return res.status(403).json({ error: "Sadece süper admin" });
+    const cc = String(req.query.cc || "").toUpperCase();
+    if (cc !== GLOBAL && !SUPPORTED.has(cc)) return res.status(422).json({ error: "Bu ülke için YouTube Music listesi yok" });
+    if (await redis.exists(K.lock(cc)).catch(() => 0)) return res.json({ ok: true, already: true });
+    ev(cc, "panelden elle yenileme başlatıldı");
+    refreshCountry(cc).catch(() => {});
+    res.json({ ok: true });
   });
 };
 

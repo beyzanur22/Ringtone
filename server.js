@@ -1766,7 +1766,8 @@ app.use(async (req, res, next) => {
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
       req.path === "/admin/login-ips" || req.path === "/admin/active-users" || req.path === "/admin/visitor-stats" ||
-      req.path === "/admin/review-logs" || req.path === "/admin/rakipler") {
+      req.path === "/admin/review-logs" || req.path === "/admin/rakipler" ||
+      req.path.startsWith("/admin/albums/")) {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -4848,7 +4849,7 @@ const REGIONS_SEEN_HKEY = "top50:region_lastseen";  // ülke → son görülme z
 const WARM_REGION_LIMIT = 10;   // en ÇOK istek gelen bu kadar ülke ısıtılır (yük azaltma: eskiden 25)
 
 // POPÜLER ALBÜMLER — ülke başına haftada bir çekilir (albums.js); /albums ve /albums/:id
-require("./albums")(app, { redis, isPrimaryWorker, regionsKey: REGIONS_ZKEY, dataDir: path.join(__dirname, "data") });
+require("./albums")(app, { redis, isPrimaryWorker, regionsKey: REGIONS_ZKEY, dataDir: path.join(__dirname, "data"), basicAuth, isMaster: isMasterRequest });
 
 function trackActiveRegion(country) {
   if (!country || country === "UNKNOWN" || country.length !== 2) return;
