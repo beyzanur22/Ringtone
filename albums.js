@@ -190,8 +190,11 @@ async function buildCountry(cc) {
 
 module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey, dataDir }) {
   const fileDir = path.join(dataDir, "albums");
-  try { fs.mkdirSync(fileDir, { recursive: true }); } catch (e) {}
-  const countryOf = req => String(req.headers["cf-ipcountry"] || req.headers["x-country"] || "US").toUpperCase().slice(0, 2);
+  const itemDir = path.join(fileDir, "items");   // Redis boşalırsa albüm detayı buradan
+  try { fs.mkdirSync(itemDir, { recursive: true }); } catch (e) {}
+  // Önce uygulamanın bulduğu ülke (SIM → şebeke → IP), yoksa Cloudflare'in IP ülkesi
+  const cc2 = v => { const s = String(v || "").trim().toUpperCase(); return /^[A-Z]{2}$/.test(s) ? s : ""; };
+  const countryOf = req => cc2(req.headers["x-country"]) || cc2(req.headers["cf-ipcountry"]) || "US";
   const slim = a => ({ id: a.id, title: a.title, artist: a.artist, year: a.year, type: a.type, cover: a.cover, trackCount: a.tracks.length });
 
   async function readList(cc) {
@@ -211,6 +214,9 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
       for (const a of albums) multi.set(K.item(a.id), JSON.stringify(a), "EX", 30 * 24 * 3600);
       await multi.exec();
       fs.writeFileSync(path.join(fileDir, `${cc}.json`), JSON.stringify(list));
+      for (const a of albums) {
+        try { fs.writeFileSync(path.join(itemDir, `${a.id}.json`), JSON.stringify(a)); } catch (e) {}
+      }
       console.log(`[ALBUMS] ${cc}: ${albums.length} albüm (${Math.round((Date.now() - t0) / 1000)} sn)`);
     } catch (e) {
       console.warn(`[ALBUMS] ${cc} yenilenemedi, eski liste korunuyor: ${e.message}`);
@@ -261,6 +267,12 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     try {
       const v = await redis.get(K.item(id));
       if (v) { res.set("Cache-Control", "public, max-age=3600"); return res.json(JSON.parse(v)); }
+    } catch (e) {}
+    try {
+      const a = JSON.parse(fs.readFileSync(path.join(itemDir, `${id}.json`), "utf-8"));
+      redis.set(K.item(id), JSON.stringify(a), "EX", 30 * 24 * 3600).catch(() => {});
+      res.set("Cache-Control", "public, max-age=3600");
+      return res.json(a);
     } catch (e) {}
     res.status(404).json({ error: "Albüm bulunamadı" });
   });
