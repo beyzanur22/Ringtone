@@ -100,16 +100,38 @@ function parseAlbum(d, id) {
 }
 
 // ---- YouTube Music istekleri ----
-async function ytm(endpoint, body, gl) {
-  const res = await fetch(`${YTM_URL}${endpoint}?prettyPrint=false`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0", Origin: "https://music.youtube.com" },
-    body: JSON.stringify({ context: { client: { ...YTM_CLIENT, gl } }, ...body }),
-    signal: AbortSignal.timeout(20000),
+// IPv4 zorunlu: sunucuda IPv6 rotası takılınca fetch 20 sn bekleyip düşüyordu.
+const https = require("https");
+function postJson(url, payload, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const data = Buffer.from(JSON.stringify(payload));
+    const req = https.request(url, {
+      method: "POST", family: 4, timeout: timeoutMs,
+      headers: { "Content-Type": "application/json", "Content-Length": data.length, "User-Agent": "Mozilla/5.0", Origin: "https://music.youtube.com" },
+    }, res => {
+      const chunks = [];
+      res.on("data", c => chunks.push(c));
+      res.on("end", () => {
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf-8"))); } catch (e) { reject(e); }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("zaman aşımı")));
+    req.on("error", reject);
+    req.end(data);
   });
-  if (!res.ok) throw new Error(`YTM ${endpoint} ${res.status}`);
-  await sleep(GAP_MS);
-  return res.json();
+}
+async function ytm(endpoint, body, gl) {
+  const payload = { context: { client: { ...YTM_CLIENT, gl } }, ...body };
+  let last;
+  for (let i = 0; i < 3; i++) {                       // 3 deneme: 30 sn zaman aşımı, arada 2 / 6 sn
+    try {
+      const d = await postJson(`${YTM_URL}${endpoint}?prettyPrint=false`, payload, 30000);
+      await sleep(GAP_MS);
+      return d;
+    } catch (e) { last = e; await sleep(i ? 6000 : 2000); }
+  }
+  throw new Error(`YTM ${endpoint}: ${last && last.message}`);
 }
 const albumCache = new Map();
 async function getAlbum(id, cc) {
@@ -150,12 +172,18 @@ async function buildCountry(cc) {
   albumCache.clear();
   const artists = cc === GLOBAL ? await globalArtists() : (await chartArtists(cc)).slice(0, ARTIST_LIMIT);
   const gl = cc === GLOBAL ? "US" : cc;
+  console.log(`[ALBUMS] ${cc}: başladı (${artists.length} sanatçı)`);
   const out = [], seen = new Set();
+  let fails = 0;
   for (const ar of artists) {
     try {
       const a = await bestAlbum(ar, gl);
+      fails = 0;
       if (a && !seen.has(a.id)) { seen.add(a.id); out.push({ ...a, artist: a.artist || ar.name }); }
-    } catch (e) { console.warn(`[ALBUMS] ${cc} ${ar.name}: ${e.message}`); }
+    } catch (e) {
+      console.warn(`[ALBUMS] ${cc} ${ar.name}: ${e.message}`);
+      if (++fails >= 5) throw new Error("art arda 5 sanatçı alınamadı — YouTube erişimi sorunlu");
+    }
   }
   return out;
 }
