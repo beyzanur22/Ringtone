@@ -17,6 +17,7 @@ const MIN_ALBUMS = 5;                       // bundan azsa eski liste korunur
 const GAP_MS = 400;                         // YouTube'a istekler arası bekleme
 const K = { list: cc => `albums:list:${cc}`, item: id => `albums:item:${id}`, wanted: "albums:wanted", lock: cc => `albums:lock:${cc}` };
 const GLOBAL = "GLOBAL";                    // ülke listesi yoksa / desteklenmiyorsa gösterilen dünya listesi
+const LIST_V = 2;                           // 2: parça süreleri eklendi → eski listeler bir kez yenilenir
 // YouTube Music'in ülke listesi tuttuğu 68 ülke. Diğerleri sessizce dünya listesini döndürüyor → onlara GLOBAL.
 const SUPPORTED = new Set(("AR AU AT BE BO BR CA CL CO CR CZ DK DO EC EG SV EE FI FR DE GT HN HK HU IS IN ID IE IL IT JP KE " +
   "LU MY MX NL NZ NI NG NO PA PY PE PH PL PT RO RU SA RS SG ZA KR ES SE CH TW TZ TH TR UG UA AE GB US UY VN ZW").split(" "));
@@ -34,6 +35,8 @@ const first = (o, key) => { for (const v of walk(o, key)) return v; return undef
 const txt = r => ((r && r.runs) || []).map(x => x.text || "").join("");
 const colText = c => txt(((c || {}).musicResponsiveListItemFlexColumnRenderer || {}).text);
 const bigCover = u => String(u || "").replace(/=w\d+-h\d+[^/]*$/, "=w544-h544-l90-rj");
+// "3:45" / "1:02:10" → saniye
+const durSec = s => String(s || "").split(":").reduce((a, p) => (/^\d+$/.test(p) ? a * 60 + +p : NaN), 0) || 0;
 function playsNum(s) {
   const m = /([\d.]+)\s*([KMB]?)/.exec(s || "");
   return m ? parseFloat(m[1]) * ({ "": 1, K: 1e3, M: 1e6, B: 1e9 }[m[2]]) : 0;
@@ -87,7 +90,8 @@ function parseAlbum(d, id) {
   for (const r of walk(d, "musicResponsiveListItemRenderer")) {
     const videoId = ((r.playlistItemData || {}).videoId) || first(r, "videoId");
     const title = colText((r.flexColumns || [])[0]);
-    if (videoId && title) tracks.push({ videoId, title });
+    const dur = txt((((r.fixedColumns || [])[0] || {}).musicResponsiveListItemFixedColumnRenderer || {}).text);
+    if (videoId && title) tracks.push({ videoId, title, duration: durSec(dur) });
   }
   const yearM = /(\d{4})/.exec(sub);
   return {
@@ -209,7 +213,7 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     try {
       const albums = await buildCountry(cc);
       if (albums.length < MIN_ALBUMS) { console.warn(`[ALBUMS] ${cc}: sadece ${albums.length} albüm — eski liste korunuyor`); return; }
-      const list = { region: cc, updatedAt: Date.now(), albums: albums.map(slim) };
+      const list = { v: LIST_V, region: cc, updatedAt: Date.now(), albums: albums.map(slim) };
       const multi = redis.multi().set(K.list(cc), JSON.stringify(list));
       for (const a of albums) multi.set(K.item(a.id), JSON.stringify(a), "EX", 30 * 24 * 3600);
       await multi.exec();
@@ -236,7 +240,7 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     const all = [GLOBAL, ...[...new Set([...(regions || []), ...(wanted || [])])].filter(c => SUPPORTED.has(c)).slice(0, 25)];
     for (const cc of all) {
       const cur = await readList(cc);
-      if (!cur || Date.now() - (cur.updatedAt || 0) > REFRESH_MS) await refreshCountry(cc);
+      if (!cur || cur.v !== LIST_V || Date.now() - (cur.updatedAt || 0) > REFRESH_MS) await refreshCountry(cc);
     }
   }
   if (isPrimaryWorker) {
@@ -278,4 +282,4 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
   });
 };
 
-module.exports._test = { parseCharts, parseArtist, parseAlbum, playsNum, bigCover };
+module.exports._test = { parseCharts, parseArtist, parseAlbum, playsNum, bigCover, durSec };
