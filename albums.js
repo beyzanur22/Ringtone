@@ -234,8 +234,10 @@ module.exports = function setupAlbums(app, { redis, isPrimaryWorker, regionsKey,
     }
   }
   if (isPrimaryWorker) {
-    setTimeout(() => checkAll().catch(() => {}), 60 * 1000);
-    setInterval(() => checkAll().catch(() => {}), CHECK_MS);
+    // Yeniden başlatmada yarıda kalan çekimin kilidi kalmasın (yoksa o ülke 1 saat atlanırdı)
+    redis.keys("albums:lock:*").then(k => k.length && redis.del(...k)).catch(() => {});
+    setTimeout(() => checkAll().catch(e => console.warn(`[ALBUMS] kontrol hatası: ${e.message}`)), 60 * 1000);
+    setInterval(() => checkAll().catch(e => console.warn(`[ALBUMS] kontrol hatası: ${e.message}`)), CHECK_MS);
   }
 
   // Uygulama: ülkenin popüler albümleri (kapaklı liste, parçasız)
