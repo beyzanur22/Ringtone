@@ -1766,7 +1766,7 @@ app.use(async (req, res, next) => {
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
       req.path === "/admin/login-ips" || req.path === "/admin/active-users" || req.path === "/admin/visitor-stats" ||
-      req.path === "/admin/review-logs") {
+      req.path === "/admin/review-logs" || req.path === "/admin/rakipler") {
     return next();
   }
   // download/mp4 ve send-notification artık auth gerektirir (güvenlik düzeltmesi)
@@ -6362,6 +6362,7 @@ app.get("/admin", (req, res) => {
       <a class="card" href="/playlist-cache"><div class="icon">🎶</div><div class="card-info"><h3>Playlist Cache</h3><p>Top 50 önbellekleme</p></div></a>
       <a class="card" href="/content-filter"><div class="icon">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
       <a class="card" href="/health"><div class="icon">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
+      <a class="card" href="/admin/rakipler"><div class="icon">📊</div><div class="card-info"><h3>Müzik İndirme Rakipleri</h3><p>15 ülke · yerel adlar ve logolar</p></div></a>
     </div>`;
   // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
   const appsBox = !scopeIds.length ? "" : `
@@ -6525,6 +6526,18 @@ app.post("/admin/login", express.json(), (req, res) => {
   res.setHeader("Set-Cookie", `psess=${encodeURIComponent(signSession(sess.user))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`);
   res.json({ ok: true, user: sess.user });
 });
+// MÜZİK İNDİRME RAKİPLERİ — statik rapor, sadece süper kullanıcı (kaynak: ~/Desktop/MP3-Kelime-Arastirmasi/tools/sayfa.py)
+app.get("/admin/rakipler", (req, res) => {
+  const sess = verifySession(readCookie(req, "psess"));
+  res.setHeader("Cache-Control", "no-store");
+  if (!sess) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(loginPageHtml());
+  }
+  if (!(sess.apps === "all" || sess.super)) return res.redirect("/admin");
+  res.sendFile(path.join(__dirname, "muzik_indirme_rakipleri.html"));
+});
+
 app.get("/admin/logout", (req, res) => {
   res.setHeader("Set-Cookie", "psess=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
   res.redirect("/admin/panel");
