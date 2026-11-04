@@ -6340,98 +6340,188 @@ app.get("/admin", (req, res) => {
   const scopeIds = isSuper
     ? Object.keys(apps).filter(id => id !== "default")
     : (Array.isArray(sess.apps) ? sess.apps.filter(id => apps[id]) : []);
+  const _ic = {
+    music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
+    list: '<path d="M3 6h12M3 12h12M3 18h7"/><path d="M19 15V5l3 1"/><circle cx="16" cy="17" r="3"/>',
+    filter: '<path d="M4 4h16l-6 8v6l-4 2v-8z"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/><path d="M7 12h3l1-2 2 4 1-2h3"/>',
+    chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    chip: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>',
+    pulse: '<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    chev: '<path d="m9 6 6 6-6 6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+  };
+  const svg = (k) => `<svg viewBox="0 0 24 24">${_ic[k]}</svg>`;
   const appCards = scopeIds.map(id => {
     const a = apps[id];
+    const nm = a.name || id;
     return `
-      <a class="app" href="/admin/${_esc(id)}/panel">
-        <span class="dot" style="background:${_esc(a.brandPrimary || "#22c55e")}"></span>
-        <span class="app-txt"><b>${_esc(a.name || id)}</b><small>${_esc(a.packageName || "")}</small></span>
-        <span class="arrow">›</span>
+      <a class="app" href="/admin/${_esc(id)}/panel" style="--c:${_esc(a.brandPrimary || "#22c55e")}" data-k="${_esc((nm + " " + (a.packageName || "") + " " + id).toLowerCase())}">
+        <span class="av">${_esc(nm.trim().charAt(0).toUpperCase())}</span>
+        <span class="app-txt"><b>${_esc(nm)}</b><small>${_esc(a.packageName || "")}</small></span>
+        <span class="ar">${svg("chev")}</span>
       </a>`;
   }).join("");
   // Altyapı kartları — SADECE süper kullanıcılar (beyza/olcay) görür
   const superCards = !isSuper ? "" : `
-    <a class="card main" href="/admin/panel">
-      <div class="icon">🎛️</div>
-      <div class="card-info"><h3>Tüm Uygulamalar Kontrol</h3><p>Config, popup ve kanal yönetimi — tüm uygulamalar</p></div>
-      <span class="arrow">›</span>
+    <a class="hero" href="/admin/panel">
+      <div class="hic">${svg("sliders")}</div>
+      <div class="card-info"><h2>Tüm Uygulamalar Kontrol</h2><p>Config, popup ve kanal yönetimi — tüm uygulamalar</p>
+        <div class="chips"><span class="chip">Config</span><span class="chip">Popup</span><span class="chip">Kanallar</span></div></div>
+      <span class="go">${svg("arrow")}</span>
     </a>
-    <div class="section">Araçlar</div>
-    <div class="grid">
-      <a class="card" href="/cache-panel"><div class="icon">💾</div><div class="card-info"><h3>Cache Panel</h3><p>Media önbelleği yönetimi</p></div></a>
-      <a class="card" href="/playlist-cache"><div class="icon">🎶</div><div class="card-info"><h3>Playlist Cache</h3><p>Top 50 önbellekleme</p></div></a>
-      <a class="card" href="/content-filter"><div class="icon">🎚️</div><div class="card-info"><h3>İçerik Filtresi</h3><p>Canlı yayın engeli & süre limiti</p></div></a>
-      <a class="card" href="/health"><div class="icon">❤️</div><div class="card-info"><h3>Health Check</h3><p>Sistem sağlık durumu</p></div></a>
-      <a class="card" href="/admin/rakipler"><div class="icon">📊</div><div class="card-info"><h3>Müzik İndirme Rakipleri</h3><p>15 ülke · yerel adlar ve logolar</p></div></a>
+    <div class="section"><h3>Araçlar</h3></div>
+    <div class="tools">
+      <a class="tool" href="/cache-panel" style="--c:#38bdf8"><div class="row"><div class="ti">${svg("db")}</div></div><div><h4>Cache Panel</h4><p>Media önbelleği yönetimi</p></div></a>
+      <a class="tool" href="/playlist-cache" style="--c:#a78bfa"><div class="row"><div class="ti">${svg("list")}</div></div><div><h4>Playlist Cache</h4><p>Top 50 önbellekleme</p></div></a>
+      <a class="tool" href="/content-filter" style="--c:#fbbf24"><div class="row"><div class="ti">${svg("filter")}</div></div><div><h4>İçerik Filtresi</h4><p>Canlı yayın engeli & süre limiti</p></div></a>
+      <a class="tool" href="/health" style="--c:#22c55e"><div class="row"><div class="ti">${svg("heart")}</div><span class="tag">● Canlı</span></div><div><h4>Health Check</h4><p>Sistem sağlık durumu</p></div></a>
+      <a class="tool" href="/admin/rakipler" style="--c:#f472b6"><div class="row"><div class="ti">${svg("chart")}</div><span class="tag">22 pazar</span></div><div><h4>Müzik İndirme Rakipleri</h4><p>Ülkeye göre aramalar, yerel adlar ve logolar</p></div></a>
     </div>`;
   // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
   const appsBox = !scopeIds.length ? "" : `
-    <div class="section">Uygulamalar</div>
-    <button type="button" class="card apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}">
-      <div class="icon">📱</div>
-      <div class="card-info"><h3>Uygulamalar <span class="count">${scopeIds.length}</span></h3><p>Tek tek uygulama paneline girmek için tıkla</p></div>
-      <span class="chev">▾</span>
+    <div class="section"><h3>Uygulamalar</h3></div>
+    <button type="button" class="apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}">
+      <div class="ti" style="--c:#8b5cf6">${svg("phone")}</div>
+      <div class="card-info"><h4>Uygulamalar <span class="count" id="appsCount">${scopeIds.length}</span></h4><p>Tek tek uygulama paneline girmek için tıkla</p></div>
+      <span class="chev">${svg("down")}</span>
     </button>
-    <div class="apps-list" id="appsList" ${isSuper ? "hidden" : ""}>${appCards}</div>`;
+    <div class="apps-wrap" id="appsList" ${isSuper ? "hidden" : ""}>
+      ${scopeIds.length > 6 ? `<label class="search">${svg("search")}<input id="appsSearch" placeholder="Uygulama veya paket ara…" autocomplete="off"></label>` : ""}
+      <div class="apps">${appCards}</div>
+      <div class="empty" id="appsEmpty">Eşleşen uygulama yok</div>
+    </div>`;
+  const _u = String(sess.user || "");
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111114">
   <title>Müzik Kontrol</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --line: rgba(255,255,255,0.12); --dim: rgba(255,255,255,0.6); --card: #27272c; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #1e1e22; color: #fff; min-height: 100vh; padding: 48px 20px; }
-    .wrap { max-width: 860px; margin: 0 auto; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
-    .logo { font-size: 28px; font-weight: 800; letter-spacing: -0.3px; }
-    .subtitle { color: var(--dim); font-size: 13px; margin-top: 4px; }
-    .user { display: flex; align-items: center; gap: 10px; font-size: 14px; }
-    .user b { font-weight: 700; }
-    .user a { color: #fff; text-decoration: none; border: 1px solid var(--line); padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; transition: all .15s; }
-    .user a:hover { background: #fff; color: #000; }
-    .section { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--dim); margin: 32px 0 12px; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; text-decoration: none; color: #fff; display: flex; align-items: center; gap: 16px; transition: border-color .15s, background .15s, transform .15s; }
-    .card:hover { border-color: rgba(255,255,255,0.5); background: #2f2f35; transform: translateY(-1px); }
-    .icon { width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    :root { --bg: #111114; --panel: #18181c; --card: #1f1f24; --card-h: #26262c; --line: rgba(255,255,255,.08); --line-h: rgba(255,255,255,.18);
+      --ink: #f4f4f6; --dim: #9a9aa6; --mute: #6b6b76; --acc: #8b5cf6; --acc2: #ec4899; --ok: #22c55e; --bad: #f87171; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Arial, sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+    body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 420px; pointer-events: none;
+      background: radial-gradient(600px 260px at 15% -40px, rgba(139,92,246,.18), transparent 70%), radial-gradient(500px 220px at 85% -60px, rgba(236,72,153,.10), transparent 70%); }
+    .wrap { position: relative; max-width: 1040px; margin: 0 auto; padding: 28px 20px 40px; }
+    svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, var(--acc), var(--acc2)); box-shadow: 0 6px 20px rgba(139,92,246,.35); color: #fff; }
+    .mark svg { width: 22px; height: 22px; }
+    .logo { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
+    .brand small { display: block; font-size: 12px; color: var(--mute); }
+    .user { display: flex; align-items: center; gap: 8px; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--dim); background: var(--panel); border: 1px solid var(--line); padding: 7px 12px; border-radius: 999px; }
+    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--mute); }
+    .pill.ok .pulse { background: var(--ok); animation: p 2s infinite; }
+    .pill.bad .pulse { background: var(--bad); }
+    @keyframes p { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 70%, 100% { box-shadow: 0 0 0 7px rgba(34,197,94,0); } }
+    .me { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); padding: 4px; border-radius: 999px; }
+    .ava { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; }
+    .me b { font-size: 13px; font-weight: 600; padding-right: 2px; }
+    .me a { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); text-decoration: none; transition: .15s; }
+    .me a:hover { background: rgba(239,68,68,.15); color: var(--bad); }
+    .me a svg { width: 16px; height: 16px; }
+    .hello { margin: 36px 0 18px; }
+    .hello h1 { font-size: 28px; font-weight: 750; letter-spacing: -.6px; }
+    .subtitle { color: var(--dim); font-size: 14px; margin-top: 4px; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+    .stat small { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mute); font-weight: 600; }
+    .stat small svg { width: 14px; height: 14px; }
+    .stat b { display: block; font-size: 22px; font-weight: 750; letter-spacing: -.4px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .stat b em { font-style: normal; font-size: 13px; color: var(--dim); font-weight: 600; margin: 0 4px 0 1px; }
+    .stat.ok b { color: var(--ok); } .stat.bad b { color: var(--bad); }
+    .hero { display: flex; align-items: center; gap: 18px; padding: 22px 24px; border-radius: 18px; text-decoration: none; color: var(--ink);
+      background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(135deg, rgba(139,92,246,.7), rgba(236,72,153,.5), rgba(255,255,255,.06)) border-box; border: 1px solid transparent; transition: transform .15s; }
+    .hero:hover { transform: translateY(-2px); }
+    .hic { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(236,72,153,.2)); color: #c4b5fd; flex-shrink: 0; }
+    .hic svg { width: 26px; height: 26px; }
     .card-info { flex: 1; min-width: 0; }
-    .card-info h3 { font-size: 15px; font-weight: 700; margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
-    .card-info p { font-size: 13px; color: var(--dim); }
-    .card.main { background: #fff; color: #000; border-color: #fff; padding: 22px 24px; }
-    .card.main:hover { background: #f1f1f1; }
-    .card.main .icon { background: #1e1e22; border-color: #1e1e22; }
-    .card.main .card-info h3 { font-size: 18px; }
-    .card.main .card-info p { color: rgba(0,0,0,0.6); }
-    .arrow { font-size: 26px; line-height: 1; opacity: .5; }
-    .apps-toggle { width: 100%; font: inherit; text-align: left; cursor: pointer; }
-    .count { background: #fff; color: #000; font-size: 12px; font-weight: 800; padding: 1px 8px; border-radius: 999px; }
-    .chev { font-size: 18px; color: var(--dim); transition: transform .2s; }
+    .hero h2 { font-size: 18px; font-weight: 700; letter-spacing: -.2px; }
+    .hero p, .apps-toggle p { font-size: 13px; color: var(--dim); margin-top: 3px; }
+    .chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+    .chip { font-size: 12px; font-weight: 600; color: #ddd6fe; background: rgba(139,92,246,.14); border: 1px solid rgba(139,92,246,.25); padding: 3px 10px; border-radius: 999px; }
+    .go { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #111; flex-shrink: 0; }
+    .section { margin: 34px 0 12px; }
+    .section h3 { font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: .2px; }
+    .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .tool { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); text-decoration: none; color: var(--ink); transition: border-color .15s, background .15s, transform .15s; }
+    .tool:hover { background: var(--card-h); border-color: var(--line-h); transform: translateY(-2px); }
+    .ti { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); flex-shrink: 0; }
+    .tool h4, .apps-toggle h4 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .tool p { font-size: 12.5px; color: var(--dim); margin-top: 2px; line-height: 1.45; }
+    .row { display: flex; align-items: center; }
+    .tag { margin-left: auto; font-size: 10.5px; font-weight: 700; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); padding: 2px 7px; border-radius: 6px; }
+    .apps-toggle { width: 100%; font: inherit; color: var(--ink); text-align: left; cursor: pointer; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); transition: border-color .15s, background .15s; }
+    .apps-toggle:hover { background: var(--card-h); border-color: var(--line-h); }
+    .apps-toggle[aria-expanded="true"] { border-color: rgba(139,92,246,.45); }
+    .count { font-size: 11px; font-weight: 800; color: var(--ink); background: var(--card-h); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
+    .chev { color: var(--dim); transition: transform .2s; display: grid; }
     .apps-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
-    .apps-toggle[aria-expanded="true"] { border-color: rgba(255,255,255,0.5); }
-    .apps-list { margin-top: 10px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); background: var(--card); }
-    .apps-list[hidden] { display: none; }
-    .app { display: flex; align-items: center; gap: 12px; padding: 14px 18px; color: #fff; text-decoration: none; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); transition: background .15s; }
-    .app:hover { background: #fff; color: #000; }
-    .app:hover small { color: rgba(0,0,0,0.55); }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+    .apps-wrap { margin-top: 10px; }
+    .apps-wrap[hidden] { display: none; }
+    .search { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; height: 38px; margin-bottom: 10px; color: var(--mute); transition: border-color .15s; }
+    .search:focus-within { border-color: var(--acc); color: var(--ink); }
+    .search svg { width: 16px; height: 16px; }
+    .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 13px; }
+    .apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .app { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); text-decoration: none; color: var(--ink); transition: .15s; }
+    .app:hover { background: var(--card-h); border-color: var(--line-h); }
+    .av { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; font-weight: 800; color: #fff; background: var(--c); flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); }
     .app-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .app-txt b { font-size: 14px; font-weight: 700; }
-    .app-txt small { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); color: rgba(255,255,255,0.35); font-size: 12px; text-align: center; }
+    .app-txt b { font-size: 14px; font-weight: 650; }
+    .app-txt small { font-size: 11.5px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
+    .ar { color: var(--mute); display: grid; transition: transform .15s, color .15s; }
+    .app:hover .ar { color: var(--ink); transform: translateX(2px); }
+    .empty { display: none; text-align: center; color: var(--mute); font-size: 13px; padding: 24px; border: 1px dashed var(--line); border-radius: 14px; }
+    .footer { margin-top: 44px; color: var(--mute); font-size: 12px; text-align: center; }
+    @media (max-width: 860px) { .tools, .apps { grid-template-columns: repeat(2, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) {
+      .wrap { padding: 20px 16px 32px; }
+      .tools, .apps { grid-template-columns: 1fr; }
+      .hello h1 { font-size: 23px; }
+      .pill { display: none; }
+      .hero { padding: 18px; gap: 14px; align-items: flex-start; }
+      .hic { width: 44px; height: 44px; }
+      .go { display: none; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <div>
-        <div class="logo">🎵 Müzik Kontrol</div>
-        <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+      <div class="brand">
+        <div class="mark">${svg("music")}</div>
+        <div><div class="logo">Müzik Kontrol</div><small>music.cevapla.tv</small></div>
       </div>
-      <div class="user">👤 <b>${_esc(sess.user)}</b><a href="/admin/logout">Çıkış Yap</a></div>
+      <div class="user">
+        <span class="pill" id="sysPill"><span class="pulse"></span><span id="sysTxt">Kontrol ediliyor…</span></span>
+        <div class="me"><span class="ava">${_esc(_u.charAt(0).toUpperCase() || "?")}</span><b>${_esc(_u)}</b><a href="/admin/logout" title="Çıkış Yap" aria-label="Çıkış Yap">${svg("out")}</a></div>
+      </div>
     </header>
+
+    <div class="hello">
+      <h1 id="greet">Merhaba, ${_esc(_u)}</h1>
+      <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><small>${svg("clock")}Çalışma süresi</small><b id="stUp">—</b></div>
+      <div class="stat"><small>${svg("chip")}Bellek</small><b id="stRam">—</b></div>
+      <div class="stat"><small>${svg("phone")}Uygulamalar</small><b>${scopeIds.length}</b></div>
+      <div class="stat" id="stHealthBox"><small>${svg("pulse")}Sağlık</small><b id="stHealth">—</b></div>
+    </div>
 
     ${superCards}
     ${appsBox}
@@ -6451,14 +6541,39 @@ app.get("/admin", (req, res) => {
         list.hidden = !open;
         if (open) btn.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
+      // Liste içinde arama (yalnızca görünümü süzer)
+      var q = document.getElementById('appsSearch');
+      if (!q) return;
+      var items = list.querySelectorAll('.app'), cnt = document.getElementById('appsCount'), empty = document.getElementById('appsEmpty');
+      q.addEventListener('input', function(){
+        var s = q.value.trim().toLowerCase(), n = 0;
+        items.forEach(function(el){ var on = el.getAttribute('data-k').indexOf(s) > -1; el.style.display = on ? '' : 'none'; if (on) n++; });
+        cnt.textContent = n; empty.style.display = n ? 'none' : 'block';
+      });
+    })();
+    // Selamlama + tarih
+    (function(){
+      var h = new Date().getHours(), g = document.getElementById('greet');
+      g.textContent = (h < 12 ? 'Günaydın' : h < 18 ? 'İyi günler' : 'İyi akşamlar') + ', ' + ${JSON.stringify(_u).replace(/</g, "\\u003c")};
     })();
     // Sunucu uptime göster
     fetch('/health').then(r=>r.json()).then(d=>{
       const h = Math.floor(d.uptimeSeconds/3600);
       const m = Math.floor((d.uptimeSeconds%3600)/60);
       document.querySelector('.subtitle').textContent =
-        'Admin Paneli · Uptime: ' + h + 's ' + m + 'dk · RAM: ' + d.memoryRssMB + ' MB';
-    }).catch(()=>{});
+        new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · Admin Paneli';
+      document.getElementById('stUp').innerHTML = h + '<em>s</em>' + m + '<em>dk</em>';
+      document.getElementById('stRam').innerHTML = d.memoryRssMB + '<em>MB</em>';
+      document.getElementById('stHealth').textContent = 'Tamam';
+      document.getElementById('stHealthBox').classList.add('ok');
+      document.getElementById('sysPill').classList.add('ok');
+      document.getElementById('sysTxt').textContent = 'Sistem çalışıyor';
+    }).catch(()=>{
+      document.getElementById('stHealth').textContent = 'Yanıt yok';
+      document.getElementById('stHealthBox').classList.add('bad');
+      document.getElementById('sysPill').classList.add('bad');
+      document.getElementById('sysTxt').textContent = 'Sağlık kontrolü başarısız';
+    });
   </script>
 </body>
 </html>`);
