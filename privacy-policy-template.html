@@ -20,6 +20,8 @@
         a { color: #E11D2A; word-break: break-word; }
         .contact { margin-top: 40px; padding: 20px 22px; background: #fdeaea; border-radius: 12px; }
         .contact a { font-weight: 600; }
+        .ident { margin: 14px 0 22px; padding: 14px 18px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px; color: #374151; }
+        .ident div { margin: 3px 0; }
         footer { margin-top: 48px; text-align: center; color: #9ca3af; font-size: 13px; }
     </style>
 </head>
@@ -27,11 +29,16 @@
     <div class="container">
         <h1>Privacy Policy</h1>
         <p class="date">Effective Date: {{DATE}}</p>
-        <p class="date">Application: {{APP_NAME}} &nbsp;&middot;&nbsp; Package name: {{PACKAGE}}</p>
-        <p class="intro">Welcome to {{APP_NAME}}. This Privacy Policy explains how we collect, use, and protect your information when you use our mobile application.</p>
+        <!--email_off-->
+        <div class="ident">
+            <div><strong>Application:</strong> {{APP_NAME}}</div>
+            <div><strong>Package name:</strong> {{PACKAGE}}</div>
+            {{DEVELOPER_ROWS}}<div><strong>Contact:</strong> <a href="mailto:{{EMAIL}}">{{EMAIL}}</a></div>
+        </div>
+        <p class="intro">This Privacy Policy applies to the {{APP_NAME}} mobile application ({{PACKAGE}}) published on Google Play by {{OWNER}} ("we", "us", "our"). It explains how we collect, use, and protect your information when you use the app.</p>
 
         <h2>1. Introduction</h2>
-        <p>Welcome to {{APP_NAME}} (package name: {{PACKAGE}}). This Privacy Policy explains how we collect, use, and protect your information when you use our mobile application. {{APP_NAME}} lets you search for music and videos, play them in the background, save them to your device for offline listening, and organize them into playlists.</p>
+        <p>{{APP_NAME}} (package name: {{PACKAGE}}) is developed and operated by {{OWNER}}, who is responsible for the processing of your information described in this Privacy Policy. This Privacy Policy explains how we collect, use, and protect your information when you use our mobile application. {{APP_NAME}} lets you search for music and videos, play them in the background, save them to your device for offline listening, and organize them into playlists.</p>
 
         <h2>2. Information We Collect</h2>
         <p class="sub">Information you provide:</p>
@@ -134,10 +141,12 @@
         <h2>13. Contact</h2>
         <p>For questions or requests regarding this Privacy Policy or your data, you can contact us:</p>
         <div class="contact">
-            Contact / Support: <a href="mailto:{{EMAIL}}">{{EMAIL}}</a>
+            {{DEVELOPER_ROWS}}<div><strong>Application:</strong> {{APP_NAME}} ({{PACKAGE}})</div>
+            <div><strong>Contact / Support:</strong> <a href="mailto:{{EMAIL}}">{{EMAIL}}</a></div>
         </div>
 
-        <footer>© {{YEAR}} {{APP_NAME}}. All rights reserved.</footer>
+        <footer>{{APP_NAME}} &middot; © {{YEAR}} {{OWNER}}. All rights reserved.</footer>
+        <!--/email_off-->
     </div>
 </body>
 </html>

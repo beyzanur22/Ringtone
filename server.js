@@ -3551,12 +3551,15 @@ app.post("/admin/privacy-policies", basicAuth, express.json(), (req, res) => {
     const appName = String((req.body || {}).appName || "").trim();
     const packageName = String((req.body || {}).packageName || "").trim();
     const email = String((req.body || {}).email || "").trim();
+    const developerName = String((req.body || {}).developerName || "").trim();
+    const developerAddress = String((req.body || {}).developerAddress || "").trim();
+    if (developerName.length > 120 || developerAddress.length > 200) return res.status(422).json({ error: "Geliştirici adı/adresi çok uzun" });
     if (!appName || appName.length > 80) return res.status(422).json({ error: "Uygulama adı zorunlu (en fazla 80 karakter)" });
     if (!PACKAGE_RE.test(packageName)) return res.status(422).json({ error: "Geçersiz paket adı (ör. app.vupvup.descargamusica)" });
     if (!EMAIL_RE.test(email)) return res.status(422).json({ error: "Geçersiz e-posta" });
     const all = getPrivacyPolicies();
     const now = new Date().toISOString();
-    all[packageName] = { appName, packageName, email, createdAt: (all[packageName] || {}).createdAt || now, updatedAt: now };
+    all[packageName] = { appName, packageName, email, developerName, developerAddress, createdAt: (all[packageName] || {}).createdAt || now, updatedAt: now };
     savePrivacyPolicies(all);
     res.json({ ok: true, policy: { ...all[packageName], url: privacyUrl(req, packageName) } });
   } catch (e) {
@@ -3583,6 +3586,9 @@ app.get("/privacy/:pkg", (req, res) => {
     APP_NAME: escapeHtml(p.appName),
     PACKAGE: escapeHtml(p.packageName),
     EMAIL: escapeHtml(p.email),
+    OWNER: escapeHtml(p.developerName || p.appName),
+    DEVELOPER_ROWS: (p.developerName ? `<div><strong>Developer:</strong> ${escapeHtml(p.developerName)}</div>\n            ` : "") +
+      (p.developerAddress ? `<div><strong>Address:</strong> ${escapeHtml(p.developerAddress)}</div>\n            ` : ""),
     DATE: d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
     YEAR: String(d.getFullYear())
   };
