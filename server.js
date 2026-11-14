@@ -1766,6 +1766,7 @@ app.use(async (req, res, next) => {
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
       req.path === "/admin/login-ips" || req.path === "/admin/active-users" || req.path === "/admin/visitor-stats" ||
+      req.path === "/admin/stats-series" ||
       req.path === "/admin/review-logs" || req.path === "/admin/rakipler" ||
       req.path.startsWith("/admin/albums/")) {
     return next();
