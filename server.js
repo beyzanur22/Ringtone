@@ -5664,7 +5664,7 @@ app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
 // Aktif kullanıcı zaman serisi (panel grafikleri) — stats_series.js
 require("./stats_series")(app, {
   redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
-  PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey,
+  PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp,
 });
 
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────

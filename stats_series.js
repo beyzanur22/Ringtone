@@ -47,7 +47,7 @@ const RANGES = {
 
 module.exports = function (app, deps) {
   const { redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
-    PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey } = deps;
+    PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp } = deps;
 
   redis.defineCommand("statsAgg", { numberOfKeys: 1, lua: AGG_LUA });
 
@@ -64,18 +64,19 @@ module.exports = function (app, deps) {
       p.zcount(presenceZKeyApp(scope), from, "+inf");
       p.zcount(presenceModeZKey("ringtone", scope), from, "+inf");
       p.zcount(presenceModeZKey("youtube", scope), from, "+inf");
+      p.zcount(presenceExtractorZKeyApp("newpipe", scope), from, "+inf");
+      p.zcount(presenceExtractorZKeyApp("backend", scope), from, "+inf");
     }
     const r = (await p.exec()).map(([e, v]) => (e ? 0 : Number(v) || 0));
     const rows = {};
     [null, ...ids].forEach((scope, i) => {
-      rows[scope || "all"] = { t: r[i * 3], r: r[i * 3 + 1], y: r[i * 3 + 2] };
+      const o = i * 5;
+      // n: NewPipe (cihazda çözüm), b: Backend API
+      rows[scope || "all"] = { t: r[o], r: r[o + 1], y: r[o + 2], n: r[o + 3], b: r[o + 4] };
     });
     const sum = (f) => ids.reduce((a, id) => a + rows[id][f], 0);
-    rows.default = {
-      t: Math.max(0, rows.all.t - sum("t")),
-      r: Math.max(0, rows.all.r - sum("r")),
-      y: Math.max(0, rows.all.y - sum("y")),
-    };
+    rows.default = {};
+    ["t", "r", "y", "n", "b"].forEach(f => { rows.default[f] = Math.max(0, rows.all[f] - sum(f)); });
 
     // Ülke kırılımı — cihaz kaydındaki ülke + uygulama
     const known = new Set(ids);
@@ -127,7 +128,7 @@ module.exports = function (app, deps) {
           if (f.startsWith("c|")) pt.c[f.slice(2)] = Number(v) || 0;
           else pt[f] = Number(v) || 0;
         }
-        pt.tMax = pt.t; pt.rMax = pt.r; pt.yMax = pt.y;
+        pt.tMax = pt.t; pt.rMax = pt.r; pt.yMax = pt.y; pt.nMax = pt.n; pt.bMax = pt.b;
         pt.cMax = pt.c;
       } else {
         const n = Number(h._n) || 1;
@@ -141,8 +142,10 @@ module.exports = function (app, deps) {
         }
         pt.samples = n;
       }
+      // n/b eski kayıtlarda yok → null (grafikte boşluk)
       ["t", "r", "y"].forEach(f => { if (pt[f] == null) pt[f] = 0; if (pt[f + "Max"] == null) pt[f + "Max"] = 0; });
       pt.u = Math.max(0, Math.round((pt.t - pt.r - pt.y) * 10) / 10);
+      pt.xu = pt.n == null || pt.b == null ? null : Math.max(0, Math.round((pt.t - pt.n - pt.b) * 10) / 10);
       return pt;
     });
   }
