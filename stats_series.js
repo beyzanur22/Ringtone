@@ -47,7 +47,8 @@ const RANGES = {
 
 module.exports = function (app, deps) {
   const { redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
-    PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp } = deps;
+    PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp,
+    visHourKey, visDayKey, visCcKey, visHourStr, visDayStr } = deps;
 
   redis.defineCommand("statsAgg", { numberOfKeys: 1, lua: AGG_LUA });
 
@@ -225,6 +226,69 @@ module.exports = function (app, deps) {
     } catch (e) {
       console.error("[STATS] seri hatası:", e.message);
       res.status(500).json({ error: "Seri hatası: " + e.message });
+    }
+  });
+
+  /* GET /admin/visitor-series?range=24h|7d|30d&appId=all|default|<id>
+     Kaç farklı kişi girdi: saat (24h) ya da gün (7d/30d, UTC) başına, ülke kırılımlı.
+     Kaynak: ziyaretçi HLL'leri (vis:h / vis:d). Toplamlar tekilleştirilmiş (PFCOUNT birleşimi). */
+  const visCache = new Map();
+  app.get("/admin/visitor-series", basicAuth, async (req, res) => {
+    try {
+      const range = ["24h", "7d", "30d"].includes(req.query.range) ? req.query.range : "24h";
+      const bound = resolveAppFromKey(req.headers["x-app-key"]);
+      const master = !bound && isMasterRequest(req);
+      if (!bound && !master) return res.status(403).json({ error: "yetkisiz" });
+      const all = getApps();
+      let scope = bound;
+      if (!scope) {
+        const raw = String(req.query.appId || "all").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+        scope = raw === "all" || raw === "default" || all[raw] ? raw : null;
+        if (!scope) return res.status(400).json({ error: "bilinmeyen uygulama" });
+      }
+      const appIds = scope === "all" ? Object.keys(all) : [scope];
+      const ck = scope + "|" + range;
+      const hit = visCache.get(ck);
+      if (hit && Date.now() - hit.at < 60000) return res.json(hit.data);
+
+      const nowMs = Date.now();
+      const unit = range === "24h" ? "hour" : "day";
+      const n = range === "24h" ? 24 : range === "7d" ? 7 : 30;
+      const buckets = [];
+      for (let i = n - 1; i >= 0; i--) {
+        const ms = unit === "hour" ? nowMs - i * 3600000 : nowMs - i * 86400000;
+        const id = unit === "hour" ? visHourStr(ms) : visDayStr(ms);
+        const ts = unit === "hour"
+          ? Date.UTC(+id.slice(0, 4), +id.slice(4, 6) - 1, +id.slice(6, 8), +id.slice(8, 10))
+          : Date.UTC(+id.slice(0, 4), +id.slice(4, 6) - 1, +id.slice(6, 8));
+        buckets.push({ id, ts, day: unit === "hour" ? id.slice(0, 8) : id });
+      }
+      const keyOf = (a, b, cc) => (unit === "hour" ? visHourKey(a, b.id, cc) : visDayKey(a, b.id, cc));
+
+      // Aralıkta görülen ülkeler
+      const days = [...new Set(buckets.map(b => b.day))];
+      const cp = redis.pipeline();
+      appIds.forEach(a => days.forEach(d => cp.smembers(visCcKey(a, d))));
+      const ccs = [...new Set((await cp.exec()).flatMap(([e, v]) => (e || !v ? [] : v)))];
+
+      const p = redis.pipeline();
+      buckets.forEach(b => p.pfcount(...appIds.map(a => keyOf(a, b))));
+      buckets.forEach(b => ccs.forEach(cc => p.pfcount(...appIds.map(a => keyOf(a, b, cc)))));
+      ccs.forEach(cc => p.pfcount(...buckets.flatMap(b => appIds.map(a => keyOf(a, b, cc)))));
+      p.pfcount(...buckets.flatMap(b => appIds.map(a => keyOf(a, b))));
+      const r = (await p.exec()).map(([e, v]) => (e ? 0 : Number(v) || 0));
+      let i = 0;
+      const points = buckets.map(b => ({ ts: b.ts, total: r[i++], c: {} }));
+      points.forEach(pt => ccs.forEach(cc => { const v = r[i++]; if (v) pt.c[cc] = v; }));
+      const countries = ccs.map(cc => ({ country: cc, value: r[i++] })).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+      const total = r[i++];
+      const data = { app: scope, range, unit, tz: "UTC", points, countries, total, updatedAt: new Date(nowMs).toISOString() };
+      visCache.set(ck, { at: Date.now(), data });
+      if (visCache.size > 200) visCache.clear();
+      res.json(data);
+    } catch (e) {
+      console.error("[STATS] ziyaretçi serisi hatası:", e.message);
+      res.status(500).json({ error: "Ziyaretçi serisi hatası: " + e.message });
     }
   });
 };

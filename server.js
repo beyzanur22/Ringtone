@@ -1766,7 +1766,7 @@ app.use(async (req, res, next) => {
       req.path === "/admin/test-provider" ||
       req.path === "/admin/youtube" || req.path === "/admin/auto-ringtone" ||
       req.path === "/admin/login-ips" || req.path === "/admin/active-users" || req.path === "/admin/visitor-stats" ||
-      req.path === "/admin/stats-series" ||
+      req.path === "/admin/stats-series" || req.path === "/admin/visitor-series" ||
       req.path === "/admin/review-logs" || req.path === "/admin/rakipler" ||
       req.path.startsWith("/admin/albums/")) {
     return next();
@@ -5212,7 +5212,7 @@ const presenceMinKeyApp = (ms, appId) => appId
    Uygulama başına ("default" = Musica dahil) saatlik + günlük HLL; ülke başına ayrı
    anahtar. Gün listesindeki ülkeler bir kümede tutulur. UTC saat/gün dilimleri. */
 const VIS_HOUR_TTL = 26 * 3600;
-const VIS_DAY_TTL = 8 * 86400;
+const VIS_DAY_TTL = 32 * 86400;   // panel "30 gün" ziyaretçi grafiği için
 const visHourStr = (ms) => new Date(ms).toISOString().slice(0, 13).replace(/[-T]/g, "");  // YYYYMMDDHH
 const visDayStr = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");      // YYYYMMDD
 const visHourKey = (app, h, cc) => `vis:h:${app}:${h}` + (cc ? `:${cc}` : "");
@@ -5665,6 +5665,7 @@ app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
 require("./stats_series")(app, {
   redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
   PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp,
+  visHourKey, visDayKey, visCcKey, visHourStr, visDayStr,
 });
 
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
