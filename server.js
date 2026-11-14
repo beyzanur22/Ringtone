@@ -5660,6 +5660,12 @@ app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
   }
 });
 
+// Aktif kullanıcı zaman serisi (panel grafikleri) — stats_series.js
+require("./stats_series")(app, {
+  redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
+  PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey,
+});
+
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
 app.get("/loadtest", (req, res) => {
   if (req.query.key !== APP_SECRET) return res.status(403).json({ error: "Unauthorized" });
