@@ -6342,7 +6342,7 @@ app.get("/download/mp4", async (req, res) => {
 // PROXY PANEL v2 — PREMIUM YÖNETİM PANELİ
 // ==========================================
 // ADMIN ANASAYFA — tüm panellere tek noktadan erişim
-app.get("/admin", (req, res) => {
+app.get("/admin", async (req, res) => {
   // KİŞİSEL GİRİŞ: oturum yoksa giriş sayfası
   const sess = verifySession(readCookie(req, "psess"));
   if (!sess) {
@@ -6353,10 +6353,38 @@ app.get("/admin", (req, res) => {
   const _esc = (s) => String(s == null ? "" : s).replace(/[<>&"]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
   const apps = getApps();
   const isSuper = (sess.apps === "all" || sess.super);
-  // Kullanıcının görebileceği uygulamalar (süper → hepsi, değilse → yetkili olduğu)
+  // Kullanıcının görebileceği uygulamalar (süper → hepsi + Musica, değilse → yetkili olduğu)
   const scopeIds = isSuper
-    ? Object.keys(apps).filter(id => id !== "default")
-    : (Array.isArray(sess.apps) ? sess.apps.filter(id => apps[id]) : []);
+    ? Object.keys(apps)
+    : (Array.isArray(sess.apps) ? sess.apps.filter(id => apps[id] && id !== "default") : []);
+
+  // Canlı sayılar (son 5 dk) + son 24 saatin saatlik ortalaması — Redis yoksa sayfa yine açılır
+  const live = {};
+  let liveTotal = null, spark = [], redisOk = false;
+  try {
+    const from = Date.now() - 5 * 60 * 1000;
+    const others = Object.keys(apps).filter(id => id !== "default");
+    const p = redis.pipeline();
+    p.zcount(PRESENCE_ZKEY, from, "+inf");
+    others.forEach(id => p.zcount(presenceZKeyApp(id), from, "+inf"));
+    const r = (await p.exec()).map(([e, v]) => (e ? 0 : Number(v) || 0));
+    others.forEach((id, i) => { live[id] = r[i + 1]; });
+    live.default = Math.max(0, r[0] - others.reduce((a, id) => a + live[id], 0));
+    liveTotal = isSuper ? r[0] : scopeIds.reduce((a, id) => a + (live[id] || 0), 0);
+    const keys = isSuper ? ["all"] : scopeIds;
+    const hours = [];
+    for (let i = 23; i >= 0; i--) hours.push(new Date(Date.now() - i * 3600 * 1000).toISOString().slice(0, 13).replace(/[-T]/g, ""));
+    const sp = redis.pipeline();
+    hours.forEach(h => keys.forEach(k => sp.hmget(`stats:h:${k}:${h}`, "s|t", "_n")));
+    const sr = await sp.exec();
+    spark = hours.map((h, hi) => keys.reduce((a, k, ki) => {
+      const v = sr[hi * keys.length + ki];
+      const arr = v && !v[0] ? v[1] : null;
+      return a + (arr && Number(arr[1]) ? Number(arr[0]) / Number(arr[1]) : 0);
+    }, 0));
+    redisOk = true;
+  } catch (e) {}
+
   const _ic = {
     music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
     sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
@@ -6367,55 +6395,84 @@ app.get("/admin", (req, res) => {
     chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-    chip: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>',
     pulse: '<path d="M3 12h4l3 8 4-16 3 8h4"/>',
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     chev: '<path d="m9 6 6 6-6 6"/>',
-    down: '<path d="m6 9 6 6 6-6"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+    grid: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    ads: '<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/>',
+    msg: '<path d="M21 12a8 8 0 0 1-12 7l-6 2 2-5a8 8 0 1 1 16-4z"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
   };
   const svg = (k) => `<svg viewBox="0 0 24 24">${_ic[k]}</svg>`;
-  const appCards = scopeIds.map(id => {
-    const a = apps[id];
+
+  // Panel adresleri: süper → ortak panel, tek uygulamalı kullanıcı → kendi paneli
+  const panelOf = (id) => (isSuper && id === "default") ? "/admin/panel#app=default" : `/admin/${encodeURIComponent(id)}/panel`;
+  const mainPanel = isSuper ? "/admin/panel" : (scopeIds.length === 1 ? panelOf(scopeIds[0]) : null);
+
+  const sorted = scopeIds.slice().sort((a, b) => (live[b] || 0) - (live[a] || 0)
+    || String((apps[a] || {}).name || a).localeCompare(String((apps[b] || {}).name || b), "tr"));
+  const activeApps = sorted.filter(id => (live[id] || 0) > 0).length;
+  const appRows = sorted.map((id, i) => {
+    const a = apps[id] || {};
     const nm = a.name || id;
+    const n = live[id] || 0;
     return `
-      <a class="app" href="/admin/${_esc(id)}/panel" style="--c:${_esc(a.brandPrimary || "#22c55e")}" data-k="${_esc((nm + " " + (a.packageName || "") + " " + id).toLowerCase())}">
-        <span class="av">${_esc(nm.trim().charAt(0).toUpperCase())}</span>
-        <span class="app-txt"><b>${_esc(nm)}</b><small>${_esc(a.packageName || "")}</small></span>
-        <span class="ar">${svg("chev")}</span>
+      <a class="row" href="${panelOf(id)}" ${i >= 6 ? "data-more hidden" : ""} data-k="${_esc((nm + " " + (a.packageName || "") + " " + id).toLowerCase())}">
+        <span class="av" style="background:${_esc(a.brandPrimary || "#8b5cf6")}">${_esc(nm.trim().charAt(0).toUpperCase())}</span>
+        <span class="rt"><b>${_esc(nm)}</b><small>${_esc(a.packageName || "")}</small></span>
+        <span class="lvp${n ? "" : " z"}"><i></i>${redisOk ? n : "—"}</span>
+        <span class="go">Panel${svg("arrow")}</span>
       </a>`;
   }).join("");
-  // Altyapı kartları — SADECE süper kullanıcılar (beyza/olcay) görür
-  const superCards = !isSuper ? "" : `
-    <a class="hero" href="/admin/panel">
-      <div class="hic">${svg("sliders")}</div>
-      <div class="card-info"><h2>Tüm Uygulamalar Kontrol</h2><p>Config, popup ve kanal yönetimi — tüm uygulamalar</p>
-        <div class="chips"><span class="chip">Config</span><span class="chip">Popup</span><span class="chip">Kanallar</span></div></div>
-      <span class="go">${svg("arrow")}</span>
-    </a>
-    <div class="section"><h3>Araçlar</h3></div>
-    <div class="tools">
-      <a class="tool" href="/cache-panel" style="--c:#38bdf8"><div class="row"><div class="ti">${svg("db")}</div></div><div><h4>Cache Panel</h4><p>Media önbelleği yönetimi</p></div></a>
-      <a class="tool" href="/playlist-cache" style="--c:#a78bfa"><div class="row"><div class="ti">${svg("list")}</div></div><div><h4>Playlist Cache</h4><p>Top 50 önbellekleme</p></div></a>
-      <a class="tool" href="/content-filter" style="--c:#fbbf24"><div class="row"><div class="ti">${svg("filter")}</div></div><div><h4>İçerik Filtresi</h4><p>Canlı yayın engeli & süre limiti</p></div></a>
-      <a class="tool" href="/health" style="--c:#22c55e"><div class="row"><div class="ti">${svg("heart")}</div><span class="tag">● Canlı</span></div><div><h4>Health Check</h4><p>Sistem sağlık durumu</p></div></a>
-      <a class="tool" href="/admin/rakipler" style="--c:#f472b6"><div class="row"><div class="ti">${svg("chart")}</div><span class="tag">22 pazar</span></div><div><h4>Müzik İndirme Rakipleri</h4><p>Ülkeye göre aramalar, yerel adlar ve logolar</p></div></a>
+
+  // Son 24 saat çizgisi
+  let sparkSvg = "";
+  if (spark.some(v => v > 0)) {
+    const w = 200, h = 54, mx = Math.max(1, ...spark);
+    const d = spark.map((v, i) => `${i ? "L" : "M"}${(i * w / (spark.length - 1)).toFixed(1)} ${(h - 4 - (v / mx) * (h - 10)).toFixed(1)}`).join(" ");
+    sparkSvg = `<div class="spark" title="Son 24 saat"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d} L${w} ${h} L0 ${h} Z" class="fill"/><path d="${d}" class="ln"/></svg></div>`;
+  }
+
+  const upS = Math.floor(process.uptime());
+  const upTxt = upS >= 86400 ? `${Math.floor(upS / 86400)}<em>g</em> ${Math.floor((upS % 86400) / 3600)}<em>sa</em>`
+    : `${Math.floor(upS / 3600)}<em>sa</em> ${Math.floor((upS % 3600) / 60)}<em>dk</em>`;
+  const ramMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  const restartedAt = new Date(Date.now() - upS * 1000).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
+
+  const quick = [["overview", "grid", "Genel bakış"], ["settings", "globe", "Ülke ayarları"], ["downloadad", "ads", "Reklamlar"], ["device", "msg", "Popup gönder"], ["apps", "user", "Yönetim"]];
+  const heroCard = !isSuper ? "" : `
+    <div class="hero">
+      <span class="hic">${svg("sliders")}</span>
+      <div class="hero-t"><h2>Tüm uygulamalar kontrol paneli</h2><p>Ayarlar, reklamlar, popup ve grafikler — tek yerden, bütün uygulamalar.</p>
+        <div class="quick">${quick.map(([k, i, l]) => `<a class="q" href="/admin/panel#s=${k}">${svg(i)}${l}</a>`).join("")}</div>
+      </div>
+      <a class="btn pri" href="/admin/panel">Aç${svg("arrow")}</a>
     </div>`;
-  // Uygulamalar kutusu — tıklayınca uygulama listesi açılır
-  const appsBox = !scopeIds.length ? "" : `
-    <div class="section"><h3>Uygulamalar</h3></div>
-    <button type="button" class="apps-toggle" id="appsToggle" aria-expanded="${isSuper ? "false" : "true"}">
-      <div class="ti" style="--c:#8b5cf6">${svg("phone")}</div>
-      <div class="card-info"><h4>Uygulamalar <span class="count" id="appsCount">${scopeIds.length}</span></h4><p>Tek tek uygulama paneline girmek için tıkla</p></div>
-      <span class="chev">${svg("down")}</span>
-    </button>
-    <div class="apps-wrap" id="appsList" ${isSuper ? "hidden" : ""}>
-      ${scopeIds.length > 6 ? `<label class="search">${svg("search")}<input id="appsSearch" placeholder="Uygulama veya paket ara…" autocomplete="off"></label>` : ""}
-      <div class="apps">${appCards}</div>
+  const tools = !isSuper ? "" : `
+    <div class="box">
+      <div class="bh"><h3>Araçlar</h3></div>
+      ${[["/cache-panel", "#38bdf8", "db", "Cache Panel", "Media önbelleği yönetimi", ""],
+        ["/playlist-cache", "#a78bfa", "list", "Playlist Cache", "Top 50 önbellekleme", ""],
+        ["/content-filter", "#fbbf24", "filter", "İçerik Filtresi", "Canlı yayın engeli & süre limiti", ""],
+        ["/health", "#4ade80", "heart", "Health Check", "Sistem sağlık durumu", "● Canlı"],
+        ["/admin/rakipler", "#f472b6", "chart", "Müzik İndirme Rakipleri", "Ülkeye göre aramalar ve logolar", "22 pazar"]]
+        .map(([href, c, ic, t, d, tag]) => `
+      <a class="tool" href="${href}" style="--c:${c}"><span class="ti">${svg(ic)}</span><span class="tt"><b>${t}${tag ? `<span class="tag">${tag}</span>` : ""}</b><small>${d}</small></span><span class="chev">${svg("chev")}</span></a>`).join("")}
+    </div>`;
+  const appsBox = !scopeIds.length ? `<div class="box"><div class="emptyb">Bu hesaba henüz uygulama atanmamış.</div></div>` : `
+    <div class="box">
+      <div class="bh"><h3>Uygulamalar</h3><span class="cnt">${scopeIds.length}</span>
+        ${scopeIds.length > 6 ? `<label class="srch">${svg("search")}<input id="appsSearch" placeholder="Uygulama ara" autocomplete="off"></label>` : ""}</div>
+      <div id="appsList">${appRows}</div>
       <div class="empty" id="appsEmpty">Eşleşen uygulama yok</div>
+      ${scopeIds.length > 6 ? `<button type="button" class="more" id="appsMore">Tüm uygulamaları göster (${scopeIds.length})</button>` : ""}
     </div>`;
+
   const _u = String(sess.user || "");
+  res.setHeader("Cache-Control", "no-store");
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -6425,93 +6482,106 @@ app.get("/admin", (req, res) => {
   <title>Müzik Kontrol</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --bg: #111114; --panel: #18181c; --card: #1f1f24; --card-h: #26262c; --line: rgba(255,255,255,.08); --line-h: rgba(255,255,255,.18);
-      --ink: #f4f4f6; --dim: #9a9aa6; --mute: #6b6b76; --acc: #8b5cf6; --acc2: #ec4899; --ok: #22c55e; --bad: #f87171; }
+    :root { --bg: #111114; --box: #17171c; --line: rgba(255,255,255,.07); --line-h: rgba(255,255,255,.16); --ink: #f4f4f6; --dim: #a1a1ab; --mute: #7c7c87; --acc: #8b5cf6; --ok: #4ade80; --bad: #f87171; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Arial, sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; -webkit-font-smoothing: antialiased; }
-    body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 420px; pointer-events: none;
-      background: radial-gradient(600px 260px at 15% -40px, rgba(139,92,246,.18), transparent 70%), radial-gradient(500px 220px at 85% -60px, rgba(236,72,153,.10), transparent 70%); }
-    .wrap { position: relative; max-width: 1040px; margin: 0 auto; padding: 28px 20px 40px; }
-    svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .mark { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(135deg, var(--acc), var(--acc2)); box-shadow: 0 6px 20px rgba(139,92,246,.35); color: #fff; }
-    .mark svg { width: 22px; height: 22px; }
-    .logo { font-size: 17px; font-weight: 700; letter-spacing: -.2px; }
-    .brand small { display: block; font-size: 12px; color: var(--mute); }
-    .user { display: flex; align-items: center; gap: 8px; }
-    .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--dim); background: var(--panel); border: 1px solid var(--line); padding: 7px 12px; border-radius: 999px; }
-    .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--mute); }
-    .pill.ok .pulse { background: var(--ok); animation: p 2s infinite; }
-    .pill.bad .pulse { background: var(--bad); }
-    @keyframes p { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.6); } 70%, 100% { box-shadow: 0 0 0 7px rgba(34,197,94,0); } }
-    .me { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); padding: 4px; border-radius: 999px; }
-    .ava { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; }
-    .me b { font-size: 13px; font-weight: 600; padding-right: 2px; }
-    .me a { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); text-decoration: none; transition: .15s; }
-    .me a:hover { background: rgba(239,68,68,.15); color: var(--bad); }
-    .me a svg { width: 16px; height: 16px; }
-    .hello { margin: 36px 0 18px; }
-    .hello h1 { font-size: 28px; font-weight: 750; letter-spacing: -.6px; }
-    .subtitle { color: var(--dim); font-size: 14px; margin-top: 4px; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
-    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
-    .stat small { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--mute); font-weight: 600; }
-    .stat small svg { width: 14px; height: 14px; }
-    .stat b { display: block; font-size: 22px; font-weight: 750; letter-spacing: -.4px; margin-top: 6px; font-variant-numeric: tabular-nums; }
-    .stat b em { font-style: normal; font-size: 13px; color: var(--dim); font-weight: 600; margin: 0 4px 0 1px; }
-    .stat.ok b { color: var(--ok); } .stat.bad b { color: var(--bad); }
-    .hero { display: flex; align-items: center; gap: 18px; padding: 22px 24px; border-radius: 18px; text-decoration: none; color: var(--ink);
-      background: linear-gradient(var(--card), var(--card)) padding-box, linear-gradient(135deg, rgba(139,92,246,.7), rgba(236,72,153,.5), rgba(255,255,255,.06)) border-box; border: 1px solid transparent; transition: transform .15s; }
-    .hero:hover { transform: translateY(-2px); }
-    .hic { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(135deg, rgba(139,92,246,.25), rgba(236,72,153,.2)); color: #c4b5fd; flex-shrink: 0; }
-    .hic svg { width: 26px; height: 26px; }
-    .card-info { flex: 1; min-width: 0; }
-    .hero h2 { font-size: 18px; font-weight: 700; letter-spacing: -.2px; }
-    .hero p, .apps-toggle p { font-size: 13px; color: var(--dim); margin-top: 3px; }
-    .chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
-    .chip { font-size: 12px; font-weight: 600; color: #ddd6fe; background: rgba(139,92,246,.14); border: 1px solid rgba(139,92,246,.25); padding: 3px 10px; border-radius: 999px; }
-    .go { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #111; flex-shrink: 0; }
-    .section { margin: 34px 0 12px; }
-    .section h3 { font-size: 13px; font-weight: 700; color: var(--dim); letter-spacing: .2px; }
-    .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .tool { display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); text-decoration: none; color: var(--ink); transition: border-color .15s, background .15s, transform .15s; }
-    .tool:hover { background: var(--card-h); border-color: var(--line-h); transform: translateY(-2px); }
-    .ti { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); flex-shrink: 0; }
-    .tool h4, .apps-toggle h4 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .tool p { font-size: 12.5px; color: var(--dim); margin-top: 2px; line-height: 1.45; }
-    .row { display: flex; align-items: center; }
-    .tag { margin-left: auto; font-size: 10.5px; font-weight: 700; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); padding: 2px 7px; border-radius: 6px; }
-    .apps-toggle { width: 100%; font: inherit; color: var(--ink); text-align: left; cursor: pointer; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 16px; background: var(--card); border: 1px solid var(--line); transition: border-color .15s, background .15s; }
-    .apps-toggle:hover { background: var(--card-h); border-color: var(--line-h); }
-    .apps-toggle[aria-expanded="true"] { border-color: rgba(139,92,246,.45); }
-    .count { font-size: 11px; font-weight: 800; color: var(--ink); background: var(--card-h); border: 1px solid var(--line); padding: 1px 8px; border-radius: 999px; }
-    .chev { color: var(--dim); transition: transform .2s; display: grid; }
-    .apps-toggle[aria-expanded="true"] .chev { transform: rotate(180deg); }
-    .apps-wrap { margin-top: 10px; }
-    .apps-wrap[hidden] { display: none; }
-    .search { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; height: 38px; margin-bottom: 10px; color: var(--mute); transition: border-color .15s; }
-    .search:focus-within { border-color: var(--acc); color: var(--ink); }
-    .search svg { width: 16px; height: 16px; }
-    .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 13px; }
-    .apps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .app { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); text-decoration: none; color: var(--ink); transition: .15s; }
-    .app:hover { background: var(--card-h); border-color: var(--line-h); }
-    .av { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; font-weight: 800; color: #fff; background: var(--c); flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); }
-    .app-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .app-txt b { font-size: 14px; font-weight: 650; }
-    .app-txt small { font-size: 11.5px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; }
-    .ar { color: var(--mute); display: grid; transition: transform .15s, color .15s; }
-    .app:hover .ar { color: var(--ink); transform: translateX(2px); }
-    .empty { display: none; text-align: center; color: var(--mute); font-size: 13px; padding: 24px; border: 1px dashed var(--line); border-radius: 14px; }
-    .footer { margin-top: 44px; color: var(--mute); font-size: 12px; text-align: center; }
-    @media (max-width: 860px) { .tools, .apps { grid-template-columns: repeat(2, 1fr); } .stats { grid-template-columns: repeat(2, 1fr); } }
+    body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 360px; pointer-events: none; background: radial-gradient(700px 260px at 20% -40px, rgba(139,92,246,.18), transparent 70%); }
+    a { color: inherit; text-decoration: none; }
+    .wrap { position: relative; max-width: 1120px; margin: 0 auto; padding: 28px 20px 40px; }
+    svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .mark { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(135deg, #8b5cf6, #ec4899); box-shadow: 0 8px 22px rgba(139,92,246,.35); color: #fff; }
+    .mark svg { width: 20px; height: 20px; }
+    .brand b { display: block; font-size: 16px; }
+    .brand small { color: #6b6b76; font-size: 12px; }
+    .sp { flex: 1; }
+    .pill { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px; border-radius: 999px; background: var(--box); border: 1px solid rgba(255,255,255,.08); font-size: 13px; color: #c4c4cc; font-weight: 600; }
+    .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(34,197,94,.15); }
+    .pill.bad i { background: var(--bad); box-shadow: 0 0 0 4px rgba(248,113,113,.15); }
+    .me { display: flex; align-items: center; gap: 9px; height: 36px; padding: 0 4px; border-radius: 999px; background: var(--box); border: 1px solid rgba(255,255,255,.08); font-size: 13px; font-weight: 650; }
+    .me .ava { width: 28px; height: 28px; border-radius: 50%; background: #f97316; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; }
+    .me a { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; color: #8b8b96; }
+    .me a:hover { color: var(--bad); background: rgba(248,113,113,.12); }
+    .me a svg { width: 15px; height: 15px; }
+    .hello { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 34px 0 22px; }
+    .hello h1 { font-size: 32px; font-weight: 780; letter-spacing: -.8px; }
+    .hello p { color: #8b8b96; font-size: 14px; margin-top: 5px; }
+    .acts { display: flex; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 18px; border-radius: 12px; font-size: 14px; font-weight: 650; white-space: nowrap; transition: filter .15s; }
+    .btn:hover { filter: brightness(1.1); }
+    .btn.pri { background: var(--acc); color: #fff; box-shadow: 0 10px 28px rgba(139,92,246,.35); }
+    .btn.sec { background: var(--box); border: 1px solid rgba(255,255,255,.1); color: #e4e4ea; }
+    .stats { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .st { background: var(--box); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; position: relative; overflow: hidden; }
+    .st small { display: flex; align-items: center; gap: 7px; color: var(--mute); font-size: 12px; font-weight: 600; }
+    .st small svg { width: 15px; height: 15px; }
+    .st b { display: block; font-size: 30px; font-weight: 780; margin-top: 8px; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+    .st b em { font-style: normal; font-size: 14px; color: var(--mute); font-weight: 600; margin-left: 3px; }
+    .st .sub { font-size: 12px; color: var(--mute); margin-top: 3px; }
+    .st.live b, .st b.ok { color: var(--ok); }
+    .st b.bad { color: var(--bad); }
+    .spark { position: absolute; right: 16px; top: 22px; width: 40%; height: 54px; }
+    .spark svg { width: 100%; height: 54px; }
+    .spark .fill { fill: #22c55e; opacity: .12; stroke: none; }
+    .spark .ln { stroke: #22c55e; stroke-width: 2; vector-effect: non-scaling-stroke; }
+    .hero { display: flex; align-items: center; gap: 18px; background: linear-gradient(120deg, rgba(139,92,246,.14), rgba(139,92,246,.04) 55%, var(--box)); border: 1px solid rgba(139,92,246,.35); border-radius: 18px; padding: 20px 22px; margin-bottom: 26px; }
+    .hic { width: 52px; height: 52px; border-radius: 14px; background: rgba(139,92,246,.2); color: #c4b5fd; display: grid; place-items: center; flex-shrink: 0; }
+    .hic svg { width: 24px; height: 24px; }
+    .hero-t { flex: 1; min-width: 0; }
+    .hero h2 { font-size: 18px; font-weight: 750; }
+    .hero p { color: var(--dim); font-size: 13px; margin-top: 3px; }
+    .quick { display: flex; gap: 7px; margin-top: 11px; flex-wrap: wrap; }
+    .q { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #d4d4dc; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); padding: 5px 10px; border-radius: 9px; transition: border-color .15s, color .15s; }
+    .q:hover { color: #fff; border-color: rgba(139,92,246,.5); }
+    .q svg { width: 14px; height: 14px; color: #a78bfa; }
+    .cols { display: grid; grid-template-columns: ${isSuper ? "minmax(0, 1.55fr) minmax(0, 1fr)" : "minmax(0, 1fr)"}; gap: 16px; align-items: start; }
+    .box { background: var(--box); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+    .bh { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 0 4px; min-height: 34px; }
+    .bh h3 { font-size: 15px; font-weight: 700; }
+    .cnt { font-size: 11.5px; font-weight: 700; color: var(--dim); background: rgba(255,255,255,.06); padding: 2px 8px; border-radius: 99px; }
+    .srch { margin-left: auto; display: flex; align-items: center; gap: 7px; height: 34px; width: 210px; padding: 0 10px; border-radius: 10px; background: #111114; border: 1px solid rgba(255,255,255,.08); color: #6b6b76; }
+    .srch:focus-within { border-color: var(--acc); }
+    .srch svg { width: 15px; height: 15px; }
+    .srch input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--ink); font: inherit; font-size: 13px; }
+    .row { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-radius: 12px; transition: background .15s; }
+    .row[hidden] { display: none; }
+    .row:hover { background: rgba(255,255,255,.03); }
+    .row + .row { border-top: 1px solid rgba(255,255,255,.05); }
+    .row .av { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #fff; flex-shrink: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); }
+    .rt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .rt b { font-size: 14px; font-weight: 650; }
+    .rt small { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: #6b6b76; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lvp { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ok); background: rgba(34,197,94,.1); padding: 3px 9px; border-radius: 99px; min-width: 60px; font-variant-numeric: tabular-nums; }
+    .lvp i { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+    .lvp.z { color: var(--mute); background: rgba(255,255,255,.05); }
+    .lvp.z i { background: #55555f; }
+    .go { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 650; color: #d4d4dc; background: #1f1f25; border: 1px solid rgba(255,255,255,.08); padding: 6px 10px; border-radius: 9px; }
+    .go svg { width: 14px; height: 14px; }
+    .row:hover .go { border-color: rgba(139,92,246,.5); color: #fff; }
+    .more { display: block; width: 100%; margin-top: 8px; font: inherit; font-size: 13px; font-weight: 650; color: #a78bfa; padding: 9px; border-radius: 10px; border: 1px dashed rgba(255,255,255,.12); background: none; cursor: pointer; }
+    .more:hover { border-color: rgba(139,92,246,.5); }
+    .empty { display: none; text-align: center; color: var(--mute); font-size: 13px; padding: 20px; }
+    .emptyb { color: var(--mute); font-size: 13.5px; padding: 18px 6px; }
+    .tool { display: flex; align-items: center; gap: 12px; padding: 11px 8px; border-radius: 12px; transition: background .15s; }
+    .tool:hover { background: rgba(255,255,255,.03); }
+    .tool + .tool { border-top: 1px solid rgba(255,255,255,.05); }
+    .ti { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); flex-shrink: 0; }
+    .tt { flex: 1; min-width: 0; }
+    .tt b { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 650; }
+    .tt small { display: block; font-size: 12px; color: var(--mute); margin-top: 2px; }
+    .tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+    .chev { color: #55555f; display: grid; }
+    .tool:hover .chev { color: var(--ink); }
+    .footer { text-align: center; color: #55555f; font-size: 12px; margin-top: 26px; }
+    @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cols { grid-template-columns: minmax(0, 1fr); } }
     @media (max-width: 560px) {
       .wrap { padding: 20px 16px 32px; }
-      .tools, .apps { grid-template-columns: 1fr; }
-      .hello h1 { font-size: 23px; }
+      .hello h1 { font-size: 24px; }
       .pill { display: none; }
-      .hero { padding: 18px; gap: 14px; align-items: flex-start; }
-      .hic { width: 44px; height: 44px; }
+      .acts { width: 100%; } .acts .btn { flex: 1; justify-content: center; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .st { padding: 14px; } .st b { font-size: 24px; } .spark { display: none; }
+      .me { font-size: 0; gap: 0; } .me .ava { margin-right: 2px; }
+      .hero { flex-wrap: wrap; } .hero .btn { width: 100%; justify-content: center; }
+      .srch { width: 100%; margin-left: 0; } .bh { flex-wrap: wrap; }
       .go { display: none; }
     }
   </style>
@@ -6519,78 +6589,60 @@ app.get("/admin", (req, res) => {
 <body>
   <div class="wrap">
     <header>
-      <div class="brand">
-        <div class="mark">${svg("music")}</div>
-        <div><div class="logo">Müzik Kontrol</div><small>music.cevapla.tv</small></div>
-      </div>
-      <div class="user">
-        <span class="pill" id="sysPill"><span class="pulse"></span><span id="sysTxt">Kontrol ediliyor…</span></span>
-        <div class="me"><span class="ava">${_esc(_u.charAt(0).toUpperCase() || "?")}</span><b>${_esc(_u)}</b><a href="/admin/logout" title="Çıkış Yap" aria-label="Çıkış Yap">${svg("out")}</a></div>
-      </div>
+      <span class="mark">${svg("music")}</span>
+      <div class="brand"><b>Müzik Kontrol</b><small>music.cevapla.tv</small></div>
+      <span class="sp"></span>
+      <span class="pill${redisOk ? "" : " bad"}"><i></i>${redisOk ? "Sistem çalışıyor" : "Redis'e ulaşılamıyor"}</span>
+      <span class="me"><span class="ava">${_esc(_u.charAt(0).toUpperCase() || "?")}</span>${_esc(_u)}<a href="/admin/logout" title="Çıkış yap" aria-label="Çıkış yap">${svg("out")}</a></span>
     </header>
 
     <div class="hello">
-      <h1 id="greet">Merhaba, ${_esc(_u)}</h1>
-      <div class="subtitle">Admin Paneli — music.cevapla.tv</div>
-    </div>
-    <div class="stats">
-      <div class="stat"><small>${svg("clock")}Çalışma süresi</small><b id="stUp">—</b></div>
-      <div class="stat"><small>${svg("chip")}Bellek</small><b id="stRam">—</b></div>
-      <div class="stat"><small>${svg("phone")}Uygulamalar</small><b>${scopeIds.length}</b></div>
-      <div class="stat" id="stHealthBox"><small>${svg("pulse")}Sağlık</small><b id="stHealth">—</b></div>
+      <div><h1 id="greet">Merhaba, ${_esc(_u)}</h1><p id="sub">${scopeIds.length} uygulama</p></div>
+      ${mainPanel ? `<div class="acts"><a class="btn sec" href="${mainPanel}#s=live">${svg("pulse")}Canlı kullanıcılar</a><a class="btn pri" href="${mainPanel}">Panele gir${svg("arrow")}</a></div>` : ""}
     </div>
 
-    ${superCards}
-    ${appsBox}
+    <div class="stats">
+      <div class="st live"><small>${svg("pulse")}Şu an aktif</small><b>${liveTotal == null ? "—" : liveTotal}</b><div class="sub">${isSuper ? "tüm uygulamalar" : "uygulamaların"} · son 5 dk</div>${sparkSvg}</div>
+      <div class="st"><small>${svg("phone")}Uygulamalar</small><b>${scopeIds.length}</b><div class="sub">${redisOk ? `${activeApps} tanesi şu an aktif` : "&nbsp;"}</div></div>
+      <div class="st"><small>${svg("clock")}Çalışma süresi</small><b>${upTxt}</b><div class="sub">son yeniden başlatma ${restartedAt}</div></div>
+      <div class="st"><small>${svg("heart")}Sistem</small><b class="${redisOk ? "ok" : "bad"}">${redisOk ? "Sağlıklı" : "Sorunlu"}</b><div class="sub">bellek ${ramMB} MB · Redis ${redisOk ? "bağlı" : "yok"}</div></div>
+    </div>
+
+    ${heroCard}
+
+    <div class="cols">
+      ${appsBox}
+      ${tools}
+    </div>
 
     <div class="footer">music.cevapla.tv · Müzik Kontrol</div>
   </div>
 
   <script>
-    // Uygulamalar kutusu aç/kapa
-    (function(){
-      var btn = document.getElementById('appsToggle');
-      if (!btn) return;
-      var list = document.getElementById('appsList');
-      btn.addEventListener('click', function(){
-        var open = btn.getAttribute('aria-expanded') !== 'true';
-        btn.setAttribute('aria-expanded', open);
-        list.hidden = !open;
-        if (open) btn.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-      // Liste içinde arama (yalnızca görünümü süzer)
-      var q = document.getElementById('appsSearch');
-      if (!q) return;
-      var items = list.querySelectorAll('.app'), cnt = document.getElementById('appsCount'), empty = document.getElementById('appsEmpty');
-      q.addEventListener('input', function(){
-        var s = q.value.trim().toLowerCase(), n = 0;
-        items.forEach(function(el){ var on = el.getAttribute('data-k').indexOf(s) > -1; el.style.display = on ? '' : 'none'; if (on) n++; });
-        cnt.textContent = n; empty.style.display = n ? 'none' : 'block';
-      });
-    })();
-    // Selamlama + tarih
     (function(){
       var h = new Date().getHours(), g = document.getElementById('greet');
       g.textContent = (h < 12 ? 'Günaydın' : h < 18 ? 'İyi günler' : 'İyi akşamlar') + ', ' + ${JSON.stringify(_u).replace(/</g, "\\u003c")};
+      var s = document.getElementById('sub');
+      s.textContent = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · ' + s.textContent;
     })();
-    // Sunucu uptime göster
-    fetch('/health').then(r=>r.json()).then(d=>{
-      const h = Math.floor(d.uptimeSeconds/3600);
-      const m = Math.floor((d.uptimeSeconds%3600)/60);
-      document.querySelector('.subtitle').textContent =
-        new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · Admin Paneli';
-      document.getElementById('stUp').innerHTML = h + '<em>s</em>' + m + '<em>dk</em>';
-      document.getElementById('stRam').innerHTML = d.memoryRssMB + '<em>MB</em>';
-      document.getElementById('stHealth').textContent = 'Tamam';
-      document.getElementById('stHealthBox').classList.add('ok');
-      document.getElementById('sysPill').classList.add('ok');
-      document.getElementById('sysTxt').textContent = 'Sistem çalışıyor';
-    }).catch(()=>{
-      document.getElementById('stHealth').textContent = 'Yanıt yok';
-      document.getElementById('stHealthBox').classList.add('bad');
-      document.getElementById('sysPill').classList.add('bad');
-      document.getElementById('sysTxt').textContent = 'Sağlık kontrolü başarısız';
-    });
+    (function(){
+      var list = document.getElementById('appsList');
+      if (!list) return;
+      var rows = list.querySelectorAll('.row'), more = document.getElementById('appsMore'), q = document.getElementById('appsSearch'), empty = document.getElementById('appsEmpty');
+      var expanded = false;
+      function apply(){
+        var s = q ? q.value.trim().toLowerCase() : '', n = 0;
+        rows.forEach(function(el){
+          var hit = !s || el.getAttribute('data-k').indexOf(s) > -1;
+          var show = hit && (s || expanded || !el.hasAttribute('data-more'));
+          el.hidden = !show; if (show) n++;
+        });
+        empty.style.display = n ? 'none' : 'block';
+        if (more) more.style.display = (s || expanded) ? 'none' : '';
+      }
+      if (more) more.addEventListener('click', function(){ expanded = true; apply(); });
+      if (q) q.addEventListener('input', apply);
+    })();
   </script>
 </body>
 </html>`);
