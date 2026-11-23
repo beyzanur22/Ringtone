@@ -48,7 +48,7 @@ const RANGES = {
 module.exports = function (app, deps) {
   const { redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
     PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp,
-    visHourKey, visDayKey, visCcKey, visHourStr, visDayStr } = deps;
+    visHourKey, visDayKey, visCcKey, visHourStr, visDayStr, VIS_OTHER } = deps;
 
   redis.defineCommand("statsAgg", { numberOfKeys: 1, lua: AGG_LUA });
 
@@ -233,9 +233,26 @@ module.exports = function (app, deps) {
      Kaç farklı kişi girdi: saat (24h) ya da gün (7d/30d, UTC) başına, ülke kırılımlı.
      Kaynak: ziyaretçi HLL'leri (vis:h / vis:d). Toplamlar tekilleştirilmiş (PFCOUNT birleşimi). */
   const visCache = new Map();
+  // Anlık: son 1 dk'da görülen cihazlar, ülke kırılımlı (uygulama 15 sn'de bir yoklar)
+  async function liveCountries(scope) {
+    const nowMs = Date.now();
+    const zkey = scope === "all" ? PRESENCE_ZKEY : presenceZKeyApp(scope);
+    const uids = await redis.zrevrangebyscore(zkey, "+inf", nowMs - 60000);
+    const byCc = {};
+    if (uids.length) {
+      const p = redis.pipeline();
+      uids.forEach(u => p.hget(presenceKey(u), "country"));
+      (await p.exec()).forEach(([e, v]) => {
+        const cc = !e && /^[A-Z]{2}$/.test(String(v || "").toUpperCase()) ? String(v).toUpperCase() : "XX";
+        byCc[cc] = (byCc[cc] || 0) + 1;
+      });
+    }
+    const countries = Object.entries(byCc).map(([country, value]) => ({ country, value })).sort((a, b) => b.value - a.value);
+    return { app: scope, range: "live", unit: "now", points: [], countries, total: uids.length, updatedAt: new Date(nowMs).toISOString() };
+  }
   app.get("/admin/visitor-series", basicAuth, async (req, res) => {
     try {
-      const range = ["24h", "7d", "30d"].includes(req.query.range) ? req.query.range : "24h";
+      const range = ["live", "24h", "7d", "30d"].includes(req.query.range) ? req.query.range : "24h";
       const bound = resolveAppFromKey(req.headers["x-app-key"]);
       const master = !bound && isMasterRequest(req);
       if (!bound && !master) return res.status(403).json({ error: "yetkisiz" });
@@ -246,7 +263,8 @@ module.exports = function (app, deps) {
         scope = raw === "all" || raw === "default" || all[raw] ? raw : null;
         if (!scope) return res.status(400).json({ error: "bilinmeyen uygulama" });
       }
-      const appIds = scope === "all" ? Object.keys(all) : [scope];
+      const appIds = scope === "all" ? [...Object.keys(all), VIS_OTHER] : [scope];
+      if (range === "live") return res.json(await liveCountries(scope));
       const ck = scope + "|" + range;
       const hit = visCache.get(ck);
       if (hit && Date.now() - hit.at < 60000) return res.json(hit.data);

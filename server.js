@@ -5218,6 +5218,7 @@ const visDayStr = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, 
 const visHourKey = (app, h, cc) => `vis:h:${app}:${h}` + (cc ? `:${cc}` : "");
 const visDayKey = (app, d, cc) => `vis:d:${app}:${d}` + (cc ? `:${cc}` : "");
 const visCcKey = (app, d) => `vis:cc:${app}:${d}`;
+const VIS_OTHER = "_other";   // apps.json'da kayıtlı olmayan / kimliksiz trafik
 function queueVisitor(pipe, uid, appId, country, nowMs) {
   const app = appId || "default";
   const cc = /^[A-Z]{2}$/.test(country) ? country : "XX";
@@ -5340,12 +5341,21 @@ async function recordPresence(req) {
     let appId = resolveAppId(req);
     const hasAppIdentity = !!(req.headers["x-app-package"] || req.headers["x-app-id"]);
     const hasDeviceId = typeof req.headers["x-device-id"] === "string" && req.headers["x-device-id"].length >= 6;
+    // Ziyaretçi kovası: "default" yalnız Musica'nın kendi paketi; kayıtsız/kimliksiz trafik VIS_OTHER
+    let visApp = appId;
+    if (appId === "default") {
+      const pkg = String(req.headers["x-app-package"] || "").trim();
+      const musicaPkg = (getApps().default || {}).packageName;
+      visApp = (musicaPkg && pkg === musicaPkg) || String(req.headers["x-app-id"] || "").toLowerCase() === "default"
+        ? "default" : VIS_OTHER;
+    }
     if (hasAppIdentity && hasDeviceId) {
       // Kimliği kesin bilinen istek → bu IP'nin cihaz+uygulamasını hatırla.
       // "default" (Musica) da yazılır; böylece Musica kullanıcısı IP paylaşsa bile
       // yanlışlıkla başka bir uygulamaya sayılmaz.
-      redis.set(appByIpKey(ip), uid + "|" + appId, "EX", APP_BY_IP_TTL).catch(() => {});
+      redis.set(appByIpKey(ip), uid + "|" + visApp, "EX", APP_BY_IP_TTL).catch(() => {});
     } else if (!hasAppIdentity) {
+      visApp = VIS_OTHER;
       // Kimliksiz istek (ExoPlayer /stream) → aynı IP'den son bilineni kullan
       const rec = await redis.get(appByIpKey(ip)).catch(() => null);
       if (rec) {
@@ -5354,6 +5364,7 @@ async function recordPresence(req) {
         const mApp = sep > 0 ? rec.slice(sep + 1) : "";
         if (mUid) uid = mUid;                               // mükerrer cihaz sayımını önler
         if (mApp && getApps()[mApp]) appId = mApp;
+        visApp = mApp && (mApp === VIS_OTHER || getApps()[mApp]) ? mApp : VIS_OTHER;
       }
     }
 
@@ -5397,7 +5408,9 @@ async function recordPresence(req) {
       pipe.expire(minKeyApp, 7200);
     }
     if (appMode) queueModePresence(pipe, uid, appMode, appId, nowMs);
-    queueVisitor(pipe, uid, appId, String(country).toUpperCase(), nowMs);
+    // Musica'nın kendi "şu an" kümesi (global havuzdan ayrı; panel Ziyaretçi Özeti › Anlık)
+    if (visApp === "default") pipe.zadd(presenceZKeyApp("default"), nowMs, uid);
+    queueVisitor(pipe, uid, visApp, String(country).toUpperCase(), nowMs);
     pipe.exec().catch(() => {});
   } catch (e) {
     // presence asla isteği bozmamalı — sessizce yut
@@ -5416,6 +5429,7 @@ if (isPrimaryWorker) {
       // Çıkarıcı kümeleri de aynı pencereyle budanır
       EXTRACTORS.forEach(ex => pipe.zremrangebyscore(PRESENCE_EXTRACTOR_ZKEY(ex), 0, cutoff));
       APP_MODES.forEach(m => pipe.zremrangebyscore(presenceModeZKey(m, null), 0, cutoff));
+      pipe.zremrangebyscore(presenceZKeyApp("default"), 0, cutoff);
       // Per-app (izole panel) kümeleri de budanır
       Object.keys(getApps()).filter(id => id !== "default").forEach(id => {
         pipe.zremrangebyscore(presenceZKeyApp(id), 0, cutoff);
@@ -5448,15 +5462,18 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     const qMode = String(req.query.mode || "").toLowerCase();
     const modeFilter = APP_MODES.includes(qMode) ? qMode : null;
 
-    const [c5, c15, c60] = await Promise.all([
+    // Uygulama 15 sn'de bir yokladığı için son 1 dk = "şu an uygulamada"
+    const [c1, c5, c15, c60] = await Promise.all([
+      redis.zcount(ZKEY, nowMs - 60 * 1000, "+inf"),
       redis.zcount(ZKEY, nowMs - 5 * 60 * 1000, "+inf"),
       redis.zcount(ZKEY, nowMs - 15 * 60 * 1000, "+inf"),
       redis.zcount(ZKEY, nowMs - 60 * 60 * 1000, "+inf"),
     ]);
 
-    // Çıkarıcı bazlı sayaçlar (NewPipe / Backend / Bilinmiyor) — 5 dk, 15 dk, 1 sa
+    // Çıkarıcı bazlı sayaçlar (NewPipe / Backend / Bilinmiyor) — 1 dk, 5 dk, 15 dk, 1 sa
     const exPipe = redis.pipeline();
     EXTRACTORS.forEach(ex => {
+      exPipe.zcount(EXKEY(ex), nowMs - 60 * 1000, "+inf");
       exPipe.zcount(EXKEY(ex), nowMs - 5 * 60 * 1000, "+inf");
       exPipe.zcount(EXKEY(ex), nowMs - 15 * 60 * 1000, "+inf");
       exPipe.zcount(EXKEY(ex), nowMs - 60 * 60 * 1000, "+inf");
@@ -5466,9 +5483,10 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     EXTRACTORS.forEach((ex, i) => {
       const num = (r) => (r && !r[0] ? Number(r[1]) || 0 : 0);
       byExtractor[ex] = {
-        online5m: num(exRes[i * 3]),
-        online15m: num(exRes[i * 3 + 1]),
-        online1h: num(exRes[i * 3 + 2]),
+        online1m: num(exRes[i * 4]),
+        online5m: num(exRes[i * 4 + 1]),
+        online15m: num(exRes[i * 4 + 2]),
+        online1h: num(exRes[i * 4 + 3]),
       };
     });
 
@@ -5478,6 +5496,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     // cihazı sürekli kümeler arasında gezdirirdi.
     const modePipe = redis.pipeline();
     APP_MODES.forEach(m => {
+      modePipe.zcount(MODEKEY(m), nowMs - 60 * 1000, "+inf");
       modePipe.zcount(MODEKEY(m), nowMs - 5 * 60 * 1000, "+inf");
       modePipe.zcount(MODEKEY(m), nowMs - 15 * 60 * 1000, "+inf");
       modePipe.zcount(MODEKEY(m), nowMs - 60 * 60 * 1000, "+inf");
@@ -5487,13 +5506,15 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     APP_MODES.forEach((m, i) => {
       const num = (r) => (r && !r[0] ? Number(r[1]) || 0 : 0);
       byMode[m] = {
-        online5m: num(modeRes[i * 3]),
-        online15m: num(modeRes[i * 3 + 1]),
-        online1h: num(modeRes[i * 3 + 2]),
+        online1m: num(modeRes[i * 4]),
+        online5m: num(modeRes[i * 4 + 1]),
+        online15m: num(modeRes[i * 4 + 2]),
+        online1h: num(modeRes[i * 4 + 3]),
       };
     });
     const modeSum = (f) => APP_MODES.reduce((a, m) => a + byMode[m][f], 0);
     byMode.unknown = {
+      online1m: Math.max(0, c1 - modeSum("online1m")),
       online5m: Math.max(0, c5 - modeSum("online5m")),
       online15m: Math.max(0, c15 - modeSum("online15m")),
       online1h: Math.max(0, c60 - modeSum("online1h")),
@@ -5506,7 +5527,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
        "Musica + tanınmayan paketler" demektir. */
     let byApp = null;
     if (!boundApp) {
-      const from5 = nowMs - 5 * 60 * 1000;
+      const from5 = nowMs - 60 * 1000;   // şu an (son 1 dk)
       const apps = getApps();
       const ids = Object.keys(apps).filter(id => id !== "default");
       const appPipe = redis.pipeline();
@@ -5530,9 +5551,9 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
         id: "default",
         name: ((apps.default && apps.default.name) || "default") + " + kayıtsız paketler",
         packageName: (apps.default && apps.default.packageName) || "",
-        ringtone: Math.max(0, byMode.ringtone.online5m - sum("ringtone")),
-        youtube: Math.max(0, byMode.youtube.online5m - sum("youtube")),
-        total: Math.max(0, c5 - sum("total")),
+        ringtone: Math.max(0, byMode.ringtone.online1m - sum("ringtone")),
+        youtube: Math.max(0, byMode.youtube.online1m - sum("youtube")),
+        total: Math.max(0, c1 - sum("total")),
       });
       byApp = rows.sort((a, b) => b.ringtone - a.ringtone || b.total - a.total);
     }
@@ -5547,6 +5568,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       const pipe = redis.pipeline();
       uids.forEach(uid => pipe.hgetall(presenceKey(uid)));
       const results = await pipe.exec();
+      const appsAll = getApps();
       results.forEach(([err, h], i) => {
         if (err || !h || !h.ip) return;
         const country = h.country || "?";
@@ -5562,6 +5584,8 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
             country,
             extractor: ex,
             mode: md,
+            appId: h.appId || "default",
+            appName: ((appsAll[h.appId || "default"] || {}).name) || h.appId || "default",
             sdk: h.sdk ? Number(h.sdk) : null,
             endpoint: h.endpoint || "",
             hits: Number(h.hits) || 0,
@@ -5594,7 +5618,8 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     }
 
     res.json({
-      online: c5,                              // varsayılan "şu an aktif" = son 5 dk
+      online: c1,                              // "şu an aktif" = son 1 dk
+      online1m: c1,
       online5m: c5,
       online15m: c15,
       online1h: c60,
@@ -5606,7 +5631,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       byMode,                  // {youtube|ringtone|unknown: {online5m, online15m, online1h}}
       windowByMode,            // seçili pencere içindeki mod kırılımı
       modeFilter,              // null = tüm modlar
-      byApp,                   // süper panelde paket bazlı kırılım (son 5 dk), izole panelde null
+      byApp,                   // süper panelde paket bazlı kırılım (son 1 dk), izole panelde null
       byCountry,
       timeline,
       users,
@@ -5665,7 +5690,7 @@ app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
 require("./stats_series")(app, {
   redis, isPrimaryWorker, basicAuth, getApps, isMasterRequest, resolveAppFromKey,
   PRESENCE_ZKEY, presenceZKeyApp, presenceModeZKey, presenceKey, presenceExtractorZKeyApp,
-  visHourKey, visDayKey, visCcKey, visHourStr, visDayStr,
+  visHourKey, visDayKey, visCcKey, visHourStr, visDayStr, VIS_OTHER,
 });
 
 // ─── LOAD TEST SAYFASI ────────────────────────────────────────────────────────
