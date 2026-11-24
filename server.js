@@ -5653,29 +5653,35 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
 // Ziyaretçi özeti — seçili uygulamanın son 24 saat / son 7 gün benzersiz cihazı, ülke kırılımlı
 app.get("/admin/visitor-stats", basicAuth, async (req, res) => {
   try {
-    // İzole panel → kendi uygulaması; süper panel → seçili uygulama ("default" = Musica)
+    // İzole panel → kendi uygulaması; süper panel → seçili uygulama ("default" = yalnız Musica paketi)
+    // ya da appId=all → tüm uygulamalar + kayıtsız paketler (HLL birleşimi, tekilleştirilmiş)
     let app = resolveAppFromKey(req.headers["x-app-key"]);
     if (!app) {
       const raw = ((req.query && req.query.appId) || "").toString().toLowerCase().replace(/[^a-z0-9_-]/g, "");
-      app = raw && getApps()[raw] ? raw : "default";
+      app = raw === "all" ? "all" : (raw && getApps()[raw] ? raw : "default");
     }
+    const appIds = app === "all" ? [...Object.keys(getApps()), VIS_OTHER] : [app];
     const nowMs = Date.now();
     const hours = [], days = [];
     for (let i = 23; i >= 0; i--) hours.push(visHourStr(nowMs - i * 3600 * 1000));
     for (let i = 6; i >= 0; i--) days.push(visDayStr(nowMs - i * 86400 * 1000));
 
-    const ccSets = await Promise.all(days.map(d => redis.smembers(visCcKey(app, d)).catch(() => [])));
-    const countries = [...new Set(ccSets.flat())];
-    const d24Days = new Set(days.slice(-2));
-    const countries24 = new Set(ccSets.filter((_, i) => d24Days.has(days[i])).flat());
+    const ccPipe = redis.pipeline();
+    days.forEach(d => appIds.forEach(a => ccPipe.smembers(visCcKey(a, d))));
+    const ccRes = (await ccPipe.exec()).map(([e, v]) => (e || !v ? [] : v));
+    const ccByDay = days.map((_, di) => ccRes.slice(di * appIds.length, (di + 1) * appIds.length).flat());
+    const countries = [...new Set(ccByDay.flat())];
+    const countries24 = new Set(ccByDay.slice(-2).flat());
 
+    const H = (cc) => hours.flatMap(h => appIds.map(a => visHourKey(a, h, cc)));
+    const D = (dd, cc) => dd.flatMap(d => appIds.map(a => visDayKey(a, d, cc)));
     const pipe = redis.pipeline();
-    pipe.pfcount(...hours.map(h => visHourKey(app, h)));
-    pipe.pfcount(...days.map(d => visDayKey(app, d)));
-    days.forEach(d => pipe.pfcount(visDayKey(app, d)));
+    pipe.pfcount(...H());
+    pipe.pfcount(...D(days));
+    days.forEach(d => pipe.pfcount(...D([d])));
     countries.forEach(cc => {
-      pipe.pfcount(...hours.map(h => visHourKey(app, h, cc)));
-      pipe.pfcount(...days.map(d => visDayKey(app, d, cc)));
+      pipe.pfcount(...H(cc));
+      pipe.pfcount(...D(days, cc));
     });
     const r = (await pipe.exec()).map(([err, v]) => err ? 0 : (Number(v) || 0));
     let i = 0;
