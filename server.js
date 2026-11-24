@@ -5381,6 +5381,8 @@ async function recordPresence(req) {
 
     const pipe = redis.pipeline();
     pipe.hset(key, { ip, lastSeen: nowMs.toString(), endpoint: req.path, userAgent: req.headers["user-agent"] || "" });
+    const rawPkg = String(req.headers["x-app-package"] || "").trim().slice(0, 120);
+    if (rawPkg) pipe.hset(key, "pkg", rawPkg);
     if (country !== "?") pipe.hset(key, "country", country);
     if (extractor !== "unknown") pipe.hset(key, "extractor", extractor);
     if (Number.isFinite(sdk) && sdk > 0) pipe.hset(key, "sdk", String(sdk));
@@ -5531,7 +5533,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     if (!boundApp) {
       const from5 = nowMs - 60 * 1000;   // şu an (son 1 dk)
       const apps = getApps();
-      const ids = Object.keys(apps).filter(id => id !== "default");
+      const ids = Object.keys(apps);   // "default" = yalnız Musica paketi (kendi kümesi)
       const appPipe = redis.pipeline();
       ids.forEach(id => {
         appPipe.zcount(presenceModeZKey("ringtone", id), from5, "+inf");
@@ -5549,10 +5551,10 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
         total: n(appRes[i * 3 + 2]),
       }));
       const sum = (f) => rows.reduce((a, r) => a + r[f], 0);
-      rows.unshift({
-        id: "default",
-        name: ((apps.default && apps.default.name) || "default") + " + kayıtsız paketler",
-        packageName: (apps.default && apps.default.packageName) || "",
+      rows.push({
+        id: VIS_OTHER,
+        name: "Kayıtsız paketler",
+        packageName: "",
         ringtone: Math.max(0, byMode.ringtone.online1m - sum("ringtone")),
         youtube: Math.max(0, byMode.youtube.online1m - sum("youtube")),
         total: Math.max(0, c1 - sum("total")),
@@ -5560,8 +5562,10 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
       byApp = rows.sort((a, b) => b.ringtone - a.ringtone || b.total - a.total);
     }
 
+    // lite=1: yalnız sayaçlar (panel üst seçici + sol rozet), cihaz listesi/grafik yok
+    const lite = req.query.lite === "1";
     // Pencere içindeki cihazlar (en yeni önce) — mod filtresi varsa o kümeden
-    const uids = await redis.zrevrangebyscore(modeFilter ? MODEKEY(modeFilter) : ZKEY, "+inf", winFrom);
+    const uids = lite ? [] : await redis.zrevrangebyscore(modeFilter ? MODEKEY(modeFilter) : ZKEY, "+inf", winFrom);
     let users = [];
     const byCountryMap = {};
     const windowByExtractor = { newpipe: 0, backend: 0, unknown: 0 };
@@ -5588,6 +5592,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
             mode: md,
             appId: h.appId || VIS_OTHER,
             appName: h.appId && appsAll[h.appId] ? (appsAll[h.appId].name || h.appId) : "Kayıtsız paket",
+            pkg: h.pkg || (h.appId && appsAll[h.appId] && appsAll[h.appId].packageName) || "",
             sdk: h.sdk ? Number(h.sdk) : null,
             endpoint: h.endpoint || "",
             hits: Number(h.hits) || 0,
@@ -5607,7 +5612,7 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
     // Mod filtresi varken ÜRETİLMEZ: dakikalık HLL anahtarları moda göre
     // ayrılmadığı için filtreli grafik tüm kullanıcıları gösterir, yanıltır.
     let timeline = [];
-    if (!modeFilter) {
+    if (!modeFilter && !lite) {
       const tlPipe = redis.pipeline();
       const minutes = [];
       for (let i = 59; i >= 0; i--) {
