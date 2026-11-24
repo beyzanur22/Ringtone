@@ -5,14 +5,14 @@
      stats:m:<app>:<YYYYMMDDHHmm>  dakika  (3 saat)
      stats:h:<app>:<YYYYMMDDHH>    saat, UTC (35 gün)  — s|alan toplam, m|alan tepe, _n örnek
      stats:d:<app>:<YYYYMMDD>      gün, İstanbul (40 gün)
-   <app>: "all" (tüm uygulamalar), "default" (Musica + kayıtsız paketler) veya app id.
+   <app>: "all" (tüm uygulamalar), "default" (yalnız Musica paketi) veya app id.
 ========================================================================= */
 
 const MIN_TTL = 3 * 3600;
 const HOUR_TTL = 35 * 86400;
 const DAY_TTL = 40 * 86400;
 const TZ_MS = 3 * 3600 * 1000;   // İstanbul (yaz saati yok)
-const ACTIVE_MS = 5 * 60 * 1000;
+const ACTIVE_MS = 60 * 1000;   // "aktif" = son 1 dk (uygulama 15 sn'de bir yoklar)
 
 const minStr = (ms) => new Date(ms).toISOString().slice(0, 16).replace(/[-:T]/g, "");
 const hourStr = (ms) => new Date(ms).toISOString().slice(0, 13).replace(/[-T]/g, "");
@@ -57,7 +57,7 @@ module.exports = function (app, deps) {
     const got = await redis.set(K.lock(nowMs), "1", "EX", 120, "NX");
     if (!got) return;
     const from = nowMs - ACTIVE_MS;
-    const ids = Object.keys(getApps()).filter(id => id !== "default");
+    const ids = Object.keys(getApps());   // "default" = yalnız Musica paketi (kendi kümesi)
 
     // Toplam / zil sesi / müzik — panelin mevcut sayaçlarıyla aynı kümeler
     const p = redis.pipeline();
@@ -75,9 +75,6 @@ module.exports = function (app, deps) {
       // n: NewPipe (cihazda çözüm), b: Backend API
       rows[scope || "all"] = { t: r[o], r: r[o + 1], y: r[o + 2], n: r[o + 3], b: r[o + 4] };
     });
-    const sum = (f) => ids.reduce((a, id) => a + rows[id][f], 0);
-    rows.default = {};
-    ["t", "r", "y", "n", "b"].forEach(f => { rows.default[f] = Math.max(0, rows.all[f] - sum(f)); });
 
     // Ülke kırılımı — cihaz kaydındaki ülke + uygulama
     const known = new Set(ids);
@@ -90,8 +87,8 @@ module.exports = function (app, deps) {
       hr.forEach(([e, v]) => {
         if (e || !v) return;
         const cc = /^[A-Z]{2}$/.test(String(v[0] || "").toUpperCase()) ? String(v[0]).toUpperCase() : "XX";
-        const a = known.has(v[1]) ? v[1] : "default";
-        for (const key of ["all", a]) {
+        const a = known.has(v[1]) ? v[1] : null;   // kayıtsız/eski kayıt → yalnız "all"
+        for (const key of a ? ["all", a] : ["all"]) {
           const f = "c|" + cc;
           rows[key][f] = (rows[key][f] || 0) + 1;
         }
@@ -210,7 +207,7 @@ module.exports = function (app, deps) {
         const all = await Promise.all(keys.map(k => readPoints(k, unit, slots.slice(0, points.length))));
         byApp = keys.map((id, i) => ({
           id,
-          name: id === "default" ? ((apps.default && apps.default.name) || "Musica") + " + kayıtsız" : ((apps[id] && apps[id].name) || id),
+          name: (apps[id] && apps[id].name) || (id === "default" ? "Musica" : id),
           brand: (apps[id] && apps[id].brandPrimary) || null,
           series: all[i].map(p => (p.missing ? null : { t: p.t, r: p.r, y: p.y, tMax: p.tMax, rMax: p.rMax, yMax: p.yMax })),
         }));

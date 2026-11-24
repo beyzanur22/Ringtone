@@ -5219,6 +5219,12 @@ const visHourKey = (app, h, cc) => `vis:h:${app}:${h}` + (cc ? `:${cc}` : "");
 const visDayKey = (app, d, cc) => `vis:d:${app}:${d}` + (cc ? `:${cc}` : "");
 const visCcKey = (app, d) => `vis:cc:${app}:${d}`;
 const VIS_OTHER = "_other";   // apps.json'da kayıtlı olmayan / kimliksiz trafik
+// Musica = yalnız kendi paket adı (veya X-App-Id: default); kayıtsız paketler sayılmaz
+function isMusicaReq(req) {
+  const pkg = String(req.headers["x-app-package"] || "").trim();
+  const musicaPkg = (getApps().default || {}).packageName;
+  return !!(musicaPkg && pkg === musicaPkg) || String(req.headers["x-app-id"] || "").toLowerCase() === "default";
+}
 function queueVisitor(pipe, uid, appId, country, nowMs) {
   const app = appId || "default";
   const cc = /^[A-Z]{2}$/.test(country) ? country : "XX";
@@ -5249,7 +5255,7 @@ function normalizeAppMode(req) {
 // Cihaz TEK bir mod kümesinde bulunur — mod değişiminde çift sayımı önler.
 function queueModePresence(pipe, uid, mode, appId, nowMs) {
   const scopes = [null];
-  if (appId && appId !== "default") scopes.push(appId);
+  if (appId) scopes.push(appId);   // "default" = yalnız Musica paketi
   for (const scope of scopes) {
     pipe.zadd(presenceModeZKey(mode, scope), nowMs, uid);
     APP_MODES.filter(m => m !== mode)
@@ -5322,7 +5328,8 @@ async function recordPresence(req) {
       // Mod taşıyan istek X-Device-Id de taşır → uid ve appId burada kesindir.
       if (appMode) {
         const p = redis.pipeline();
-        queueModePresence(p, uid, appMode, resolveAppId(req), nowMs);
+        const tApp = resolveAppId(req);
+        queueModePresence(p, uid, appMode, tApp !== "default" ? tApp : (isMusicaReq(req) ? "default" : null), nowMs);
         p.exec().catch(() => {});
       }
       return;
@@ -5343,12 +5350,7 @@ async function recordPresence(req) {
     const hasDeviceId = typeof req.headers["x-device-id"] === "string" && req.headers["x-device-id"].length >= 6;
     // Ziyaretçi kovası: "default" yalnız Musica'nın kendi paketi; kayıtsız/kimliksiz trafik VIS_OTHER
     let visApp = appId;
-    if (appId === "default") {
-      const pkg = String(req.headers["x-app-package"] || "").trim();
-      const musicaPkg = (getApps().default || {}).packageName;
-      visApp = (musicaPkg && pkg === musicaPkg) || String(req.headers["x-app-id"] || "").toLowerCase() === "default"
-        ? "default" : VIS_OTHER;
-    }
+    if (appId === "default") visApp = isMusicaReq(req) ? "default" : VIS_OTHER;
     if (hasAppIdentity && hasDeviceId) {
       // Kimliği kesin bilinen istek → bu IP'nin cihaz+uygulamasını hatırla.
       // "default" (Musica) da yazılır; böylece Musica kullanıcısı IP paylaşsa bile
@@ -5397,19 +5399,19 @@ async function recordPresence(req) {
 
     // İZOLE PANEL: non-default uygulama trafiğini ayrıca per-app havuza yaz.
     // appId yukarıda çözüldü: header'dan (kesin) veya IP hafızasından (stream).
-    if (appId && appId !== "default") {
-      pipe.hset(key, "appId", appId);
-      pipe.zadd(presenceZKeyApp(appId), nowMs, uid);
-      pipe.zadd(presenceExtractorZKeyApp(extractor, appId), nowMs, uid);
+    // Musica ("default") da yalnız kendi paketiyle kendi havuzuna yazılır; kayıtsızlar sadece global'de
+    const scopeApp = appId !== "default" ? appId : (visApp === "default" ? "default" : null);
+    pipe.hset(key, "appId", scopeApp || VIS_OTHER);
+    if (scopeApp) {
+      pipe.zadd(presenceZKeyApp(scopeApp), nowMs, uid);
+      pipe.zadd(presenceExtractorZKeyApp(extractor, scopeApp), nowMs, uid);
       EXTRACTORS.filter(ex => ex !== extractor)
-        .forEach(ex => pipe.zrem(presenceExtractorZKeyApp(ex, appId), uid));
-      const minKeyApp = presenceMinKeyApp(nowMs, appId);
+        .forEach(ex => pipe.zrem(presenceExtractorZKeyApp(ex, scopeApp), uid));
+      const minKeyApp = presenceMinKeyApp(nowMs, scopeApp);
       pipe.pfadd(minKeyApp, uid);
       pipe.expire(minKeyApp, 7200);
     }
-    if (appMode) queueModePresence(pipe, uid, appMode, appId, nowMs);
-    // Musica'nın kendi "şu an" kümesi (global havuzdan ayrı; panel Ziyaretçi Özeti › Anlık)
-    if (visApp === "default") pipe.zadd(presenceZKeyApp("default"), nowMs, uid);
+    if (appMode) queueModePresence(pipe, uid, appMode, scopeApp, nowMs);
     queueVisitor(pipe, uid, visApp, String(country).toUpperCase(), nowMs);
     pipe.exec().catch(() => {});
   } catch (e) {
@@ -5429,9 +5431,8 @@ if (isPrimaryWorker) {
       // Çıkarıcı kümeleri de aynı pencereyle budanır
       EXTRACTORS.forEach(ex => pipe.zremrangebyscore(PRESENCE_EXTRACTOR_ZKEY(ex), 0, cutoff));
       APP_MODES.forEach(m => pipe.zremrangebyscore(presenceModeZKey(m, null), 0, cutoff));
-      pipe.zremrangebyscore(presenceZKeyApp("default"), 0, cutoff);
-      // Per-app (izole panel) kümeleri de budanır
-      Object.keys(getApps()).filter(id => id !== "default").forEach(id => {
+      // Per-app (izole panel + Musica) kümeleri de budanır
+      Object.keys(getApps()).forEach(id => {
         pipe.zremrangebyscore(presenceZKeyApp(id), 0, cutoff);
         EXTRACTORS.forEach(ex => pipe.zremrangebyscore(presenceExtractorZKeyApp(ex, id), 0, cutoff));
         APP_MODES.forEach(m => pipe.zremrangebyscore(presenceModeZKey(m, id), 0, cutoff));
@@ -5451,7 +5452,8 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
 
     // İZOLE PANEL kapsamı: per-app key ile gelindiyse SADECE o uygulama;
     // master key (süper panel) ile gelindiyse null → GLOBAL (tüm uygulamalar).
-    const boundApp = resolveScopeApp(req);
+    let boundApp = resolveScopeApp(req);
+    if (!boundApp && isMasterRequest(req) && String(req.query.appId || "").toLowerCase() === "default") boundApp = "default";
     const ZKEY = presenceZKeyApp(boundApp);
     const EXKEY = (ex) => presenceExtractorZKeyApp(ex, boundApp);
     const MINKEY = (ms) => presenceMinKeyApp(ms, boundApp);
@@ -5584,8 +5586,8 @@ app.get("/admin/active-users", basicAuth, async (req, res) => {
             country,
             extractor: ex,
             mode: md,
-            appId: h.appId || "default",
-            appName: ((appsAll[h.appId || "default"] || {}).name) || h.appId || "default",
+            appId: h.appId || VIS_OTHER,
+            appName: h.appId && appsAll[h.appId] ? (appsAll[h.appId].name || h.appId) : "Kayıtsız paket",
             sdk: h.sdk ? Number(h.sdk) : null,
             endpoint: h.endpoint || "",
             hits: Number(h.hits) || 0,
